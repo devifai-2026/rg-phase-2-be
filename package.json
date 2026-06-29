@@ -47,6 +47,7 @@
     "multer": "^2.2.0",
     "openai": "^4.77.0",
     "pdfkit": "^0.19.1",
+    "pino-http": "^11.0.0",
     "socket.io": "^4.8.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

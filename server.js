@@ -8,6 +8,7 @@ const jobWorker = require('./workers/jobWorker');
 const fcmService = require('./services/fcmService');
 const bqService = require('./services/bqService');
 
+
 let server;
 
 async function start() {

@@ -12,6 +12,10 @@ const apiLogger = require('./middlewares/apiLogger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 const { apiLimiter } = require('./middlewares/rateLimit');
 const mongoose = require('mongoose');
+const pinoHttp = require('pino-http');
+const logger = require('./your-existing-pino-logger'); // reuse your existing instance
+
+
 
 const app = express();
 app.set('trust proxy', 1);
@@ -43,6 +47,7 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
+app.use(pinoHttp({ logger }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 // PayU posts urlencoded form data to the callback.
