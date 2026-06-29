@@ -37,10 +37,10 @@ async function sendText({ to, message }) {
   };
 
   const { data } = await axios.post(`${env.waBridge.baseUrl}/createtextmessage`, payload, {
+    // No client timeout — WABridge runs slow in prod (~15s+) and the OTP send is
+    // fire-and-forget (otpService), so we let even a slow send complete rather
+    // than abort it.
     headers: { 'Content-Type': 'application/json' },
-    // WABridge runs slow in prod (~15s seen). OTP send is fire-and-forget in
-    // otpService, so a generous timeout just lets a slow send still land.
-    timeout: 30000,
   });
 
   if (!data || !data.status) {
@@ -72,10 +72,10 @@ async function sendTemplate({ to, templateId, variables = [], buttonVariable = [
   };
 
   const { data } = await axios.post(`${env.waBridge.baseUrl}/createmessage`, payload, {
+    // No client timeout — WABridge runs slow in prod (~15s+) and the OTP send is
+    // fire-and-forget (otpService), so we let even a slow send complete rather
+    // than abort it.
     headers: { 'Content-Type': 'application/json' },
-    // WABridge runs slow in prod (~15s seen). OTP send is fire-and-forget in
-    // otpService, so a generous timeout just lets a slow send still land.
-    timeout: 30000,
   });
 
   if (!data || !data.status) {
