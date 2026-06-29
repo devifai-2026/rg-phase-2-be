@@ -45,7 +45,6 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
-app.use(pinoHttp({ logger }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 // PayU posts urlencoded form data to the callback.
