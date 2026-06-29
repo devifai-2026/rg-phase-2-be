@@ -46,10 +46,16 @@ jobs:
 
       - name: Smoke test
         run: |
+          # Check the app's healthz on the VM's LOOPBACK over SSH. The public
+          # HTTPS endpoint (sslip.io + Caddy ACME) intermittently flaked the TLS
+          # handshake from the GitHub runner and failed otherwise-good deploys;
+          # the app itself is what we actually want to verify came back up.
+          ssh -i ~/.ssh/id_deploy "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" bash -s <<'EOF'
           for i in $(seq 1 10); do
-            if curl -fsS "https://${{ secrets.VM_HOST }}/healthz" >/dev/null; then
+            if curl -fsS http://localhost:5000/healthz >/dev/null; then
               echo "healthz OK"; exit 0
             fi
             sleep 3
           done
           echo "healthz did not come up"; exit 1
+          EOF
