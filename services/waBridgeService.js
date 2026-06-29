@@ -38,7 +38,9 @@ async function sendText({ to, message }) {
 
   const { data } = await axios.post(`${env.waBridge.baseUrl}/createtextmessage`, payload, {
     headers: { 'Content-Type': 'application/json' },
-    timeout: 15000,
+    // WABridge runs slow in prod (~15s seen). OTP send is fire-and-forget in
+    // otpService, so a generous timeout just lets a slow send still land.
+    timeout: 30000,
   });
 
   if (!data || !data.status) {
@@ -71,7 +73,9 @@ async function sendTemplate({ to, templateId, variables = [], buttonVariable = [
 
   const { data } = await axios.post(`${env.waBridge.baseUrl}/createmessage`, payload, {
     headers: { 'Content-Type': 'application/json' },
-    timeout: 15000,
+    // WABridge runs slow in prod (~15s seen). OTP send is fire-and-forget in
+    // otpService, so a generous timeout just lets a slow send still land.
+    timeout: 30000,
   });
 
   if (!data || !data.status) {

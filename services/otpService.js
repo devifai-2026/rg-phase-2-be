@@ -28,21 +28,24 @@ async function requestOtp(phone) {
   await OtpRequest.updateMany({ phone, consumed: false }, { $set: { consumed: true } });
   await OtpRequest.create({ phone, codeHash, expiresAt, lastSentAt: new Date(), sendCount: 1 });
 
+  // Deliver the code over WhatsApp WITHOUT blocking the HTTP response. The OTP
+  // is already persisted above, so the app can proceed to the verify screen the
+  // instant we reply — the WhatsApp message arrives a moment later. WABridge has
+  // been intermittently slow (~15s), and awaiting it here made the whole
+  // request time out → the app showed "no connection" even though the OTP was
+  // valid. Fire-and-forget + log failures instead.
   if (env.isDev) {
     logger.info('[OTP DEV] code generated', { phone, code });
-  } else if (env.waBridge.otpTemplateId) {
-    // Template body: "Hello, here is your {{1}} for Rudraganga App {{2}} ..."
-    // {{1}} = the literal word "OTP", {{2}} = the actual code (in that order).
-    await waBridge.sendTemplate({
-      to: phone,
-      templateId: env.waBridge.otpTemplateId,
-      variables: ['OTP', code],
-    });
   } else {
-    await waBridge.sendText({
-      to: phone,
-      message: `${code} is your Rudraganga verification code. It is valid for ${Math.ceil(env.otp.ttlSec / 60)} minutes.`,
-    });
+    const deliver = env.waBridge.otpTemplateId
+      // Template body: "Hello, here is your {{1}} for Rudraganga App {{2}} ..."
+      // {{1}} = the literal word "OTP", {{2}} = the actual code (in that order).
+      ? waBridge.sendTemplate({ to: phone, templateId: env.waBridge.otpTemplateId, variables: ['OTP', code] })
+      : waBridge.sendText({
+          to: phone,
+          message: `${code} is your Rudraganga verification code. It is valid for ${Math.ceil(env.otp.ttlSec / 60)} minutes.`,
+        });
+    deliver.catch((e) => logger.error('OTP WhatsApp send failed', { phone, error: e.message }));
   }
 
   return { message: 'OTP sent', expiresInSec: env.otp.ttlSec, devCode: env.isDev ? code : undefined };
