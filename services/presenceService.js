@@ -140,21 +140,26 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
     profile.availabilityPreference = !!profile.isOnline;
   }
 
-  // 2) Resolve the live-connection signal (explicit override or store lookup).
+  // 2) Resolve the live-connection signal. NOTE: presence is now driven by the
+  //    astrologer's TOGGLE intent alone — a live socket is NOT required to be
+  //    shown online (so force-killing the app, backgrounding, or a dropped
+  //    socket does NOT flip them offline; requests still reach them via the FCM
+  //    full-screen call push and time out if unanswered). `live` is still
+  //    resolved for diagnostics/logging but no longer gates `wantOnline`.
   let live = connected;
   if (typeof live !== 'boolean') {
     const doc = await Presence.findOne({ user: userId }).select('online socketCount').lean();
     live = !!(doc && doc.online && doc.socketCount > 0);
   }
 
-  // 3) Derive the public truth. Online requires BOTH intent and a live socket.
+  // 3) Derive the public truth. Online = the astrologer's availability TOGGLE.
   //    'busy' is sticky ONLY while a real session is actually live — otherwise a
   //    stale busy flag would survive the post-call socket churn (the astro app
   //    drops + reconnects its socket when tearing down a video call, and a plain
   //    currentCallStatus==='busy' check would re-derive busy on reconnect even
   //    though the session already ended → users saw "busy" for a few seconds).
   //    So we only keep busy when an ongoing session exists for this astrologer.
-  const wantOnline = !!profile.availabilityPreference && !!live;
+  const wantOnline = !!profile.availabilityPreference;
   // An astrologer is busy while EITHER in a 1-on-1 consultation (accepted/ongoing
   // Session) OR broadcasting a LIVE session. Both must be checked, else a periodic
   // presence recompute would drop the busy flag a live broadcaster sets in

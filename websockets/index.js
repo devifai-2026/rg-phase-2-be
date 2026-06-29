@@ -232,12 +232,26 @@ function initSocket(httpServer) {
     // ── Live broadcast room ──
     // The astrologer (broadcaster) and every viewer (audience) join the room
     // `live:<id>` so comments / gifts / polls / viewer counts fan out to all.
+    // Per-socket set of live rooms this socket counts toward. The REST `/join`
+    // does the increment; the socket lifecycle (leave-live OR disconnect) owns
+    // the matching decrement, so the count drops even on a hard app-kill where
+    // no REST `/leave` ever fires. The set guarantees AT MOST ONE decrement per
+    // socket+room — leave-live and disconnect can't double-count.
+    socket._liveRooms = socket._liveRooms || new Set();
+
     socket.on('join-live', async ({ liveSessionId } = {}, cb) => {
       try {
         if (!liveSessionId) throw new Error('liveSessionId required');
-        socket.join(`live:${liveSessionId}`);
-        // Audience count is maintained via the REST join/leave so it survives a
-        // socket reconnect; joining the room here is only for receiving events.
+        const id = String(liveSessionId);
+        socket.join(`live:${id}`);
+        // The socket is the viewer-count AUTHORITY: increment once per socket per
+        // room (the set makes a re-emitted join-live idempotent). The matching
+        // decrement comes from leave-live or disconnect, so the count is correct
+        // across reconnects and hard app-kills.
+        if (!socket._liveRooms.has(id)) {
+          socket._liveRooms.add(id);
+          require('../services/liveService').viewerJoined({ liveSessionId: id }).catch(() => {});
+        }
         cb && cb({ success: true });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -245,7 +259,14 @@ function initSocket(httpServer) {
     });
 
     socket.on('leave-live', ({ liveSessionId } = {}) => {
-      if (liveSessionId) socket.leave(`live:${liveSessionId}`);
+      if (!liveSessionId) return;
+      const id = String(liveSessionId);
+      socket.leave(`live:${id}`);
+      // Clean leave: decrement exactly once. Deleting from the set first ensures
+      // the disconnect backstop won't decrement a SECOND time for this join.
+      if (socket._liveRooms.delete(id)) {
+        require('../services/liveService').leaveLive({ liveSessionId: id }).catch(() => {});
+      }
     });
 
     // Low-latency comment over the socket (also available via REST). Always-on
@@ -334,6 +355,15 @@ function initSocket(httpServer) {
     // (preference is preserved for the next reconnect) and broadcast it, so
     // seekers never see a green dot for an astrologer who isn't reachable.
     socket.on('disconnect', async () => {
+      // Release any live-viewer slots this socket still held (app killed / network
+      // dropped without a clean leave-live). Each room decrements at most once.
+      if (socket._liveRooms && socket._liveRooms.size) {
+        const liveService = require('../services/liveService');
+        for (const id of socket._liveRooms) {
+          liveService.leaveLive({ liveSessionId: id }).catch(() => {});
+        }
+        socket._liveRooms.clear();
+      }
       const remaining = removeLocal(userId, socket.id);
       const fullyOffline = await presenceService.userDisconnected(userId);
       if (fullyOffline && remaining === 0 && socket.role === 'astrologer') {

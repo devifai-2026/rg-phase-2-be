@@ -10,17 +10,37 @@ function reqLang(req) {
   return (req.user && req.user.language) || req.query.language || req.headers['x-lang'] || 'en';
 }
 
+/** Localize one stored-i18n-or-translate-on-read field. Prefers a stored i18n
+ *  map value, else translates via the cache-backed path. Returns the source on
+ *  English / empty / failure (never English-fallback for a real translation). */
+async function localizeField(src, i18nMap, lang) {
+  const text = String(src || '');
+  if (!text.trim()) return text;
+  const m = i18nMap || {};
+  const stored = m.get ? m.get(lang) : m[lang];
+  if (stored && stored !== text) return stored;
+  return translateService.localizeText(text, lang);
+}
+
 /**
- * Localize an astrologer's `bio` into `lang` with NO English fallback: use the
- * stored bioI18n translation if present, else translate-on-read (cached). Mutates
- * the plain object in place. No-op for English / missing bio.
+ * Localize an astrologer's user-visible dynamic text into `lang` with NO English
+ * fallback. Covers the BIO and the NAME (displayName, transliterated into the
+ * requester's script — e.g. "Ravi Kumar" → "रवि कुमार"). The Flutter app reads the
+ * name from `displayName` (falling back to user.name), so we localize both.
+ * Mutates the plain object in place. No-op for English.
  */
 async function localizeAstrologer(a, lang) {
-  if (!a || !lang || lang === 'en' || !a.bio) return;
-  const i18n = a.bioI18n || {};
-  const stored = i18n.get ? i18n.get(lang) : i18n[lang];
-  if (stored && stored !== a.bio) { a.bio = stored; return; }
-  a.bio = await translateService.localizeText(a.bio, lang);
+  if (!a || !lang || lang === 'en') return;
+  await Promise.all([
+    (async () => { if (a.bio) a.bio = await localizeField(a.bio, a.bioI18n, lang); })(),
+    (async () => {
+      if (a.displayName) a.displayName = await localizeField(a.displayName, a.displayNameI18n, lang);
+    })(),
+    (async () => {
+      // The name can also arrive via the populated user.name fallback.
+      if (a.user && a.user.name) a.user.name = await localizeField(a.user.name, a.displayNameI18n, lang);
+    })(),
+  ]);
 }
 
 // ── Public ──

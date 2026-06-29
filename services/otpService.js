@@ -18,19 +18,7 @@ function genCode() {
 async function requestOtp(phone) {
   const now = Date.now();
 
-  // Per-phone throttle (cooldown + hourly cap) — production only, so dev/testing
-  // isn't blocked. IP-level limiting also skips in dev (see middlewares/rateLimit).
-  if (env.isProd) {
-    const latest = await OtpRequest.findOne({ phone }).sort({ createdAt: -1 });
-    if (latest && latest.lastSentAt && now - latest.lastSentAt.getTime() < env.otp.resendCooldownSec * 1000) {
-      throw new AppError('Please wait before requesting another code', 429);
-    }
-    const oneHourAgo = new Date(now - 60 * 60 * 1000);
-    const recentCount = await OtpRequest.countDocuments({ phone, createdAt: { $gte: oneHourAgo } });
-    if (recentCount >= env.otp.maxSendsPerHour) {
-      throw new AppError('Too many OTP requests this hour', 429);
-    }
-  }
+  // Rate limiting removed from the platform — no per-phone cooldown / hourly cap.
 
   const code = genCode();
   const codeHash = await bcrypt.hash(code, 10);
@@ -63,7 +51,7 @@ async function verifyOtp(phone, code) {
   const otp = await OtpRequest.findOne({ phone, consumed: false }).sort({ createdAt: -1 }).select('+codeHash');
   if (!otp) throw new AppError('No active OTP. Please request a new one.', 400);
   if (otp.expiresAt.getTime() < Date.now()) throw new AppError('OTP expired. Please request a new one.', 400);
-  if (otp.attempts >= env.otp.maxVerifyAttempts) throw new AppError('Too many attempts. Request a new OTP.', 429);
+  // Rate limiting removed — no max-verify-attempts cap.
 
   const ok = await bcrypt.compare(String(code), otp.codeHash);
   if (!ok) {

@@ -1,29 +1,16 @@
-const rateLimit = require('express-rate-limit');
-const env = require('../config/env');
+// Rate limiting has been removed from the platform.
+//
+// These exports are kept as no-op pass-through middleware so the route files
+// that reference them (auth, wallet, enquiry, track, plus the global apiLimiter
+// in app.js) keep working unchanged. To re-introduce limiting later, restore the
+// express-rate-limit instances here — no route changes needed.
+const noop = (req, res, next) => next();
 
-const json = (msg) => (req, res) => res.status(429).json({ success: false, message: msg });
-
-// Disable all IP rate limiting outside production (keeps dev/testing friction-free).
-const skip = () => !env.isProd;
-
-const base = { standardHeaders: true, legacyHeaders: false, skip };
-
-// OTP request: 5 / 15 min / IP
-const otpRequestLimiter = rateLimit({ ...base, windowMs: 15 * 60 * 1000, max: 5, handler: json('Too many OTP requests. Try again later.') });
-
-// OTP verify: 10 / 15 min / IP
-const otpVerifyLimiter = rateLimit({ ...base, windowMs: 15 * 60 * 1000, max: 10, handler: json('Too many verification attempts. Try again later.') });
-
-// Payments: 20 / 10 min / IP
-const paymentLimiter = rateLimit({ ...base, windowMs: 10 * 60 * 1000, max: 20, handler: json('Too many payment requests. Slow down.') });
-
-// Generic API limiter
-const apiLimiter = rateLimit({ ...base, windowMs: 60 * 1000, max: 120, handler: json('Rate limit exceeded.') });
-
-// First-party tracking ingestion (public): generous, abuse-bounded.
-const trackLimiter = rateLimit({ ...base, windowMs: 5 * 60 * 1000, max: 200, handler: json('Too many tracking events.') });
-
-// Public contact / enquiry submissions: 8 / 10 min / IP.
-const enquiryLimiter = rateLimit({ ...base, windowMs: 10 * 60 * 1000, max: 8, handler: json('Too many submissions. Try again later.') });
-
-module.exports = { otpRequestLimiter, otpVerifyLimiter, paymentLimiter, apiLimiter, trackLimiter, enquiryLimiter };
+module.exports = {
+  otpRequestLimiter: noop,
+  otpVerifyLimiter: noop,
+  paymentLimiter: noop,
+  apiLimiter: noop,
+  trackLimiter: noop,
+  enquiryLimiter: noop,
+};

@@ -22,6 +22,9 @@ router.post('/:sessionId/reject', protect, astrologerOnly, ctrl.reject);
 // User cancels their own still-ringing request (HTTP fallback for the socket).
 router.post('/:sessionId/cancel', protect, ctrl.cancel);
 router.post('/:sessionId/end', protect, ctrl.end);
+// Currently-live session to RESUME after an app kill (must precede '/:sessionId'
+// so 'me' isn't captured as a sessionId).
+router.get('/me/active', protect, ctrl.active);
 router.get('/:sessionId/token', protect, ctrl.token);
 // Paginated chat history for a session (loads prior messages on open).
 router.get('/:sessionId/messages', protect, ctrl.messages);

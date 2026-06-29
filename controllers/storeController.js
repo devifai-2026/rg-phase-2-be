@@ -303,15 +303,26 @@ exports.publicStorefront = asyncHandler(async (req, res) => {
     PoojaType.find(liveFilter).sort({ createdAt: -1 }).lean(),
   ]);
 
+  // Localize the astrologer NAME + BIO to the requester's language (transliterates
+  // the name into their script, e.g. "Ravi Kumar" → "रवि कुमार"). Cache-backed so
+  // it's instant after the first hit / the admin "Run translation" pre-warm.
+  const translateService = require('../services/translateService');
+  const lang = (req.user && req.user.language) || req.query.language || req.headers['x-lang'] || 'en';
+  const rawName = profile.displayName || (profile.user && profile.user.name) || 'Astrologer';
+  const [name, bio] = await Promise.all([
+    translateService.localizeText(rawName, lang),
+    translateService.localizeText(profile.bio || '', lang),
+  ]);
+
   res.json({
     success: true,
     data: {
       profile: {
         id: String(profile._id),
-        name: profile.displayName || (profile.user && profile.user.name) || 'Astrologer',
+        name,
         avatar: profile.avatar || null,
         coverPhoto: profile.coverPhoto || null,
-        bio: profile.bio || '',
+        bio: bio || '',
         expertise: profile.expertise || [],
         followers: (profile.followerSeed || 0) + (profile.followerCount || 0),
         rating: profile.rating || 0,

@@ -417,15 +417,15 @@ async function joinLive({ liveSessionId, userId }) {
   const uid = agoraService.newUid();
   const token = await agoraService.tokenForLive(ls.channelName, uid, 'audience');
 
-  ls.viewerCount = (ls.viewerCount || 0) + 1;
+  // NOTE: the live viewer COUNT is owned by the socket lifecycle (join-live
+  // increments, leave-live/disconnect decrements) so it self-corrects on
+  // reconnect and hard app-kills. REST /join only mints the token + records the
+  // join for nudges; it must NOT touch viewerCount or it would double-count.
   ls.totalJoins = (ls.totalJoins || 0) + 1;
-  if (ls.viewerCount > ls.peakViewers) ls.peakViewers = ls.viewerCount;
   await ls.save();
 
   // Record the join so re-engagement nudges never ping someone already watching.
   require('./liveNudgeService').recordJoin(ls._id, userId, ls.astrologer).catch(() => {});
-
-  emit.toLive(ls._id, 'live-viewers', { liveSessionId: String(ls._id), viewerCount: ls.viewerCount });
 
   const activePoll = await LivePoll.findOne({ liveSession: ls._id, active: true }).sort({ createdAt: -1 }).lean();
   return {
@@ -444,7 +444,20 @@ async function joinLive({ liveSessionId, userId }) {
   };
 }
 
-/** A user leaves; decrement and broadcast the count. Best-effort (idempotent). */
+/** A viewer's socket joins the room → increment and broadcast the count.
+ *  Called from the socket `join-live` handler (the count authority), so the
+ *  count rises on first join AND re-rises on a reconnect after a disconnect. */
+async function viewerJoined({ liveSessionId }) {
+  const ls = await LiveSession.findById(liveSessionId);
+  if (!ls || ls.status !== 'live') return;
+  ls.viewerCount = (ls.viewerCount || 0) + 1;
+  if (ls.viewerCount > (ls.peakViewers || 0)) ls.peakViewers = ls.viewerCount;
+  await ls.save();
+  emit.toLive(ls._id, 'live-viewers', { liveSessionId: String(ls._id), viewerCount: ls.viewerCount });
+}
+
+/** A viewer's socket leaves (clean leave OR disconnect) → decrement and
+ *  broadcast. Best-effort; the caller guarantees one call per counted socket. */
 async function leaveLive({ liveSessionId }) {
   const ls = await LiveSession.findById(liveSessionId);
   if (!ls || ls.status !== 'live') return;
@@ -754,7 +767,7 @@ function fallbackPoll(topic) {
 }
 
 module.exports = {
-  goLive, endLive, endLiveByAstrologer, listLive, joinLive, leaveLive,
+  goLive, endLive, endLiveByAstrologer, listLive, joinLive, viewerJoined, leaveLive,
   postComment, generatePoll, votePoll, summary, liveDetail,
   listMine, getOrGenerateSummary,
   scheduleAutoEndOnDisconnect, cancelAutoEnd,

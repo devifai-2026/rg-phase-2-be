@@ -80,6 +80,33 @@ exports.messages = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+/**
+ * The requester's CURRENTLY-LIVE consultation, if any — used to RESUME after the
+ * app was killed/backgrounded mid-session (the session keeps running + billing
+ * server-side, so the app must be able to rejoin). Returns the live session
+ * (status accepted|ongoing) for either the seeker (user) or the astrologer, plus
+ * a fresh Agora token for call/video so the client can re-enter the room. Returns
+ * data:null when there's nothing to resume.
+ */
+exports.active = asyncHandler(async (req, res) => {
+  const me = req.user._id;
+  const isAstro = req.user.role === 'astrologer';
+  const session = await Session.findOne({
+    [isAstro ? 'astrologer' : 'user']: me,
+    status: { $in: ['accepted', 'ongoing'] },
+  }).sort({ acceptedAt: -1 });
+
+  if (!session) return res.json({ success: true, data: null });
+
+  const shaped = shapeSession(session, me);
+  // Re-mint a token for media sessions so the app can rejoin the channel.
+  let token = null;
+  if (session.type === 'call' || session.type === 'video') {
+    try { token = await sessionService.getToken(session.sessionId, me); } catch (_) { /* chat or token issue */ }
+  }
+  res.json({ success: true, data: { session: shaped, token } });
+});
+
 exports.detail = asyncHandler(async (req, res) => {
   const session = await Session.findOne({ sessionId: req.params.sessionId });
   if (!session) throw new AppError('Session not found', 404);

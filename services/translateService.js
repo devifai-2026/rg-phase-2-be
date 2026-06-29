@@ -196,10 +196,32 @@ async function runFullTranslation({ limit = 2000 } = {}) {
     if (changed) { doc.bioI18n = cur; await doc.save(); }
   }
 
+  // ── 1b) Astrologer display NAMES → translate cache (transliterated into each
+  //        script, e.g. "Ravi Kumar" → "रवि कुमार"). Names are served via the
+  //        cache-backed localizeText path in the serializer, so pre-warming the
+  //        cache here makes the user-app name render instant in every language. ──
+  const TranslationCache = require('../models/TranslationCache');
+  const namedProfiles = await AstrologerProfile.find({ displayName: { $exists: true, $ne: '' } })
+    .select('displayName').limit(limit).lean();
+  for (const p of namedProfiles) {
+    const src = (p.displayName || '').trim();
+    if (!src) continue;
+    const hash = TranslationCache.hashOf(src);
+    for (const l of targets) {
+      totalPairs += 1;
+      const hit = await TranslationCache.findOne({ hash, lang: l }).select('_id').lean();
+      if (hit) { alreadyDone += 1; continue; }
+      const out = await translate(src, l);
+      if (out && out !== src) {
+        await TranslationCache.updateOne({ hash, lang: l }, { $set: { text: out, source: src.slice(0, 2000) } }, { upsert: true });
+        bump('astrologerName', src.length);
+      } else { unchanged += 1; }
+    }
+  }
+
   // ── 2) Product name + description → into the shared translate cache so reads
   //       (localizeText) are instant. (Products have no i18n field; we cache.) ──
   const Product = require('../models/Product');
-  const TranslationCache = require('../models/TranslationCache');
   const products = await Product.find({ isActive: true }).select('name description').limit(limit).lean();
   for (const p of products) {
     for (const field of ['name', 'description']) {

@@ -57,7 +57,9 @@ exports.join = asyncHandler(async (req, res) => {
 });
 
 exports.leave = asyncHandler(async (req, res) => {
-  await liveService.leaveLive({ liveSessionId: req.params.id });
+  // Viewer counting is now owned by the socket lifecycle (join-live /
+  // leave-live / disconnect), so this endpoint no longer decrements — doing so
+  // would double-count against the socket leave. Kept for client compatibility.
   res.json({ success: true });
 });
 
