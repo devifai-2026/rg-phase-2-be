@@ -13,8 +13,6 @@ const { errorHandler, notFound } = require('./middlewares/errorHandler');
 const { apiLimiter } = require('./middlewares/rateLimit');
 const mongoose = require('mongoose');
 const pinoHttp = require('pino-http');
-const logger = require('./your-existing-pino-logger'); // reuse your existing instance
-
 
 
 const app = express();
