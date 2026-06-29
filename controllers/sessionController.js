@@ -91,10 +91,16 @@ exports.messages = asyncHandler(async (req, res) => {
 exports.active = asyncHandler(async (req, res) => {
   const me = req.user._id;
   const isAstro = req.user.role === 'astrologer';
+  // Include 'ringing' so the USER app can resume its "requesting" screen after a
+  // kill (the request is still live, astrologer hasn't answered yet). The client
+  // reads session.status to pick requesting vs in-session UI. Astrologers don't
+  // resume a ring (the incoming CallKit screen handles that), so for them we only
+  // surface a connected session.
+  const statuses = isAstro ? ['accepted', 'ongoing'] : ['ringing', 'accepted', 'ongoing'];
   const session = await Session.findOne({
     [isAstro ? 'astrologer' : 'user']: me,
-    status: { $in: ['accepted', 'ongoing'] },
-  }).sort({ acceptedAt: -1 });
+    status: { $in: statuses },
+  }).sort({ requestedAt: -1 });
 
   if (!session) return res.json({ success: true, data: null });
 

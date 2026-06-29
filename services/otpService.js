@@ -31,10 +31,12 @@ async function requestOtp(phone) {
   if (env.isDev) {
     logger.info('[OTP DEV] code generated', { phone, code });
   } else if (env.waBridge.otpTemplateId) {
+    // Template body: "Hello, here is your {{1}} for Rudraganga App {{2}} ..."
+    // {{1}} = the literal word "OTP", {{2}} = the actual code (in that order).
     await waBridge.sendTemplate({
       to: phone,
       templateId: env.waBridge.otpTemplateId,
-      variables: [code],
+      variables: ['OTP', code],
     });
   } else {
     await waBridge.sendText({

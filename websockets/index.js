@@ -122,9 +122,20 @@ function initSocket(httpServer) {
     // ── Astrologer online/offline toggle ──
     // Persists their intent (availabilityPreference); presence is then derived
     // (intent AND a live socket) and the canonical status is broadcast.
-    socket.on('set-online', async ({ online } = {}) => {
+    socket.on('set-online', async ({ online } = {}, cb) => {
       if (socket.role !== 'astrologer') return;
+      // Block going offline mid-consultation (seeker connected + billing). The
+      // HTTP path enforces the same rule; ack so the app can revert the toggle.
+      if (!online) {
+        const Session = require('../models/Session');
+        const inSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
+        if (inSession) {
+          if (typeof cb === 'function') cb({ ok: false, reason: 'in_consultation' });
+          return;
+        }
+      }
       await presenceService.recomputeAstrologerPresence(userId, { preference: !!online, connected: true });
+      if (typeof cb === 'function') cb({ ok: true });
     });
 
     // Self-requested BREAK: minutes > 0 starts a break (shown busy to seekers),

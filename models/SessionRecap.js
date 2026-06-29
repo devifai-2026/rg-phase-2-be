@@ -49,6 +49,10 @@ const sessionRecapSchema = new mongoose.Schema(
     sessionId: { type: String, required: true, index: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     astrologer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    // When the CONSULTATION ended — binds the recap to that chat's timeline so the
+    // app/admin can show "recap of your chat at <time>" rather than the row's
+    // createdAt (which lags behind the async generation).
+    sessionEndedAt: { type: Date, index: true },
 
     // ── AI output ──
     summary: { type: String },

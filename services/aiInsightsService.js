@@ -92,7 +92,10 @@ async function generateChatRecap({ sessionId }) {
           astrologerName: astroProfile?.displayName,
         }) }],
         schema: chatRecapPrompt.RECAP_SCHEMA,
-        maxTokens: 1024,
+        // Gemini 2.5 spends output budget on hidden "thinking" before the JSON,
+        // so a tight cap truncated the recap mid-object → "could not parse JSON".
+        // Give it ample room to finish the structured output.
+        maxTokens: 3072,
         logMeta: { feature: 'chatRecap', astrologer: session.astrologer, user: session.user, sessionId },
       });
     } catch (e) {
@@ -131,6 +134,8 @@ async function generateChatRecap({ sessionId }) {
     sessionId,
     user: session.user,
     astrologer: session.astrologer,
+    sessionEndedAt: session.endedAt || new Date(), // bind the recap to the chat's end time
+
     summary: ai.summary || '',
     language: ai.language || '', // detected seeker language (for localized copy)
     keyTopics: Array.isArray(ai.keyTopics) ? ai.keyTopics.slice(0, 5) : [],

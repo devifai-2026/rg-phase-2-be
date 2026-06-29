@@ -157,6 +157,11 @@ async function acceptSession({ sessionId, astrologerUserId }) {
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { currentCallStatus: 'busy' } });
   require('./astrologerService').broadcastStatusByUser(astrologerUserId, { isOnline: true, currentCallStatus: 'busy' });
   await jobService.cancelByDedupe(`ring:${sessionId}`);
+  // Dismiss the incoming CallKit screen on ALL the astrologer's devices the
+  // moment one accepts — otherwise the original 'incoming' push keeps the native
+  // call screen ringing / re-prompting "Accept?" even after they're in the
+  // session (the duplicate-accept-notification bug).
+  pushCallCancel(astrologerUserId, sessionId);
 
   const isMedia = session.type === 'call' || session.type === 'video';
   const tokenUser = isMedia ? await agoraService.tokenForParticipant(session, session.user) : undefined;

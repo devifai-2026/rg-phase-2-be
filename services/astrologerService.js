@@ -561,6 +561,14 @@ async function setOnline(userId, online) {
   const profile = await AstrologerProfile.findOne({ user: userId });
   if (!profile) throw new AppError('Astrologer profile not found', 404);
   if (profile.applicationStatus !== 'active') throw new AppError('Profile not yet activated', 403);
+  // Block going offline mid-consultation — the seeker is connected and being
+  // billed; the astrologer must end the session first. (Going online is always
+  // allowed.)
+  if (!online) {
+    const Session = require('../models/Session');
+    const inSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
+    if (inSession) throw new AppError('You are in a consultation. End it before going offline.', 409);
+  }
   // Going online: the authenticated app making THIS call is itself a live client,
   // so assert connected:true rather than racing a Presence-store lookup (debug
   // sockets reconnect constantly; a momentary socketCount=0 must not flip them

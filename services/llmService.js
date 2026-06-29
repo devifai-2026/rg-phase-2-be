@@ -188,13 +188,45 @@ function parseJSON(raw) {
   try { return JSON.parse(trimmed); } catch (_) { /* fall through */ }
   const fenced = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
   try { return JSON.parse(fenced); } catch (_) { /* fall through */ }
-  // Last resort: grab the outermost {...} or [...] block.
+  // Grab the outermost {...} or [...] block.
   const start = trimmed.search(/[[{]/);
   const end = Math.max(trimmed.lastIndexOf('}'), trimmed.lastIndexOf(']'));
   if (start !== -1 && end > start) {
     try { return JSON.parse(trimmed.slice(start, end + 1)); } catch (_) { /* fall through */ }
   }
+  // Last resort: REPAIR a truncated object (model hit the token cap mid-JSON) by
+  // closing any unterminated string and balancing open braces/brackets. Better a
+  // partial-but-valid recap than dropping to the empty mock.
+  if (start !== -1) {
+    const repaired = repairTruncatedJson(trimmed.slice(start));
+    if (repaired) { try { return JSON.parse(repaired); } catch (_) { /* give up */ } }
+  }
   throw new Error('llmService: could not parse JSON from model output');
+}
+
+/** Best-effort repair of JSON cut off mid-output: drop a dangling trailing comma,
+ *  close an open string, then append the missing closing ] / } in stack order. */
+function repairTruncatedJson(s) {
+  const stack = [];
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  let out = s;
+  if (inStr) out += '"'; // close an unterminated string
+  out = out.replace(/,\s*$/, ''); // drop a trailing comma before the close
+  for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === '{' ? '}' : ']';
+  return stack.length || inStr ? out : null;
 }
 
 /**
