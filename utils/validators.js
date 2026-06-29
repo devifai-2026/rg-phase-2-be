@@ -1,6 +1,19 @@
 const Joi = require('joi');
 
-const phone = Joi.string().pattern(/^\d{10}$/).message('phone must be 10 digits');
+// Accept a phone with OR without the country code / formatting and normalize to
+// the canonical 10 digits. The astrologer app sends 91-prefixed numbers (e.g.
+// 917872358979) which the strict /^\d{10}$/ rule used to reject with "phone must
+// be 10 digits" → the app showed "OTP didn't send". We strip non-digits, drop a
+// leading 91 (12-digit) or 0 (11-digit), and require exactly 10 digits left.
+const phone = Joi.string()
+  .custom((value, helpers) => {
+    let d = String(value).replace(/\D/g, ''); // drop +, spaces, dashes
+    if (d.length === 12 && d.startsWith('91')) d = d.slice(2); // 91XXXXXXXXXX
+    else if (d.length === 11 && d.startsWith('0')) d = d.slice(1); // 0XXXXXXXXXX
+    if (!/^\d{10}$/.test(d)) return helpers.error('any.invalid');
+    return d; // normalized 10-digit value flows downstream (validate convert:true)
+  })
+  .message('phone must be 10 digits');
 const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).message('invalid id');
 
 module.exports = {
