@@ -1,0 +1,64 @@
+{
+  "name": "rudraganga-backend",
+  "version": "1.0.0",
+  "description": "RudraGanga — Astrology & Wellness Platform — Node.js/Express/MongoDB backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development nodemon server.js",
+    "prod": "NODE_ENV=production node server.js",
+    "seed": "node scripts/seed.js",
+    "seed:api": "node scripts/apiSeed.js",
+    "openapi": "node scripts/genOpenApi.js && node scripts/exportOpenApi.js",
+    "test": "jest --forceExit --detectOpenHandles"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "astrology",
+    "wellness",
+    "express",
+    "mongodb",
+    "socket.io"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-analytics/data": "^6.1.0",
+    "@google-cloud/bigquery": "^7.9.4",
+    "@google-cloud/pubsub": "^4.11.0",
+    "@google-cloud/storage": "^7.21.0",
+    "@google-cloud/translate": "^9.4.2",
+    "@google/genai": "^2.10.0",
+    "agora-token": "^2.0.5",
+    "axios": "^1.7.9",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^13.0.2",
+    "helmet": "^8.0.0",
+    "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "openai": "^4.77.0",
+    "pdfkit": "^0.19.1",
+    "socket.io": "^4.8.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "optionalDependencies": {
+    "@socket.io/mongo-adapter": "^0.3.2",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "redis": "^4.7.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.9",
+    "supertest": "^7.0.0"
+  }
+}

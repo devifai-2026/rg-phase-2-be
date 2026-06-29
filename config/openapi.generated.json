@@ -1,0 +1,6578 @@
+{
+  "paths": {
+    "/api/auth/request-otp": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/request-otp",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/verify-otp",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/refresh",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/logout",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "GET /auth/me",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "PUT /auth/me",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "birthDetails": {
+                    "type": "object",
+                    "properties": {
+                      "dob": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time": {
+                        "type": "string"
+                      },
+                      "place": {
+                        "type": "string"
+                      },
+                      "lat": {
+                        "type": "integer"
+                      },
+                      "lng": {
+                        "type": "integer"
+                      },
+                      "tz": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/fcm-token": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/fcm-token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "ios",
+                      "android",
+                      "web"
+                    ]
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "DELETE /auth/fcm-token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "ios",
+                      "android",
+                      "web"
+                    ]
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallet/balance": {
+      "get": {
+        "tags": [
+          "wallet"
+        ],
+        "summary": "GET /wallet/balance",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/wallet/transactions": {
+      "get": {
+        "tags": [
+          "wallet"
+        ],
+        "summary": "GET /wallet/transactions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/wallet/recharge-templates": {
+      "get": {
+        "tags": [
+          "wallet"
+        ],
+        "summary": "GET /wallet/recharge-templates",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/wallet/recharge/initiate": {
+      "post": {
+        "tags": [
+          "wallet"
+        ],
+        "summary": "POST /wallet/recharge/initiate",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amountRupees": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "amountRupees"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/payu/callback": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "POST /payments/payu/callback",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "GET /payments/payu/callback",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/sessions/start": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /sessions/start",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Phone not verified"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Requires a verified phone.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "astrologerId": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "call",
+                      "chat",
+                      "video"
+                    ]
+                  }
+                },
+                "required": [
+                  "astrologerId",
+                  "type"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{sessionId}/accept": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /sessions/:sessionId/accept",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/reject": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /sessions/:sessionId/reject",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/end": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /sessions/:sessionId/end",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/token": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /sessions/:sessionId/token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/messages": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /sessions/:sessionId/messages",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/review": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /sessions/:sessionId/review",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rating": {
+                    "type": "integer"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rating"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{sessionId}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /sessions/:sessionId",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/sessions/": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /sessions/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/astrologers/apply": {
+      "post": {
+        "tags": [
+          "astrologers"
+        ],
+        "summary": "POST /astrologers/apply",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "expertise": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "experienceYears": {
+                    "type": "integer"
+                  },
+                  "note": {
+                    "type": "string"
+                  },
+                  "anonId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "phone"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/astrologers/": {
+      "get": {
+        "tags": [
+          "astrologers"
+        ],
+        "summary": "GET /astrologers/",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/astrologers/{id}": {
+      "get": {
+        "tags": [
+          "astrologers"
+        ],
+        "summary": "GET /astrologers/:id",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/astrologers/{id}/reviews": {
+      "get": {
+        "tags": [
+          "astrologers"
+        ],
+        "summary": "GET /astrologers/:id/reviews",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/astrologers/me/profile": {
+      "get": {
+        "tags": [
+          "astrologers"
+        ],
+        "summary": "GET /astrologers/me/profile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/astrologers/me/online": {
+      "post": {
+        "tags": [
+          "astrologers"
+        ],
+        "summary": "POST /astrologers/me/online",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "online": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "online"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/withdrawals/": {
+      "post": {
+        "tags": [
+          "withdrawals"
+        ],
+        "summary": "POST /withdrawals/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amountRupees": {
+                    "type": "integer"
+                  },
+                  "bankAccountDetails": {
+                    "type": "object",
+                    "properties": {
+                      "accountNumber": {
+                        "type": "string"
+                      },
+                      "ifsc": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "upi": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "amountRupees",
+                  "bankAccountDetails"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "withdrawals"
+        ],
+        "summary": "GET /withdrawals/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/categories/": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "GET /categories/",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "POST /categories/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories/{id}": {
+      "put": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "PUT /categories/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "DELETE /categories/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/products/": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "GET /products/",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "summary": "POST /products/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "priceRupees": {
+                    "type": "integer"
+                  },
+                  "mrpRupees": {
+                    "type": "integer"
+                  },
+                  "stock": {
+                    "type": "integer"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "priceRupees"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products/{id}": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "summary": "GET /products/:id",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "products"
+        ],
+        "summary": "PUT /products/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "products"
+        ],
+        "summary": "DELETE /products/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/products/{id}/reviews": {
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "summary": "POST /products/:id/reviews",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rating": {
+                    "type": "integer"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rating"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "POST /orders/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Phone not verified"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Requires a verified phone.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "productId": {
+                          "type": "string"
+                        },
+                        "qty": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "addressId": {
+                    "type": "string"
+                  },
+                  "address": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "phone": {
+                        "type": "string"
+                      },
+                      "line1": {
+                        "type": "string"
+                      },
+                      "line2": {
+                        "type": "string"
+                      },
+                      "city": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      },
+                      "pincode": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "items"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "GET /orders/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}": {
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "GET /orders/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/gifts/": {
+      "get": {
+        "tags": [
+          "gifts"
+        ],
+        "summary": "GET /gifts/",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/gifts/send": {
+      "post": {
+        "tags": [
+          "gifts"
+        ],
+        "summary": "POST /gifts/send",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Phone not verified"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Requires a verified phone.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "giftId": {
+                    "type": "string"
+                  },
+                  "receiverId": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "giftId",
+                  "receiverId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/matrimony/search": {
+      "get": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "GET /matrimony/search",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/matrimony/match": {
+      "post": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "POST /matrimony/match",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "profile1": {
+                    "type": "string"
+                  },
+                  "profile2": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "profile1",
+                  "profile2"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/matrimony/profiles": {
+      "post": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "POST /matrimony/profiles",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "male",
+                      "female",
+                      "other"
+                    ]
+                  },
+                  "dob": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "birthTime": {
+                    "type": "string"
+                  },
+                  "birthPlace": {
+                    "type": "object",
+                    "properties": {
+                      "place": {
+                        "type": "string"
+                      },
+                      "lat": {
+                        "type": "integer"
+                      },
+                      "lng": {
+                        "type": "integer"
+                      },
+                      "tz": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "maritalStatus": {
+                    "type": "string",
+                    "enum": [
+                      "never_married",
+                      "divorced",
+                      "widowed"
+                    ]
+                  },
+                  "religion": {
+                    "type": "string"
+                  },
+                  "caste": {
+                    "type": "string"
+                  },
+                  "familyDetails": {
+                    "type": "string"
+                  },
+                  "partnerExpectations": {
+                    "type": "string"
+                  },
+                  "photos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "gender",
+                  "dob"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "GET /matrimony/profiles",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/matrimony/profiles/{id}": {
+      "get": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "GET /matrimony/profiles/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "PUT /matrimony/profiles/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "matrimony"
+        ],
+        "summary": "DELETE /matrimony/profiles/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/poojas/bookings": {
+      "post": {
+        "tags": [
+          "poojas"
+        ],
+        "summary": "POST /poojas/bookings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Phone not verified"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Requires a verified phone.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "astrologerId": {
+                    "type": "string"
+                  },
+                  "poojaType": {
+                    "type": "string"
+                  },
+                  "preferredDate": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "priceRupees": {
+                    "type": "integer"
+                  },
+                  "specialInstructions": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "poojaType",
+                  "priceRupees"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "poojas"
+        ],
+        "summary": "GET /poojas/bookings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/poojas/bookings/{id}": {
+      "get": {
+        "tags": [
+          "poojas"
+        ],
+        "summary": "GET /poojas/bookings/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/poojas/bookings/{id}/status": {
+      "patch": {
+        "tags": [
+          "poojas"
+        ],
+        "summary": "PATCH /poojas/bookings/:id/status",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/ai/chat": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "POST /ai/chat",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/conversations": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "GET /ai/conversations",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/ai/conversations/{id}": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "GET /ai/conversations/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/ai/chart": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "POST /ai/chart",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/ai/kundli": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "POST /ai/kundli",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/ai/lal-kitab": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "POST /ai/lal-kitab",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/notifications/": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "GET /notifications/",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/notifications/read-all": {
+      "patch": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "PATCH /notifications/read-all",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "PATCH /notifications/:id/read",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/users/avatar": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/avatar",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/users/upload": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/upload",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/users/addresses": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /users/addresses",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "POST /users/addresses",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "enum": [
+                      "home",
+                      "work",
+                      "other"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "line1": {
+                    "type": "string"
+                  },
+                  "line2": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "pincode": {
+                    "type": "string"
+                  },
+                  "isDefault": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "line1",
+                  "city",
+                  "state",
+                  "pincode"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/addresses/{addressId}": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "PUT /users/addresses/:addressId",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "addressId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "enum": [
+                      "home",
+                      "work",
+                      "other"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "line1": {
+                    "type": "string"
+                  },
+                  "line2": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "pincode": {
+                    "type": "string"
+                  },
+                  "isDefault": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "line1",
+                  "city",
+                  "state",
+                  "pincode"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "DELETE /users/addresses/:addressId",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "addressId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/users/addresses/{addressId}/default": {
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "summary": "PATCH /users/addresses/:addressId/default",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "addressId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/reviews/platform": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "GET /reviews/platform",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "POST /reviews/platform",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rating": {
+                    "type": "integer"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rating"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/support/tickets": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "POST /support/tickets",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "payment",
+                      "call",
+                      "account",
+                      "kyc",
+                      "payout",
+                      "technical",
+                      "other"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "subject",
+                  "description"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "support"
+        ],
+        "summary": "GET /support/tickets",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/support/tickets/{id}": {
+      "get": {
+        "tags": [
+          "support"
+        ],
+        "summary": "GET /support/tickets/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/support/tickets/{id}/reply": {
+      "post": {
+        "tags": [
+          "support"
+        ],
+        "summary": "POST /support/tickets/:id/reply",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/content/": {
+      "get": {
+        "tags": [
+          "content"
+        ],
+        "summary": "GET /content/",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/content/{key}": {
+      "get": {
+        "tags": [
+          "content"
+        ],
+        "summary": "GET /content/:key",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/offers/coupons/validate": {
+      "post": {
+        "tags": [
+          "offers"
+        ],
+        "summary": "POST /offers/coupons/validate",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/offers/products/{productId}/bundles": {
+      "get": {
+        "tags": [
+          "offers"
+        ],
+        "summary": "GET /offers/products/:productId/bundles",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/enquiries/": {
+      "post": {
+        "tags": [
+          "enquiries"
+        ],
+        "summary": "POST /enquiries/",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "anonId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/track/click": {
+      "post": {
+        "tags": [
+          "track"
+        ],
+        "summary": "POST /track/click",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/track/visit": {
+      "post": {
+        "tags": [
+          "track"
+        ],
+        "summary": "POST /track/visit",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/track/duration": {
+      "post": {
+        "tags": [
+          "track"
+        ],
+        "summary": "POST /track/duration",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/track/signup-event": {
+      "post": {
+        "tags": [
+          "track"
+        ],
+        "summary": "POST /track/signup-event",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/admin/dashboard": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/dashboard",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/low-stock": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/low-stock",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/leaderboard": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/leaderboard",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/astrologers": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/astrologers",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/astrologers",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "avatar": {
+                    "type": "string"
+                  },
+                  "bio": {
+                    "type": "string"
+                  },
+                  "expertise": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "experienceYears": {
+                    "type": "integer"
+                  },
+                  "applicationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "applied",
+                      "contacted",
+                      "details_filled",
+                      "active",
+                      "rejected",
+                      "suspended"
+                    ]
+                  },
+                  "kycStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "isFeatured": {
+                    "type": "boolean"
+                  },
+                  "acceptsFreeChat": {
+                    "type": "boolean"
+                  },
+                  "adminNote": {
+                    "type": "string"
+                  },
+                  "rates": {
+                    "type": "object",
+                    "properties": {
+                      "call": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "rateRupeesPerMin": {
+                            "type": "integer"
+                          },
+                          "adminCutRupeesPerMin": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "chat": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "rateRupeesPerMin": {
+                            "type": "integer"
+                          },
+                          "adminCutRupeesPerMin": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "video": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "rateRupeesPerMin": {
+                            "type": "integer"
+                          },
+                          "adminCutRupeesPerMin": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "payoutDetails": {
+                    "type": "object",
+                    "properties": {
+                      "upi": {
+                        "type": "string"
+                      },
+                      "accountNumber": {
+                        "type": "string"
+                      },
+                      "ifsc": {
+                        "type": "string"
+                      },
+                      "beneficiaryName": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "kyc": {
+                    "type": "object",
+                    "properties": {
+                      "aadhaarNumber": {
+                        "type": "string"
+                      },
+                      "panNumber": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "kycDocuments": {
+                    "type": "object",
+                    "properties": {
+                      "aadhaar": {
+                        "type": "string"
+                      },
+                      "pan": {
+                        "type": "string"
+                      },
+                      "bankPassbook": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "location": {
+                    "type": "object",
+                    "properties": {
+                      "address": {
+                        "type": "string"
+                      },
+                      "city": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      },
+                      "pincode": {
+                        "type": "string"
+                      },
+                      "lat": {
+                        "type": "integer"
+                      },
+                      "lng": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/astrologers/{id}/full": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/astrologers/:id/full",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/astrologers/{id}/call-logs": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/astrologers/:id/call-logs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/astrologers/{id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/astrologers/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/astrologers/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "avatar": {
+                    "type": "string"
+                  },
+                  "bio": {
+                    "type": "string"
+                  },
+                  "expertise": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "experienceYears": {
+                    "type": "integer"
+                  },
+                  "applicationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "applied",
+                      "contacted",
+                      "details_filled",
+                      "active",
+                      "rejected",
+                      "suspended"
+                    ]
+                  },
+                  "kycStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "isFeatured": {
+                    "type": "boolean"
+                  },
+                  "acceptsFreeChat": {
+                    "type": "boolean"
+                  },
+                  "adminNote": {
+                    "type": "string"
+                  },
+                  "rates": {
+                    "type": "object",
+                    "properties": {
+                      "call": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "rateRupeesPerMin": {
+                            "type": "integer"
+                          },
+                          "adminCutRupeesPerMin": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "chat": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "rateRupeesPerMin": {
+                            "type": "integer"
+                          },
+                          "adminCutRupeesPerMin": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "video": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "rateRupeesPerMin": {
+                            "type": "integer"
+                          },
+                          "adminCutRupeesPerMin": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "payoutDetails": {
+                    "type": "object",
+                    "properties": {
+                      "upi": {
+                        "type": "string"
+                      },
+                      "accountNumber": {
+                        "type": "string"
+                      },
+                      "ifsc": {
+                        "type": "string"
+                      },
+                      "beneficiaryName": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "kyc": {
+                    "type": "object",
+                    "properties": {
+                      "aadhaarNumber": {
+                        "type": "string"
+                      },
+                      "panNumber": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "kycDocuments": {
+                    "type": "object",
+                    "properties": {
+                      "aadhaar": {
+                        "type": "string"
+                      },
+                      "pan": {
+                        "type": "string"
+                      },
+                      "bankPassbook": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "location": {
+                    "type": "object",
+                    "properties": {
+                      "address": {
+                        "type": "string"
+                      },
+                      "city": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      },
+                      "pincode": {
+                        "type": "string"
+                      },
+                      "lat": {
+                        "type": "integer"
+                      },
+                      "lng": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/astrologers/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/astrologers/{id}/reviews": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/astrologers/:id/reviews",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rating": {
+                    "type": "integer"
+                  },
+                  "comment": {
+                    "type": "string"
+                  },
+                  "authorName": {
+                    "type": "string"
+                  },
+                  "serviceType": {
+                    "type": "string",
+                    "enum": [
+                      "call",
+                      "chat",
+                      "video"
+                    ]
+                  }
+                },
+                "required": [
+                  "rating"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/reviews/{reviewId}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/reviews/:reviewId",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/transactions": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/transactions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/transactions/summary": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/transactions/summary",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/users",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/users",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phone",
+                  "code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/request-otp": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/users/request-otp",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "phone"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/recharge": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/users/recharge",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "amountRupees": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "userId",
+                  "amountRupees"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/users/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/users/{id}/block": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/users/:id/block",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/categories": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/categories",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/categories/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/categories/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/categories/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/products": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/products",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "priceRupees": {
+                    "type": "integer"
+                  },
+                  "mrpRupees": {
+                    "type": "integer"
+                  },
+                  "stock": {
+                    "type": "integer"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "priceRupees"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/products/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/products/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/products/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/orders": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/orders",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/orders/{id}/status": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/orders/:id/status",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "confirmed",
+                      "packed",
+                      "shipped",
+                      "out_for_delivery",
+                      "delivered",
+                      "cancelled",
+                      "refunded"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/orders/{id}/invoice": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/orders/:id/invoice",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/recharge-templates": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/recharge-templates",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/recharge-templates",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer"
+                  },
+                  "tokens": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "badge": {
+                    "type": "string"
+                  },
+                  "benefits": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "sortOrder": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "tokens"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/recharge-templates/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/recharge-templates/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer"
+                  },
+                  "tokens": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "badge": {
+                    "type": "string"
+                  },
+                  "benefits": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "sortOrder": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "tokens"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/recharge-templates/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/pooja-types": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/pooja-types",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/pooja-types",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/pooja-types/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/pooja-types/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/pooja-types/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/pooja-bookings": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/pooja-bookings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/pooja-bookings/{id}": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/pooja-bookings/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/ai-personas": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/ai-personas",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/ai-personas",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/ai-personas/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/ai-personas/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/ai-personas/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/coupons": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/coupons",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/coupons",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/coupons/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/coupons/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/coupons/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/bundles": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/bundles",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/bundles",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/bundles/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/bundles/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/bundles/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/monitor/chats": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/monitor/chats",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/monitor/calls": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/monitor/calls",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/monitor/call-logs": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/monitor/call-logs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/monitor/sessions/{sessionId}/messages": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/monitor/sessions/:sessionId/messages",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/withdrawals": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/withdrawals",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/withdrawals/{id}/approve": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/withdrawals/:id/approve",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/withdrawals/{id}/reject": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/withdrawals/:id/reject",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/escalations": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/escalations",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/escalations/{id}/resolve": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/escalations/:id/resolve",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/support/tickets": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/support/tickets",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/support/tickets/{id}/reply": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/support/tickets/:id/reply",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/support/tickets/{id}/status": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/support/tickets/:id/status",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "in_progress",
+                      "resolved",
+                      "closed"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/gifts": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/gifts",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "tokenCost": {
+                    "type": "integer"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "tokenCost"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/gifts/{id}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/gifts/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/gifts/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/content": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/content",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/content/{key}": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/content/:key",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "isPublished": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/enquiries": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/enquiries",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/enquiries/{id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/enquiries/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PATCH /admin/enquiries/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "new",
+                      "in_progress",
+                      "resolved",
+                      "spam"
+                    ]
+                  },
+                  "adminNote": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/settings": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/settings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "PUT /admin/settings",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/admin/admins": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/admins",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "POST /admin/admins",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "super_admin"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "phone",
+                  "role"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/admins/{id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "DELETE /admin/admins/:id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/audit-logs": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "GET /admin/audit-logs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: adminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: adminOnly."
+      }
+    },
+    "/api/superadmin/heatmap": {
+      "get": {
+        "tags": [
+          "superadmin"
+        ],
+        "summary": "GET /superadmin/heatmap",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: superAdminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: superAdminOnly."
+      }
+    },
+    "/api/superadmin/funnel": {
+      "get": {
+        "tags": [
+          "superadmin"
+        ],
+        "summary": "GET /superadmin/funnel",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: superAdminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: superAdminOnly."
+      }
+    },
+    "/api/superadmin/signup-funnel": {
+      "get": {
+        "tags": [
+          "superadmin"
+        ],
+        "summary": "GET /superadmin/signup-funnel",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: superAdminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: superAdminOnly."
+      }
+    },
+    "/api/superadmin/visitor/{anonId}": {
+      "get": {
+        "tags": [
+          "superadmin"
+        ],
+        "summary": "GET /superadmin/visitor/:anonId",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success ({ success: true, data })"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Requires role: superAdminOnly"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        },
+        "description": "Role: superAdminOnly.",
+        "parameters": [
+          {
+            "name": "anonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

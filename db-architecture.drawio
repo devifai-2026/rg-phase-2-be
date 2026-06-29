@@ -1,0 +1,182 @@
+<mxfile host="app.diagrams.net" agent="ClaudeCode" version="24.7.0" type="device">
+  <diagram id="astro-db" name="DB Architecture">
+    <mxGraphModel dx="2400" dy="1600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- TITLE -->
+        <mxCell id="title" value="Super Astrology &amp; Wellness Platform — Database Architecture (Mongoose ODM)" style="text;html=1;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;fontColor=#1A1A1A;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="Lines = Mongoose populate refs   |   diamond+line = 1 : many   |   hollow diamond = 1 : 1   |   dashed = soft / denormalized link" style="text;html=1;fontSize=13;fontStyle=2;align=center;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="58" width="1300" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- DOMAIN: AUTH / IDENTITY -->
+        <mxCell id="grpAuth" value="AUTH / IDENTITY" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=1;fontSize=14;verticalAlign=top;fontColor=#0D47A1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="560" height="540" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tUser" value="User&#10;_id : ObjectId (PK)&#10;phone : String (unique)&#10;role : user | astrologer | admin&#10;name, email (sparse)&#10;birthDetails {dob,time,place,lat,lng}&#10;isPhoneVerified, isBlocked : Bool&#10;fcmTokens [{token,platform}]&#10;astrologerProfile : ref AstrologerProfile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1565C0;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="170" width="250" height="210" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tOtp" value="OtpRequest&#10;phone, codeHash (select:false)&#10;expiresAt (TTL), attempts&#10;consumed, sendCount&#10;partial-unique {phone, consumed:false}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1565C0;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="380" y="170" width="220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tRefresh" value="RefreshToken&#10;user : ref User&#10;tokenHash (sha256, unique)&#10;expiresAt (TTL), revokedAt&#10;replacedBy (rotation chain)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1565C0;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="380" y="300" width="220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tAstro" value="AstrologerProfile&#10;user : ref User (unique)&#10;expertise[], languages[]&#10;pricePerMinute (paise)&#10;online, currentCallStatus&#10;rating, totalCallMinutes&#10;totalEarnings (paise)&#10;kycStatus, kycDocuments&#10;payoutDetails {upi,acct,ifsc}&#10;reviews [{user,rating,comment}]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1565C0;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="430" width="250" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- DOMAIN: WALLET / PAYMENTS / PAYOUTS -->
+        <mxCell id="grpWallet" value="WALLET / PAYMENTS / PAYOUTS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=14;verticalAlign=top;fontColor=#1B5E20;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="680" y="120" width="560" height="540" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tWallet" value="Wallet&#10;user : ref User (unique)&#10;balance (paise, min:0)&#10;lockedBalance (paise, min:0)&#10;currency&#10;virtual: available = balance - locked" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="710" y="170" width="250" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tTxn" value="Transaction (append-only ledger)&#10;user : ref User&#10;type : credit | debit&#10;source : recharge|call|gift|product|&#10;        withdrawal|refund|bonus&#10;amount (paise, min:1)&#10;status : pending|completed|failed|reversed&#10;refId (UNIQUE = idempotency key)&#10;balanceAfter, meta&#10;relatedSession : ref CallSession" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="170" width="220" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tWithdraw" value="WithdrawalRequest&#10;astrologer : ref User&#10;amount (paise)&#10;bankAccountDetails {acctNo,ifsc,name}&#10;status : pending|processing|paid|failed&#10;adminNote, processedAt, payoutRef" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="710" y="330" width="250" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tAdmin" value="AdminSettings (singleton)&#10;withdrawalThreshold (50000 = Rs.500)&#10;platformFeePercentage&#10;astrologerShare&#10;giftTokenToPaise, signupBonus&#10;callMaxMinutes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E7D32;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="490" width="250" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- DOMAIN: CALLS / REALTIME / CHAT -->
+        <mxCell id="grpCall" value="CALLS / REALTIME / CHAT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=1;fontSize=14;verticalAlign=top;fontColor=#BF360C;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="60" y="700" width="1180" height="320" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tCall" value="CallSession&#10;sessionId : String (unique = Agora channel)&#10;caller : ref User&#10;receiver : ref User (astrologer)&#10;type : audio | video&#10;status : initiated|ringing|ongoing|&#10;         completed|missed|rejected|failed&#10;startTime, endTime, durationSec&#10;pricePerMinute (snapshot), cost, lockedAmount&#10;lastBilledMinute, endReason&#10;agora {callerUid,receiverUid}&#10;recording {resourceId,sid}, recordingUrl" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="750" width="290" height="230" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tChat" value="ChatMessage&#10;sessionId : String (index)&#10;sender : ref User&#10;receiver : ref User&#10;message (max 5000), mediaUrl, mediaType&#10;status : sent|delivered|read&#10;timestamp&#10;idx {sessionId, timestamp}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="430" y="750" width="250" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tWaitlist" value="CallWaitlist&#10;astrologer : ref User&#10;user : ref User&#10;position, joinedAt, notifiedAt&#10;status : waiting|notified|&#10;         expired|converted&#10;idx {astrologer,status,joinedAt}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="730" y="750" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tPresence" value="Presence (Redis-free fallback)&#10;userId : unique&#10;instanceId, socketCount&#10;role, lastSeen (TTL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E65100;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="750" width="210" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- DOMAIN: COMMERCE -->
+        <mxCell id="grpCommerce" value="COMMERCE — STORE / GIFTS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=1;fontSize=14;verticalAlign=top;fontColor=#4A148C;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="120" width="540" height="560" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tCategory" value="Category&#10;name (unique), slug&#10;image, isActive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="170" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tProduct" value="Product&#10;name, category : ref Category&#10;categoryName (denormalized)&#10;images[], description&#10;price (paise), stock&#10;rating (avg)&#10;reviews [{user,rating,comment}]&#10;isActive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="290" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tOrder" value="Order&#10;user : ref User&#10;items [{product : ref Product, qty,&#10;        priceSnapshot, nameSnapshot}]&#10;address {name,phone,line1,city,pincode}&#10;total (paise)&#10;status : created|paid|processing|&#10;         shipped|delivered|cancelled|refunded&#10;paymentId (PayU txnid)&#10;paymentStatus : pending|paid|failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="170" width="220" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tGift" value="Gift&#10;name, image&#10;tokenCost (int)&#10;isActive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="490" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tGiftTxn" value="GiftTransaction&#10;sender : ref User&#10;receiver : ref User&#10;gift : ref Gift&#10;tokensSpent&#10;relatedSession : ref CallSession&#10;timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6A1B9A;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="420" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- DOMAIN: ASTROLOGY / AI / MATRIMONY / POOJA -->
+        <mxCell id="grpAstro" value="ASTROLOGY — VEDIC / AI / MATRIMONY / POOJA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00838F;fontStyle=1;fontSize=14;verticalAlign=top;fontColor=#006064;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="700" width="1040" height="560" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tMatri" value="MatrimonyProfile&#10;user : ref User&#10;gender, dob, birthTime&#10;birthPlace {place,lat,lng,tz}&#10;maritalStatus, familyDetails&#10;partnerExpectations&#10;photos[], isActive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="750" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tKundli" value="KundliMatch&#10;profile1 : ref MatrimonyProfile&#10;profile2 : ref MatrimonyProfile&#10;compatibilityScore&#10;ashtakootDetails (8 kootas / 36)&#10;status : pending|computed|failed&#10;computedAt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1630" y="750" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tPooja" value="PoojaBooking&#10;user : ref User&#10;astrologer : ref User&#10;poojaType, preferredDate&#10;status : requested|confirmed|&#10;         completed|cancelled&#10;price (paise)&#10;paymentId, paymentStatus&#10;specialInstructions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1930" y="750" width="240" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tAiConv" value="AiConversation&#10;user : ref User&#10;title, lastMessageAt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="960" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tAiMsg" value="AiMessage&#10;conversation : ref AiConversation&#10;role : system|user|assistant&#10;content, tokens" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1630" y="960" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tAstroCache" value="AstroCache (VedicAstroAPI cache)&#10;cacheKey : sha256(endpoint+birth) UNIQUE&#10;endpoint, payload&#10;fetchedAt, expiresAt (TTL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#00838F;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1930" y="960" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- DOMAIN: INFRA -->
+        <mxCell id="grpInfra" value="INFRA — JOBS / NOTIFICATIONS / AUDIT (cross-cutting, soft refs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#455A64;fontStyle=1;fontSize=14;verticalAlign=top;fontColor=#263238;arcSize=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1080" width="1180" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tJob" value="Job (Mongo-backed queue)&#10;type : bill_tick|payu_payout|fcm_send|&#10;       agora_recording_stop|sweepers&#10;payload, status, attempts, maxAttempts&#10;nextRunAt, lockedAt, lockedBy&#10;dedupeKey (unique sparse), lastError&#10;idx {status, nextRunAt}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#455A64;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1120" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tNotif" value="Notification&#10;user : ref User&#10;type : missed_call|astrologer_available|&#10;       order_status|withdrawal_status|&#10;       pooja_status|gift_received|system&#10;title, body, data, isRead, createdAt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#455A64;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="1120" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tApiLog" value="ApiLog (audit)&#10;method, path, user : ref User&#10;status, ms, ip, requestId&#10;createdAt (TTL optional)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#455A64;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="750" y="1120" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- RELATIONSHIPS -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=diamondThin;endFill=0;startArrow=none;strokeColor=#1565C0;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.25;entryY=0;" edge="1" parent="1" source="tUser" target="tAstro"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=open;dashed=1;strokeColor=#1565C0;strokeWidth=1;exitX=1;exitY=0.1;entryX=0;entryY=0.5;" edge="1" parent="1" source="tUser" target="tOtp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#1565C0;strokeWidth=2;exitX=1;exitY=0.7;entryX=0;entryY=0.5;" edge="1" parent="1" source="tUser" target="tRefresh"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=diamondThin;endFill=0;strokeColor=#2E7D32;strokeWidth=2;exitX=1;exitY=0.3;entryX=0;entryY=0.4;" edge="1" parent="1" source="tUser" target="tWallet"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#2E7D32;strokeWidth=2;exitX=1;exitY=0.2;entryX=0;entryY=0.2;" edge="1" parent="1" source="tUser" target="tTxn"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#2E7D32;strokeWidth=1;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.7;" edge="1" parent="1" source="tWallet" target="tTxn"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#2E7D32;strokeWidth=2;exitX=1;exitY=0.6;entryX=0;entryY=0.5;" edge="1" parent="1" source="tAstro" target="tWithdraw"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#E65100;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tUser" target="tCall"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#E65100;strokeWidth=2;exitX=1;exitY=0.4;entryX=0;entryY=0.4;" edge="1" parent="1" source="tCall" target="tChat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=open;dashed=1;strokeColor=#E65100;strokeWidth=1;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" edge="1" parent="1" source="tTxn" target="tCall"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#E65100;strokeWidth=2;exitX=1;exitY=0.85;entryX=0;entryY=0.3;" edge="1" parent="1" source="tAstro" target="tWaitlist"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#6A1B9A;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tCategory" target="tProduct"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#6A1B9A;strokeWidth=2;exitX=1;exitY=0.05;entryX=0;entryY=0.2;" edge="1" parent="1" source="tUser" target="tOrder"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=open;dashed=1;strokeColor=#6A1B9A;strokeWidth=1;exitX=1;exitY=0.3;entryX=0;entryY=0.6;" edge="1" parent="1" source="tProduct" target="tOrder"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#6A1B9A;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="tGift" target="tGiftTxn"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#6A1B9A;strokeWidth=1;dashed=1;exitX=1;exitY=0.4;entryX=0.5;entryY=0;" edge="1" parent="1" source="tUser" target="tGiftTxn"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=diamondThin;endFill=0;strokeColor=#00838F;strokeWidth=1;dashed=1;exitX=1;exitY=0.9;entryX=0;entryY=0.2;" edge="1" parent="1" source="tUser" target="tMatri"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#00838F;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="tMatri" target="tKundli"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#00838F;strokeWidth=1;dashed=1;exitX=1;exitY=0.95;entryX=0.5;entryY=0;" edge="1" parent="1" source="tUser" target="tPooja"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#00838F;strokeWidth=1;dashed=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="tUser" target="tAiConv"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#00838F;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="tAiConv" target="tAiMsg"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e22" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=diamondThin;startFill=1;endArrow=open;strokeColor=#455A64;strokeWidth=1;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tUser" target="tNotif"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

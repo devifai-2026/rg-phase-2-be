@@ -1,0 +1,25 @@
+# Caddy reverse proxy for the Rudraganga backend.
+# Caddy auto-provisions + renews a Let's Encrypt cert for this hostname, so you
+# get HTTPS without owning a domain. sslip.io resolves <dashed-ip>.sslip.io to
+# the literal IP (e.g. 34-123-45-67.sslip.io -> 34.123.45.67).
+#
+# Replace REPLACE_WITH_DASHED_IP below with your VM's static IP, dashes for dots.
+# Example: a VM at 34.123.45.67 becomes  34-123-45-67.sslip.io
+#
+# Socket.IO: the proxy below forwards WebSocket upgrades transparently — no
+# extra config needed in modern Caddy. The Node app listens on localhost:5000.
+
+REPLACE_WITH_DASHED_IP.sslip.io {
+	encode zstd gzip
+
+	# Forward everything (REST API, /api-docs, Socket.IO /socket.io/ upgrades,
+	# the static landing page) to the Node process on the loopback interface.
+	reverse_proxy localhost:5000
+
+	# Let Caddy obtain/renew the TLS cert automatically (default ACME flow).
+	# log to the journal so `journalctl -u caddy` shows access/cert events.
+	log {
+		output stdout
+		format console
+	}
+}

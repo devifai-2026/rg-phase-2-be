@@ -1,0 +1,55 @@
+name: Deploy to GCP VM
+
+# On push to main (after CI passes), SSH into the VM, pull the latest code,
+# install prod deps, and restart the persistent systemd service. Caddy keeps
+# serving HTTPS throughout; systemd does a graceful SIGTERM drain on restart.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   VM_HOST   -> the VM's public IP or <dashed-ip>.sslip.io
+#   VM_USER   -> SSH user (your gcloud/OS-login user)
+#   VM_SSH_KEY-> private key whose public half is authorized on the VM
+#
+# This deploys CODE only. Secrets/config live in /etc/rg-backend.env on the VM
+# (never in the repo), so they are untouched by deploys.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only deploy if CI succeeded (or when manually dispatched).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Pull + restart on VM
+        run: |
+          ssh -i ~/.ssh/id_deploy "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" bash -s <<'EOF'
+          set -euo pipefail
+          cd /opt/rg-backend
+          sudo -u rgapp git fetch origin
+          sudo -u rgapp git reset --hard origin/main
+          sudo -u rgapp npm ci --omit=dev
+          sudo systemctl restart rg-backend
+          sleep 3
+          sudo systemctl --no-pager status rg-backend | head -n 5
+          EOF
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS "https://${{ secrets.VM_HOST }}/healthz" >/dev/null; then
+              echo "healthz OK"; exit 0
+            fi
+            sleep 3
+          done
+          echo "healthz did not come up"; exit 1

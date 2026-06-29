@@ -1,0 +1,40 @@
+# systemd unit for the Rudraganga backend.
+# Runs the SAME `node server.js` as local/Cloud Run — one persistent process,
+# so Socket.IO connections, the in-process job worker, and bqService timers all
+# stay alive (the whole reason we use a VM instead of serverless).
+#
+# Install: copy to /etc/systemd/system/rg-backend.service, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now rg-backend
+#
+# Config: env vars are read from /etc/rg-backend.env (chmod 600). Keep secrets
+# there, NOT in the repo. See deploy/README-vm.md.
+
+[Unit]
+Description=Rudraganga backend (Express + Socket.IO + workers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust if you clone elsewhere.
+WorkingDirectory=/opt/rg-backend
+EnvironmentFile=/etc/rg-backend.env
+# App binds localhost:5000; Caddy terminates TLS and proxies to it.
+Environment=NODE_ENV=production
+Environment=PORT=5000
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+# server.js handles SIGTERM to drain sockets + jobs before exit.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+User=rgapp
+Group=rgapp
+# Light hardening.
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

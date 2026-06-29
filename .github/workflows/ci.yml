@@ -1,0 +1,47 @@
+name: CI
+
+# Build + test the backend on every push / PR. Keeps main green before the
+# deploy workflow ships it to the VM.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      # Tests need a Mongo to talk to; spin up an ephemeral one and point the
+      # app at it. Secrets use dummy values so config/env.js validation passes.
+      - name: Start MongoDB
+        run: |
+          docker run -d --name mongo -p 27017:27017 mongo:7
+          # wait for it to accept connections
+          for i in $(seq 1 30); do
+            if docker exec mongo mongosh --quiet --eval 'db.runCommand({ ping: 1 })' >/dev/null 2>&1; then
+              echo "mongo up"; break
+            fi
+            sleep 2
+          done
+
+      - name: Run tests
+        env:
+          NODE_ENV: test
+          MONGO_URI: mongodb://127.0.0.1:27017/rg_test
+          JWT_SECRET: ci_dummy_jwt_secret
+          OTP_DEV_CODE: "123456"
+          SOCKET_ADAPTER: memory
+        run: npm test --if-present
