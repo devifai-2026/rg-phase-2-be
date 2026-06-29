@@ -47,4 +47,37 @@ async function sendText({ to, message }) {
   return { messageId: (data.data && data.data.messageid) || '', raw: data };
 }
 
-module.exports = { sendText, normalizeNumber, isConfigured };
+async function sendTemplate({ to, templateId, variables = [], buttonVariable = [], media = '' }) {
+  if (!isConfigured()) {
+    logger.warn('[WABridge MOCK] would send WhatsApp template', { to: normalizeNumber(to), templateId, variables, buttonVariable, media });
+    return { messageId: 'mock', mock: true };
+  }
+
+  if (!templateId) {
+    throw new AppError('templateId is required', 400);
+  }
+
+  const payload = {
+    'app-key': env.waBridge.appKey,
+    'auth-key': env.waBridge.authKey,
+    destination_number: normalizeNumber(to),
+    device_id: env.waBridge.deviceId,
+    template_id: templateId,
+    variables,
+    button_variable: buttonVariable,
+    media,
+    message: '',
+  };
+
+  const { data } = await axios.post(`${env.waBridge.baseUrl}/createmessage`, payload, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 15000,
+  });
+
+  if (!data || !data.status) {
+    throw new AppError((data && data.message) || 'WABridge template send failed', 502);
+  }
+  return { messageId: (data.data && data.data.messageid) || '', raw: data };
+}
+
+module.exports = { sendText, sendTemplate, normalizeNumber, isConfigured };

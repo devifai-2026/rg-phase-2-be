@@ -42,8 +42,17 @@ async function requestOtp(phone) {
 
   if (env.isDev) {
     logger.info('[OTP DEV] code generated', { phone, code });
+  } else if (env.waBridge.otpTemplateId) {
+    await waBridge.sendTemplate({
+      to: phone,
+      templateId: env.waBridge.otpTemplateId,
+      variables: [code],
+    });
   } else {
-    await waBridge.sendText({ to: phone, message: `${code} is your Rudraganga verification code. It is valid for 10 minutes.` });
+    await waBridge.sendText({
+      to: phone,
+      message: `${code} is your Rudraganga verification code. It is valid for ${Math.ceil(env.otp.ttlSec / 60)} minutes.`,
+    });
   }
 
   return { message: 'OTP sent', expiresInSec: env.otp.ttlSec, devCode: env.isDev ? code : undefined };

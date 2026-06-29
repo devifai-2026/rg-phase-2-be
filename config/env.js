@@ -24,6 +24,7 @@ const env = {
     appKey: process.env.WABRIDGE_APP_KEY || '',
     authKey: process.env.WABRIDGE_AUTH_KEY || '',
     deviceId: process.env.WABRIDGE_DEVICE_ID || '',
+    otpTemplateId: process.env.WABRIDGE_TEMPLATE_OTP || '',
   },
 
   otp: {
