@@ -4,6 +4,7 @@ const AppError = require('../utils/AppError');
 const Banner = require('../models/Banner');
 const Video = require('../models/Video');
 const AppConfig = require('../models/AppConfig');
+const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 /**
  * App Configuration: promo banners, Home videos/lessons (YouTube), and the
@@ -166,6 +167,13 @@ exports.publicConfig = asyncHandler(async (req, res) => {
     : { enabled: false };
 
   const splash = cfg.splash ? stripEmpty(cfg.splash.toObject()) : {};
+
+  // Localize the Home rail video/lesson TITLES to the requester's language.
+  const lang = reqLang(req);
+  await Promise.all([
+    localizeEach(videos, lang, ['title']),
+    localizeEach(lessons, lang, ['title']),
+  ]);
 
   res.json({ success: true, data: { sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
 });

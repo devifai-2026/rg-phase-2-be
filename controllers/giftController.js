@@ -7,6 +7,7 @@ const notificationService = require('../services/notificationService');
 const emit = require('../websockets/emit');
 const { randomToken } = require('../utils/hash');
 const AppError = require('../utils/AppError');
+const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 exports.list = asyncHandler(async (req, res) => {
   const items = await Gift.find(req.query.all === 'true' ? {} : { isActive: true }).sort({ tokenCost: 1 });
@@ -16,6 +17,8 @@ exports.list = asyncHandler(async (req, res) => {
   const settings = await AdminSettings.get();
   const rate = settings.giftTokenRupees || 1;
   const data = items.map((g) => ({ ...g.toObject(), rupeeCost: g.tokenCost * rate }));
+  // Localize gift NAMES to the requester's language (user-visible in the sheet).
+  await localizeEach(data, reqLang(req), ['name']);
   res.json({ success: true, data });
 });
 

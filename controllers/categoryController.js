@@ -1,10 +1,13 @@
 const asyncHandler = require('../utils/asyncHandler');
 const Category = require('../models/Category');
 const AppError = require('../utils/AppError');
+const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 exports.list = asyncHandler(async (req, res) => {
   const q = req.query.all === 'true' ? {} : { isActive: true };
-  const items = await Category.find(q).sort({ name: 1 });
+  // .lean() so names can be localized in place for the requester's language.
+  const items = await Category.find(q).sort({ name: 1 }).lean();
+  await localizeEach(items, reqLang(req), ['name']);
   res.json({ success: true, data: items });
 });
 

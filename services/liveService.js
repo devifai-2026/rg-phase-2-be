@@ -383,27 +383,38 @@ async function liveDetail({ liveSessionId, astrologerUserId }) {
   };
 }
 
-/** Public list of currently-live astrologers (for the user app Live tab). */
-async function listLive() {
+/** Public list of currently-live astrologers (for the user app Live tab).
+ *  [lang] localizes the user-visible name/title/topic into the requester's
+ *  language (transliterates the astrologer name). */
+async function listLive(lang) {
   const sessions = await LiveSession.find({ status: 'live' })
     .sort({ viewerCount: -1, startedAt: -1 })
     .populate('astrologerProfile', 'displayName avatar rating expertise languages')
     .lean();
 
-  return sessions.map((s) => ({
-    id: String(s._id),
-    channelName: s.channelName,
-    title: s.title,
-    topic: s.topic,
-    viewerCount: s.viewerCount,
-    startedAt: s.startedAt,
-    astrologer: {
-      profileId: s.astrologerProfile ? String(s.astrologerProfile._id) : null,
-      name: (s.astrologerProfile && s.astrologerProfile.displayName) || 'Astrologer',
-      avatar: (s.astrologerProfile && s.astrologerProfile.avatar) || null,
-      rating: (s.astrologerProfile && s.astrologerProfile.rating) || 0,
-      expertise: (s.astrologerProfile && s.astrologerProfile.expertise) || [],
-    },
+  const translateService = require('./translateService');
+  const L = (t) => translateService.localizeText(t || '', lang);
+
+  return Promise.all(sessions.map(async (s) => {
+    const rawName = (s.astrologerProfile && s.astrologerProfile.displayName) || 'Astrologer';
+    const [name, title, topic] = lang && lang !== 'en'
+      ? await Promise.all([L(rawName), L(s.title), L(s.topic)])
+      : [rawName, s.title, s.topic];
+    return {
+      id: String(s._id),
+      channelName: s.channelName,
+      title,
+      topic,
+      viewerCount: s.viewerCount,
+      startedAt: s.startedAt,
+      astrologer: {
+        profileId: s.astrologerProfile ? String(s.astrologerProfile._id) : null,
+        name,
+        avatar: (s.astrologerProfile && s.astrologerProfile.avatar) || null,
+        rating: (s.astrologerProfile && s.astrologerProfile.rating) || 0,
+        expertise: (s.astrologerProfile && s.astrologerProfile.expertise) || [],
+      },
+    };
   }));
 }
 

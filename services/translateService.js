@@ -264,6 +264,39 @@ async function runFullTranslation({ limit = 2000 } = {}) {
     }
   } catch (_) { /* PoojaType optional */ }
 
+  // ── 4) Remaining user-visible dynamic content → cache. Generic pre-warm so the
+  //       admin "Run translation" covers EVERYTHING the user app can display in a
+  //       non-English language (matches the per-endpoint serializers). ──
+  const prewarm = async (modelName, fields, label, filter = {}) => {
+    try {
+      const Model = require(`../models/${modelName}`);
+      const rows = await Model.find(filter).select(fields.join(' ')).limit(limit).lean();
+      for (const r of rows) {
+        for (const field of fields) {
+          const src = (r[field] || '').toString().trim();
+          if (!src) continue;
+          const hash = TranslationCache.hashOf(src);
+          for (const l of targets) {
+            totalPairs += 1;
+            const hit = await TranslationCache.findOne({ hash, lang: l }).select('_id').lean();
+            if (hit) { alreadyDone += 1; continue; }
+            const out = await translate(src, l);
+            if (out && out !== src) {
+              await TranslationCache.updateOne({ hash, lang: l }, { $set: { text: out, source: src.slice(0, 2000) } }, { upsert: true });
+              bump(label, src.length);
+            } else { unchanged += 1; }
+          }
+        }
+      }
+    } catch (_) { /* model optional / absent */ }
+  };
+
+  await prewarm('PoojaCategory', ['name'], 'poojaCategory');
+  await prewarm('Category', ['name'], 'category');
+  await prewarm('Gift', ['name'], 'gift');
+  await prewarm('Video', ['title'], 'video');
+  await prewarm('Coupon', ['description'], 'coupon');
+
   logger.info('translate.runFull complete', { lines, characters, byModel, alreadyDone, unchanged, totalPairs });
   return { configured: true, lines, characters, byModel, alreadyDone, unchanged, totalPairs };
 }

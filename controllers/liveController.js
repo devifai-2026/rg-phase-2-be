@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const liveService = require('../services/liveService');
+const { reqLang } = require('../utils/i18nReq');
 
 // ── Astrologer ──
 exports.goLive = asyncHandler(async (req, res) => {
@@ -47,7 +48,7 @@ exports.detail = asyncHandler(async (req, res) => {
 
 // ── User / public ──
 exports.list = asyncHandler(async (req, res) => {
-  const data = await liveService.listLive();
+  const data = await liveService.listLive(reqLang(req));
   res.json({ success: true, data });
 });
 

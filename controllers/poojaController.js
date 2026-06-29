@@ -8,6 +8,10 @@ const notificationService = require('../services/notificationService');
 const { toRupees } = require('../utils/money');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
+const { reqLang, localizeFields, localizeEach } = require('../utils/i18nReq');
+
+// User-visible pooja fields to localize (name + description; category label too).
+const POOJA_I18N = ['name', 'description', 'category.name'];
 
 // Active poojas are those flagged active AND inside their availability window
 // (window is optional — empty from/to means always available).
@@ -26,6 +30,7 @@ function availableNowMatch() {
 /** GET /poojas/categories — active categories for the app's filter chips. */
 exports.listCategories = asyncHandler(async (req, res) => {
   const items = await PoojaCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).select('name').lean();
+  await localizeEach(items, reqLang(req), ['name']);
   res.json({ success: true, data: items });
 });
 
@@ -42,6 +47,7 @@ exports.listTypes = asyncHandler(async (req, res) => {
   // maxPersons filter: poojas that allow AT LEAST this many people.
   if (req.query.maxPersons) filter.maxPersons = { $gte: Number(req.query.maxPersons) };
   const items = await PoojaType.find(filter).populate('category', 'name').sort({ createdAt: -1 }).lean();
+  await localizeEach(items, reqLang(req), POOJA_I18N);
   res.json({ success: true, data: items });
 });
 
@@ -51,6 +57,7 @@ exports.listTypes = asyncHandler(async (req, res) => {
  */
 exports.listAll = asyncHandler(async (req, res) => {
   const items = await PoojaType.find(availableNowMatch()).populate('category', 'name').sort({ createdAt: -1 }).lean();
+  await localizeEach(items, reqLang(req), POOJA_I18N);
   res.json({ success: true, data: items });
 });
 
@@ -58,6 +65,7 @@ exports.listAll = asyncHandler(async (req, res) => {
 exports.getType = asyncHandler(async (req, res) => {
   const item = await PoojaType.findById(req.params.id).populate('category', 'name').lean();
   if (!item || !item.isActive) throw new AppError('Pooja not found', 404);
+  await localizeFields(item, reqLang(req), POOJA_I18N);
   res.json({ success: true, data: item });
 });
 

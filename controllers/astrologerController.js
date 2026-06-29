@@ -40,6 +40,12 @@ async function localizeAstrologer(a, lang) {
       // The name can also arrive via the populated user.name fallback.
       if (a.user && a.user.name) a.user.name = await localizeField(a.user.name, a.displayNameI18n, lang);
     })(),
+    // Expertise/specialty tags (e.g. "Vedic", "Tarot") shown on the card/detail.
+    (async () => {
+      if (Array.isArray(a.expertise) && a.expertise.length) {
+        a.expertise = await Promise.all(a.expertise.map((e) => translateService.localizeText(String(e), lang)));
+      }
+    })(),
   ]);
 }
 

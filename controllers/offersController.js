@@ -4,6 +4,7 @@ const Bundle = require('../models/Bundle');
 const Product = require('../models/Product');
 const offersService = require('../services/offersService');
 const AppError = require('../utils/AppError');
+const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 // ── Coupons (admin CRUD) ──
 exports.listCoupons = asyncHandler(async (req, res) => {
@@ -88,6 +89,9 @@ exports.publicCoupons = asyncHandler(async (req, res) => {
       { $or: [{ validUntil: { $exists: false } }, { validUntil: null }, { validUntil: { $gte: now } }] },
     ],
   }).sort({ createdAt: -1 }).limit(30)
-    .select('code description type value maxDiscount minOrderValue scope validUntil');
+    .select('code description type value maxDiscount minOrderValue scope validUntil')
+    .lean();
+  // Localize the user-visible coupon DESCRIPTION (not the code).
+  await localizeEach(coupons, reqLang(req), ['description']);
   res.json({ success: true, data: coupons });
 });

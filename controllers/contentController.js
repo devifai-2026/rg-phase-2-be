@@ -3,6 +3,7 @@ const SiteContent = require('../models/SiteContent');
 const Video = require('../models/Video');
 const AppConfig = require('../models/AppConfig');
 const AppError = require('../utils/AppError');
+const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 // ── Public: paginated + searchable videos/lessons for the "See all" screen ──
 // Same active/sort rules as the Home rail (GET /app-config), but paged + search.
@@ -26,6 +27,7 @@ exports.listVideosPublic = asyncHandler(async (req, res) => {
       .select('title youtubeId youtubeUrl thumbnail').lean(),
     Video.countDocuments(q),
   ]);
+  await localizeEach(items, reqLang(req), ['title']);
   res.json({ success: true, data: { items, total, page, limit } });
 });
 
