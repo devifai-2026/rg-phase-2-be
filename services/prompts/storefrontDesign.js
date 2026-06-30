@@ -130,9 +130,16 @@ function buildUserMessage({ astrologerName, bio, expertise, languages, productCo
  * BACKGROUND that matches the colour spec the text model produced. This is the
  * whole vertical storefront page background, NOT a small banner: the astrologer's
  * avatar + name + bio + rating overlay the TOP zone, and product/pooja cards are
- * laid over the LOWER zone, so the lower portion must stay calm and dark enough
- * for white text and cards to read on top. Strictly decorative, astrology only,
- * no text, no real people.
+ * laid over the LOWER zone.
+ *
+ * COMPOSITION = a DECORATIVE FRAME. Mystical detail is pushed to the EDGES and
+ * CORNERS (top, bottom, and both side margins) as an ornate cosmic border that
+ * wraps the whole page, while a calm, darker CENTRAL COLUMN is kept clear so the
+ * overlaid avatar/name and the product/pooja cards stay perfectly readable. This
+ * deliberately spreads richness across the FULL height (top, middle AND bottom)
+ * via the frame, so the page never looks top-heavy or empty/basic at the bottom,
+ * yet the card zone is protected. Strictly decorative, astrology only, no text,
+ * no real people.
  */
 function buildImagePrompt({ spec, expertise }) {
   // Describe colours by mood only — never feed hex codes or label words, or
@@ -147,15 +154,26 @@ function buildImagePrompt({ spec, expertise }) {
     `Trendy celestial motifs inspired by ${exp}: a starry sky and twinkling sparkles, dreamy ` +
     'constellations, a glowing moon and planets with rings, a stylish ornate zodiac wheel, ' +
     'shimmering sacred-geometry / mandala line patterns, soft nebula clouds and lens-flare glow. ' +
-    'COMPOSITION IS CRITICAL: concentrate the eye-catching detail, sparkle and glow in the TOP THIRD; ' +
-    'the MIDDLE and BOTTOM must gradually fade into a calm, near-solid DARK area with very little ' +
-    'detail and high uniformity. Cohesive, premium, high-end, aesthetic, share-worthy. Clean digital ' +
-    'illustration, not cluttered. ' +
+    'COMPOSITION IS CRITICAL — build a DECORATIVE COSMIC FRAME, not a top-heavy banner: arrange the ' +
+    'ornate, eye-catching detail (sparkles, mandala line-work, constellations, planets, glow) as an ' +
+    'elegant BORDER that hugs all four EDGES and the CORNERS, running the FULL HEIGHT of the image so ' +
+    'the TOP, the MIDDLE and the BOTTOM each carry rich, balanced ornamentation along their margins ' +
+    'and corners. The decoration must wrap symmetrically down BOTH the left and right side margins ' +
+    'and bloom in every corner, so the bottom is just as beautifully detailed as the top — never ' +
+    'empty, never fading to a plain dark void. Keep a calm, slightly darker CENTRAL COLUMN running ' +
+    'vertically down the middle (a clear safe area, roughly the central two-thirds of the width) with ' +
+    'minimal busy detail and gentle low-contrast gradient, so an overlaid avatar, name and stacked ' +
+    'product cards stay clearly readable on top of it. The frame should feel like the ornate carved ' +
+    'border of a high-end temple doorway or an illuminated astrological manuscript page. Cohesive, ' +
+    'premium, high-end, aesthetic, share-worthy. Clean digital illustration, balanced and symmetrical, ' +
+    'not cluttered. ' +
     'CRITICAL NEGATIVE CONSTRAINTS — the image must contain ONLY the cosmic artwork and NOTHING else: ' +
     'no text, no words, no letters, no numbers, no labels, no captions, no placeholder text, no logos, ' +
     'no watermark, no signatures; no UI mockup, no app interface, no profile photo, no avatar, no ' +
-    'name plate, no rating stars, no buttons, no cards, no boxes, no frames, no phone bezel; and no ' +
-    'real human faces or people anywhere. Just the pure astrology background art.'
+    'name plate, no rating stars, no buttons, no cards, no boxes, no rectangular photo frames, no ' +
+    'phone bezel; and no real human faces or people anywhere. The "frame" must be organic decorative ' +
+    'cosmic ornamentation along the margins, NOT a literal drawn box, picture frame or UI border. ' +
+    'Just the pure astrology background art.'
   );
 }
 
