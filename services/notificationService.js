@@ -1,9 +1,36 @@
 const Notification = require('../models/Notification');
 const Broadcast = require('../models/Broadcast');
+const User = require('../models/User');
 const pubsubService = require('./pubsubService');
 const bqService = require('./bqService');
+const translateService = require('./translateService');
 const emit = require('../websockets/emit');
 const logger = require('../utils/logger');
+
+/**
+ * Localize a notification's title + body into the recipient's chosen app
+ * language. Best-effort and fail-safe: on ANY problem (no language, English,
+ * unsupported, translate unavailable) it returns the ORIGINAL text unchanged, so
+ * a translation hiccup never blocks or garbles a notification. This is the single
+ * place every point notification passes through, so localizing here covers the
+ * in-app record, the live socket event, AND the FCM push in one shot.
+ */
+async function localizeForUser(userId, title, body) {
+  try {
+    const u = await User.findById(userId).select('language').lean();
+    const lang = u && u.language;
+    if (!lang || lang === 'en') return { title, body };
+    const [t, b] = await Promise.all([
+      title ? translateService.localizeText(title, lang) : Promise.resolve(title),
+      body ? translateService.localizeText(body, lang) : Promise.resolve(body),
+    ]);
+    // localizeText returns the source on failure, so t/b are always safe.
+    return { title: t || title, body: b || body };
+  } catch (e) {
+    logger.debug('notif localize fell back to default text', e.message);
+    return { title, body };
+  }
+}
 
 /**
  * Persist an in-app notification, push it live over sockets, and queue an FCM
@@ -19,6 +46,11 @@ const logger = require('../utils/logger');
  *             push (used by bulk broadcasts the admin marks "push-only").
  */
 async function notify(userId, { type = 'system', title, body, data = {}, pushOnly = false } = {}) {
+  // Localize to the recipient's app language up front (falls back to the given
+  // text). The user-facing record/socket/push all use the localized copy; the
+  // admin Broadcast LOG keeps the ORIGINAL text so logs stay consistent + searchable.
+  const { title: locTitle, body: locBody } = await localizeForUser(userId, title, body);
+
   // Log row first so its id can attribute taps (consistent with broadcasts).
   let broadcastId = null;
   try {
@@ -39,15 +71,15 @@ async function notify(userId, { type = 'system', title, body, data = {}, pushOnl
   let notification = null;
 
   if (!pushOnly) {
-    notification = await Notification.create({ user: userId, type, title, body, data: payload });
+    notification = await Notification.create({ user: userId, type, title: locTitle, body: locBody, data: payload });
 
     // Live socket event (best-effort; emit no-ops if socket layer not ready).
     try {
       emit.toUser(userId, 'new-notification', {
         id: String(notification._id),
         type,
-        title,
-        body,
+        title: locTitle,
+        body: locBody,
         data: payload,
         createdAt: notification.createdAt,
       });
@@ -57,7 +89,7 @@ async function notify(userId, { type = 'system', title, body, data = {}, pushOnl
   }
 
   // Queue push (offline delivery) — Pub/Sub fan-out, falls back to Mongo queue.
-  await pubsubService.publish('notifications', { userId: String(userId), title, body, data: payload });
+  await pubsubService.publish('notifications', { userId: String(userId), title: locTitle, body: locBody, data: payload });
 
   // Record that a notification was TRIGGERED (BigQuery; no-op when disabled).
   bqService.logNotification({ event: 'triggered', channel: pushOnly ? 'push' : 'inapp', user_id: String(userId), type, title });
@@ -96,4 +128,4 @@ async function clearAll(userId) {
   return res.deletedCount || 0;
 }
 
-module.exports = { notify, list, markRead, markAllRead, deleteOne, clearAll };
+module.exports = { notify, list, markRead, markAllRead, deleteOne, clearAll, localizeForUser };

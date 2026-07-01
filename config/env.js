@@ -136,6 +136,27 @@ const env = {
     maxSocketsPerUser: parseInt(process.env.MAX_SOCKETS_PER_USER || '5', 10),
   },
 
+  presence: {
+    // An astrologer with the toggle ON is shown online only while their device
+    // proved connectivity within this window (socket heartbeat OR FCM ping ACK).
+    // No internet for longer → auto-offline.
+    reachableTtlMs: parseInt(process.env.PRESENCE_REACHABLE_TTL_MS || '300000', 10), // 5 min
+    // How often the worker silently FCM-pings toggled-on astrologers whose
+    // reachability is going stale, so a killed-but-online device re-ACKs and
+    // stays online. Should be comfortably < reachableTtlMs.
+    probeIntervalMs: parseInt(process.env.PRESENCE_PROBE_INTERVAL_MS || '90000', 10), // 90s
+    // Only ping devices whose lastReachableAt is older than this (avoid pinging
+    // an astrologer whose socket heartbeat already keeps them fresh).
+    probeStaleAfterMs: parseInt(process.env.PRESENCE_PROBE_STALE_AFTER_MS || '60000', 10), // 60s
+  },
+
+  notifyMe: {
+    // When a seeker taps "notify me" on a busy/offline astrologer, nudge the
+    // astrologer ("N people are waiting for you") — but at most once per this
+    // window per astrologer, so a burst of waiting seekers can't spam them.
+    astroNudgeThrottleMs: parseInt(process.env.NOTIFY_ME_ASTRO_NUDGE_THROTTLE_MS || '180000', 10), // 3 min
+  },
+
   call: {
     maxMinutes: parseInt(process.env.MAX_CALL_MINUTES || '120', 10),
     ringTimeoutSec: parseInt(process.env.RING_TIMEOUT_SEC || '30', 10),

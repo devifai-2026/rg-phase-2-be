@@ -93,9 +93,9 @@ async function seed() {
   console.log('  categories + 1 product');
 
   // Gifts.
-  await Gift.findOneAndUpdate({ name: 'Rose' }, { $set: { tokenCost: 10, isActive: true } }, { upsert: true });
-  await Gift.findOneAndUpdate({ name: 'Diya' }, { $set: { tokenCost: 25, isActive: true } }, { upsert: true });
-  await Gift.findOneAndUpdate({ name: 'Garland' }, { $set: { tokenCost: 50, isActive: true } }, { upsert: true });
+  await Gift.findOneAndUpdate({ name: 'Rose' }, { $set: { tokenCost: 10, isActive: true, emoji: '🌹' } }, { upsert: true });
+  await Gift.findOneAndUpdate({ name: 'Diya' }, { $set: { tokenCost: 25, isActive: true, emoji: '🪔' } }, { upsert: true });
+  await Gift.findOneAndUpdate({ name: 'Garland' }, { $set: { tokenCost: 50, isActive: true, emoji: '💐' } }, { upsert: true });
   console.log('  gifts');
 
   // Site content (Contact Us / About) the app displays.

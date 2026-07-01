@@ -185,6 +185,7 @@ async function submitApplication({ name, phone, email, expertise, languages, exp
   });
   await User.updateOne({ _id: user._id }, { $set: { astrologerProfile: profile._id } });
   await ensureExpertise(expertise); // grow the shared catalog with any new values
+  await translateName(profile); // transliterate name now (ready when activated)
 
   // Live admin-console badge + bell (new astrologer registration to review).
   // Routes to the Applications page in the admin.
@@ -248,11 +249,15 @@ async function adminUpdate(profileId, body, adminId) {
     }
   }
   // Name / email also live on the User.
+  const nameChanged = name !== undefined && name !== profile.displayName;
   if (name !== undefined || email !== undefined) {
     const set = {};
     if (name !== undefined) set.name = name;
     if (email !== undefined) set.email = email;
     if (Object.keys(set).length) await User.updateOne({ _id: profile.user }, { $set: set });
+    // Keep the profile's displayName (the field the app + transliteration use) in
+    // sync with the admin-edited User.name.
+    if (name !== undefined) profile.displayName = name;
   }
 
   if (rates) {
@@ -279,8 +284,9 @@ async function adminUpdate(profileId, body, adminId) {
 
   await profile.save();
   await ensureExpertise(rest.expertise); // catalog grows with admin-typed values
-  // Re-translate bio if it changed.
+  // Re-translate bio / re-transliterate name if they changed.
   if (bioChanged) await translateBio(profile);
+  if (nameChanged) await translateName(profile);
   await invalidateAstroCache();
   return profile;
 }
@@ -321,8 +327,10 @@ async function adminCreate(body, adminId) {
   });
   await User.updateOne({ _id: user._id }, { $set: { astrologerProfile: profile._id } });
   await ensureExpertise(rest.expertise); // catalog grows with admin-typed values
-  // Auto-translate the bio into all languages (insert-time, GCP).
+  // Auto-translate the bio (GCP) + transliterate the name (rule-based) into all
+  // languages at insert-time so the user app renders them localized immediately.
   await translateBio(profile);
+  await translateName(profile);
   await invalidateAstroCache();
   // System template: welcome notification for the new astrologer (if enabled).
   require('./broadcastService').fireEvent('astrologer_signup', { userId: user._id, vars: { name: name || 'there' } });
@@ -340,6 +348,27 @@ async function translateBio(profile) {
     await profile.save();
   } catch (e) {
     require('../utils/logger').warn('translateBio failed', e.message);
+  }
+}
+
+/**
+ * Transliterate a profile's displayName into each script and persist nameI18n.
+ * Google Translate won't transliterate Latin proper names, so we use the
+ * rule-based transliterateService. 'en' is the source `displayName`, so it's
+ * dropped from the stored map. Never throws. Skips entries an admin has manually
+ * overridden is NOT done here — a fresh transliteration replaces the map; use
+ * the admin edit path to pin a corrected name after.
+ */
+async function translateName(profile) {
+  if (!profile.displayName) return;
+  try {
+    const transliterateService = require('./transliterateService');
+    const map = transliterateService.localizeName(profile.displayName); // {en,hi,bn,mr,pa,as}
+    delete map.en; // en lives in `displayName`
+    profile.nameI18n = map;
+    await profile.save();
+  } catch (e) {
+    require('../utils/logger').warn('translateName failed', e.message);
   }
 }
 

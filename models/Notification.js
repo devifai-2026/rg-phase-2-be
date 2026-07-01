@@ -15,6 +15,7 @@ const NOTIF_TYPES = [
   'ai_recap_ready',        // astrologer: a chat recap is ready to review (Feature 1)
   'astrologer_suggestion', // user: astrologer published a recap + product suggestions (Feature 1)
   'reengage',              // user: a time-bound topic has come due (Feature 2)
+  'users_waiting',         // astrologer: seeker(s) tapped "notify me" while busy/offline → come online
 ];
 
 const notificationSchema = new mongoose.Schema(

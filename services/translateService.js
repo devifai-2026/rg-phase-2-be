@@ -196,26 +196,33 @@ async function runFullTranslation({ limit = 2000 } = {}) {
     if (changed) { doc.bioI18n = cur; await doc.save(); }
   }
 
-  // ── 1b) Astrologer display NAMES → translate cache (transliterated into each
-  //        script, e.g. "Ravi Kumar" → "रवि कुमार"). Names are served via the
-  //        cache-backed localizeText path in the serializer, so pre-warming the
-  //        cache here makes the user-app name render instant in every language. ──
+  // ── 1b) Astrologer display NAMES → nameI18n (TRANSLITERATED into each script,
+  //        e.g. "Ravi Kumar" → "রবি কুমর"). Google Translate leaves Latin proper
+  //        names unchanged, so names go through the rule-based transliterate
+  //        engine (not GCP) and are stored on the profile like bioI18n. Only
+  //        fills locales that are missing/stale so an admin-corrected name isn't
+  //        clobbered on a re-run. ──
   const TranslationCache = require('../models/TranslationCache');
-  const namedProfiles = await AstrologerProfile.find({ displayName: { $exists: true, $ne: '' } })
-    .select('displayName').limit(limit).lean();
-  for (const p of namedProfiles) {
-    const src = (p.displayName || '').trim();
-    if (!src) continue;
-    const hash = TranslationCache.hashOf(src);
-    for (const l of targets) {
-      totalPairs += 1;
-      const hit = await TranslationCache.findOne({ hash, lang: l }).select('_id').lean();
-      if (hit) { alreadyDone += 1; continue; }
-      const out = await translate(src, l);
-      if (out && out !== src) {
-        await TranslationCache.updateOne({ hash, lang: l }, { $set: { text: out, source: src.slice(0, 2000) } }, { upsert: true });
-        bump('astrologerName', src.length);
-      } else { unchanged += 1; }
+  const transliterateService = require('./transliterateService');
+  if (transliterateService.available()) {
+    const namedProfiles = await AstrologerProfile.find({ displayName: { $exists: true, $ne: '' } })
+      .select('displayName nameI18n').limit(limit);
+    for (const doc of namedProfiles) {
+      const src = (doc.displayName || '').trim();
+      if (!src) continue;
+      const cur = doc.nameI18n || new Map();
+      const get = (l) => (cur.get ? cur.get(l) : cur[l]);
+      const set = (l, v) => (cur.set ? cur.set(l, v) : (cur[l] = v));
+      let changed = false;
+      for (const l of targets) {
+        totalPairs += 1;
+        const existing = get(l);
+        if (existing && existing !== src) { alreadyDone += 1; continue; } // already set (incl. admin override)
+        const out = transliterateService.transliterate(src, l);
+        if (out && out !== src) { set(l, out); changed = true; bump('astrologerName', src.length); }
+        else { unchanged += 1; }
+      }
+      if (changed) { doc.nameI18n = cur; await doc.save(); }
     }
   }
 

@@ -16,6 +16,7 @@ const aiInsightsService = require('../services/aiInsightsService');
 const reengagementService = require('../services/reengagementService');
 const reminderService = require('../services/reminderService');
 const marketingService = require('../services/marketingService');
+const horoscopeService = require('../services/horoscopeService');
 
 /**
  * Job handlers. Each must be idempotent — a job can be retried or re-run after
@@ -48,9 +49,11 @@ let polling = false;
 let pollTimer = null;
 let sweepTimer = null;
 let presenceTimer = null;
+let presenceProbeTimer = null;
 let reengagementTimer = null;
 let reminderTimer = null;
 let marketingTimer = null;
+let horoscopeTimer = null;
 let pubsubSubs = [];
 let stopped = false;
 
@@ -114,6 +117,15 @@ function start() {
     if (!stopped) liveService.sweepStaleLives().catch(() => {});
   }, 20 * 1000);
 
+  // Reachability probe: silently FCM-ping toggled-on astrologers whose device
+  // hasn't proved connectivity recently, so an app-killed-but-internet-ON device
+  // re-ACKs and stays online (the reconcile sweep above flips genuinely-offline —
+  // no-internet — devices offline once their window lapses). Runs on every
+  // instance; the per-device FCM send is idempotent, so overlap is harmless.
+  presenceProbeTimer = setInterval(() => {
+    if (!stopped) presenceService.probeReachability().catch((e) => logger.warn('presence probe failed', e.message));
+  }, env.presence.probeIntervalMs);
+
   // Re-engagement (Feature 2): periodically nudge seekers whose time-bound
   // questions have come due. Each cue is claimed atomically, so running on every
   // instance is safe (no double-send). Kick one scan shortly after boot too.
@@ -141,6 +153,19 @@ function start() {
     if (!stopped) marketingService.tick().catch((e) => logger.warn('marketing tick failed', e.message));
   }, 60 * 1000);
 
+  // Daily horoscope pre-warm: heartbeat every 60 min. tick() atomically claims
+  // today's pre-warm (once/day across instances via HoroscopeConfig.lastPrewarmDate)
+  // and, on winning, fetches all 12 signs × app languages for today + tomorrow so
+  // users read from the global cache instead of waiting on the provider. A coarse
+  // interval is fine — tick() self-throttles. Kick one shortly after boot so a
+  // fresh deploy warms immediately.
+  horoscopeTimer = setInterval(() => {
+    if (!stopped) horoscopeService.tick().catch((e) => logger.warn('horoscope tick failed', e.message));
+  }, 60 * 60 * 1000);
+  setTimeout(() => {
+    if (!stopped) horoscopeService.tick().catch(() => {});
+  }, 40 * 1000);
+
   // Pub/Sub fan-out subscribers (no-op + log if Pub/Sub disabled). Reuses the
   // same idempotent handlers as the Mongo queue.
   pubsubSubs = pubsubService.startSubscribers(handlers);
@@ -151,9 +176,11 @@ async function stop() {
   clearInterval(pollTimer);
   clearInterval(sweepTimer);
   clearInterval(presenceTimer);
+  clearInterval(presenceProbeTimer);
   clearInterval(reengagementTimer);
   clearInterval(reminderTimer);
   clearInterval(marketingTimer);
+  clearInterval(horoscopeTimer);
   // Stop pulling new Pub/Sub messages (lets in-flight ones ack/nack).
   for (const sub of pubsubSubs) {
     try { await sub.close(); } catch (_) { /* ignore */ }

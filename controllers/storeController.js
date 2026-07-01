@@ -28,7 +28,7 @@ function pickPooja(body) {
 }
 
 // ── Store theme ───────────────────────────────────────────────────────────
-const STORE_THEMES = ['rudraksh', 'shiva', 'cosmic', 'royal'];
+const STORE_THEMES = ['rudraksh', 'shiva', 'cosmic', 'royal', 'aurora', 'twilight', 'sapphire', 'lotus'];
 
 /** Save the astrologer's chosen storefront template. PUT /astrologers/me/store-theme */
 exports.setStoreTheme = asyncHandler(async (req, res) => {

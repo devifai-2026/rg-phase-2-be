@@ -41,6 +41,9 @@ router.get('/me/followers', protect, astrologerOnly, ctrl.myFollowers);
 router.get('/me/payout-details', protect, astrologerOnly, ctrl.getPayoutDetails);
 router.put('/me/payout-details', protect, astrologerOnly, validate(v.payoutDetails), ctrl.savePayoutDetails);
 router.post('/me/online', protect, astrologerOnly, validate(v.onlineToggle), ctrl.setOnline);
+// Reachability ACK from the device (FCM presence-ping / app foreground) — keeps
+// an app-killed-but-internet-ON astrologer shown online. Light + idempotent.
+router.post('/me/presence-ack', protect, astrologerOnly, ctrl.presenceAck);
 
 // ── Storefront: theme + astrologer-owned products/poojas (self-service) ──
 const store = require('../controllers/storeController');

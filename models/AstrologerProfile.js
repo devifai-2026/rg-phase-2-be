@@ -30,6 +30,12 @@ const astrologerProfileSchema = new mongoose.Schema(
 
     // Public profile
     displayName: { type: String, trim: true },
+    // Per-language display name, auto-transliterated by GCP Cloud Translation at
+    // create/update. Shape: { hi, bn, mr, pa, as } ('en' is `displayName`). The
+    // user app reads the field for its locale, falling back to `displayName`.
+    // NOTE: machine transliteration of proper names is approximate; admin can
+    // override any entry. Mirrors `bioI18n`.
+    nameI18n: { type: Map, of: String, default: undefined },
     bio: { type: String, maxlength: 2000 },
     // Per-language bio, auto-filled by GCP Cloud Translation at create/update.
     // Shape: { hi: '...', bn: '...', mr, pa, as } ('en' is `bio`). App reads the
@@ -49,7 +55,7 @@ const astrologerProfileSchema = new mongoose.Schema(
     // Link-in-bio storefront design the astrologer picked (saved from the app).
     // One of a fixed set of templates rendered by the storefront screen. Used as
     // the FALLBACK when no AI-generated layout is active.
-    storeTheme: { type: String, enum: ['rudraksh', 'shiva', 'cosmic', 'royal'], default: 'rudraksh' },
+    storeTheme: { type: String, enum: ['rudraksh', 'shiva', 'cosmic', 'royal', 'aurora', 'twilight', 'sapphire', 'lotus'], default: 'rudraksh' },
 
     // The active AI-generated storefront layout (StorefrontLayout). When set, the
     // seeker-facing storefront renders this spec instead of the storeTheme preset.
@@ -119,21 +125,35 @@ const astrologerProfileSchema = new mongoose.Schema(
     // ── Live presence / availability ────────────────────────────────────
     // Presence is DERIVED from two inputs, never set ad-hoc:
     //   effective online = availabilityPreference (their saved toggle)
-    //                      AND a live socket connection.
+    //                      AND the device is REACHABLE (lastReachableAt is fresh,
+    //                      within env.presence.reachableTtlMs — default 5 min).
     // `availabilityPreference` is the astrologer's INTENT — it survives app
     // restarts/reconnects so connecting never silently flips them online.
+    // Reachability is refreshed by (a) the live socket heartbeat and (b) a silent
+    // FCM `presence_ping` the device ACKs even when the app is killed — so an
+    // app-killed-but-internet-ON astrologer STAYS online, while a device with no
+    // internet stops refreshing and auto-flips offline after the TTL.
     // `isOnline` / `currentCallStatus` are the computed truth the apps read;
     // always write them via presenceService.recomputeAstrologerPresence().
     availabilityPreference: { type: Boolean, default: false },
     isOnline: { type: Boolean, default: false, index: true },
     currentCallStatus: { type: String, enum: ['available', 'busy', 'offline'], default: 'offline', index: true },
     lastOnlineAt: { type: Date },
+    // Last time the device proved it has working connectivity — refreshed by the
+    // socket heartbeat AND the FCM presence-ping ACK. Gates derived `isOnline`.
+    lastReachableAt: { type: Date },
 
     // Self-requested short break. While `breakUntil` is in the future the
     // astrologer is shown BUSY to seekers (they can't be reached) without ending
     // their online intent. Cleared automatically once the time passes (presence
     // recompute treats an expired break as no break).
     breakUntil: { type: Date, default: null },
+
+    // Throttle for the "a user is waiting for you" nudge — when a seeker taps
+    // "notify me" while this astrologer is busy/offline, we push them a nudge to
+    // come online, but at most once per env.notifyMe.astroNudgeThrottleMs so a
+    // burst of waiting seekers can't spam them. Timestamp of the last such nudge.
+    lastWaitingNudgeAt: { type: Date, default: null },
 
     // Curated "featured astrologers" section in the app.
     isFeatured: { type: Boolean, default: false, index: true },

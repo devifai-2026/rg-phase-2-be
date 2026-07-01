@@ -127,53 +127,52 @@ function buildUserMessage({ astrologerName, bio, expertise, languages, productCo
 
 /**
  * Build the IMAGEN prompt for a real, premium astrology FULL-SCREEN PHONE
- * BACKGROUND that matches the colour spec the text model produced. This is the
- * whole vertical storefront page background, NOT a small banner: the astrologer's
- * avatar + name + bio + rating overlay the TOP zone, and product/pooja cards are
- * laid over the LOWER zone.
+ * BACKGROUND that matches the colour spec the text model produced.
  *
- * COMPOSITION = a DECORATIVE FRAME. Mystical detail is pushed to the EDGES and
- * CORNERS (top, bottom, and both side margins) as an ornate cosmic border that
- * wraps the whole page, while a calm, darker CENTRAL COLUMN is kept clear so the
- * overlaid avatar/name and the product/pooja cards stay perfectly readable. This
- * deliberately spreads richness across the FULL height (top, middle AND bottom)
- * via the frame, so the page never looks top-heavy or empty/basic at the bottom,
- * yet the card zone is protected. Strictly decorative, astrology only, no text,
- * no real people.
+ * IMPORTANT — this generates ONLY the background wallpaper. The astrologer's
+ * COVER PHOTO and PROFILE PHOTO are uploaded by them and overlaid by the app on
+ * top of this background; the AI must NEVER draw a photo, avatar, person, or a
+ * frame/box for one. Its whole job is a gorgeous, premium, FULL-BLEED cosmic
+ * wallpaper that fills the entire tall screen edge to edge — rich and beautiful
+ * from top to bottom, never a plain dark void. Readability for overlaid
+ * white text is achieved with soft mid-dark tones and gentle glow, NOT by
+ * leaving a big empty dead zone. Astrology only, no text, no real people.
  */
 function buildImagePrompt({ spec, expertise }) {
   // Describe colours by mood only — never feed hex codes or label words, or
   // Imagen renders them as literal text in the image.
   const exp = (expertise || []).join(', ') || 'spiritual guidance';
   return (
-    'A fancy, trendy GEN-Z mystical ASTROLOGY background for a full mobile phone screen, ' +
-    'tall vertical 9:16 portrait composition for a spiritual link-in-bio storefront page. ' +
-    'Modern celestial aesthetic like a viral aesthetic astrology app: dreamy cosmic gradient, ' +
-    'vibrant yet tasteful jewel tones, soft holographic / iridescent shimmer, glowing aura, ' +
-    'subtle grain, y2k-meets-mystic energy, ethereal and aspirational. ' +
-    `Trendy celestial motifs inspired by ${exp}: a starry sky and twinkling sparkles, dreamy ` +
-    'constellations, a glowing moon and planets with rings, a stylish ornate zodiac wheel, ' +
-    'shimmering sacred-geometry / mandala line patterns, soft nebula clouds and lens-flare glow. ' +
-    'COMPOSITION IS CRITICAL — build a DECORATIVE COSMIC FRAME, not a top-heavy banner: arrange the ' +
-    'ornate, eye-catching detail (sparkles, mandala line-work, constellations, planets, glow) as an ' +
-    'elegant BORDER that hugs all four EDGES and the CORNERS, running the FULL HEIGHT of the image so ' +
-    'the TOP, the MIDDLE and the BOTTOM each carry rich, balanced ornamentation along their margins ' +
-    'and corners. The decoration must wrap symmetrically down BOTH the left and right side margins ' +
-    'and bloom in every corner, so the bottom is just as beautifully detailed as the top — never ' +
-    'empty, never fading to a plain dark void. Keep a calm, slightly darker CENTRAL COLUMN running ' +
-    'vertically down the middle (a clear safe area, roughly the central two-thirds of the width) with ' +
-    'minimal busy detail and gentle low-contrast gradient, so an overlaid avatar, name and stacked ' +
-    'product cards stay clearly readable on top of it. The frame should feel like the ornate carved ' +
-    'border of a high-end temple doorway or an illuminated astrological manuscript page. Cohesive, ' +
-    'premium, high-end, aesthetic, share-worthy. Clean digital illustration, balanced and symmetrical, ' +
-    'not cluttered. ' +
-    'CRITICAL NEGATIVE CONSTRAINTS — the image must contain ONLY the cosmic artwork and NOTHING else: ' +
-    'no text, no words, no letters, no numbers, no labels, no captions, no placeholder text, no logos, ' +
-    'no watermark, no signatures; no UI mockup, no app interface, no profile photo, no avatar, no ' +
-    'name plate, no rating stars, no buttons, no cards, no boxes, no rectangular photo frames, no ' +
-    'phone bezel; and no real human faces or people anywhere. The "frame" must be organic decorative ' +
-    'cosmic ornamentation along the margins, NOT a literal drawn box, picture frame or UI border. ' +
-    'Just the pure astrology background art.'
+    'An ultra-premium, top-notch mystical VEDIC ASTROLOGY wallpaper background filling an entire ' +
+    'tall mobile phone screen, 9:16 vertical portrait, full-bleed edge to edge. Think a flagship ' +
+    'meditation / astrology app splash screen or a high-end album cover: cinematic, aspirational, ' +
+    'gallery-quality, breathtaking. ' +
+    'A deep, luxurious cosmic gradient that flows smoothly from the very top to the very bottom of ' +
+    'the frame — rich jewel-toned midnight indigo, twilight violet, temple maroon and deep saffron ' +
+    'charcoal — glowing softly, with tasteful metallic gold / moonstone-silver highlights. Dreamy, ' +
+    'ethereal, iridescent, high production value. ' +
+    `Celestial detail inspired by ${exp}, spread evenly and beautifully across the WHOLE canvas ` +
+    'so every region is rich: a luminous star-filled night sky with fine twinkling sparkles and ' +
+    'stardust, delicate constellations, a soft glowing moon, planets with elegant rings, an ornate ' +
+    'faint zodiac wheel, and shimmering sacred-geometry / mandala line-work woven subtly into gentle ' +
+    'nebula clouds and soft lens-flare glow. ' +
+    'FILL THE FULL HEIGHT — the composition must be gorgeous and balanced from top, through the ' +
+    'middle, all the way to the bottom edge. The BOTTOM half must be just as considered and beautiful ' +
+    'as the top: let the nebula, stardust and gentle glow continue and settle into the lower area — ' +
+    'NEVER let it fade to a flat, empty, plain black void or a bare dark rectangle. No hard seams or ' +
+    'abrupt cut-offs; one continuous, cohesive scene. ' +
+    'READABILITY (subtle, not a dead zone): keep the overall tones soft and mid-dark with even, ' +
+    'diffuse lighting and no harsh bright hotspots in the central area, so white text and cards ' +
+    'overlaid by the app stay legible — but the background itself must still be visibly rich and ' +
+    'detailed everywhere, achieving readability through calm low-contrast beauty rather than emptiness. ' +
+    'Cohesive, premium, aesthetic, share-worthy, painterly digital illustration, smooth gradients, ' +
+    'clean and elegant, not cluttered, not garish, not neon. ' +
+    'CRITICAL NEGATIVE CONSTRAINTS — the image must contain ONLY the cosmic wallpaper artwork and ' +
+    'NOTHING else: no text, no words, no letters, no numbers, no labels, no captions, no placeholder ' +
+    'text, no logos, no watermark, no signatures; no UI mockup, no app interface, no profile photo, ' +
+    'no avatar, no name plate, no rating stars, no buttons, no cards, no boxes, no rectangular photo ' +
+    'frames or picture frames, no drawn border, no phone bezel; and absolutely no real human faces or ' +
+    'people anywhere. Just the pure, beautiful, full-bleed astrology wallpaper.'
   );
 }
 

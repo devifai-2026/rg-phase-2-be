@@ -347,6 +347,12 @@ async function optimizeProfile(astrologerUserId) {
   const p = await AstrologerProfile.findOne({ user: astrologerUserId }).lean();
   if (!p) throw new AppError('Profile not found', 404);
 
+  // The astrologer's chosen APP language (ISO code) — the optimizer must respond
+  // in this language, not English. Stored on the User doc (mirrors device choice).
+  const User = require('../models/User');
+  const userDoc = await User.findById(astrologerUserId).select('language').lean();
+  const lang = (userDoc && userDoc.language) || 'en';
+
   // Monthly quota: a SUCCESSFUL optimizer LLM run is logged to AiLog, so we count
   // those this calendar month and block once the cap is hit. (The deterministic
   // heuristic part is cheap; the cap exists to bound LLM cost per astrologer.)
@@ -363,20 +369,42 @@ async function optimizeProfile(astrologerUserId) {
 
   // ── Gather the FULL performance snapshot to feed the LLM ──
   const Review = require('../models/Review');
+  const Product = require('../models/Product');
+  const PoojaType = require('../models/PoojaType');
   const thirty = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [byType, sessionsLast30, requestsReceived, missedRequests, recentReviews] = await Promise.all([
+  const [byType, byStatus, sessionsLast30, recentReviews, products, poojas] = await Promise.all([
+    // Completed consultations split by type (chat/call/video).
     Session.aggregate([
       { $match: { astrologer: p.user, status: 'completed' } },
       { $group: { _id: '$type', n: { $sum: 1 } } },
     ]),
+    // FULL lifecycle breakdown so the coach can reason about accept/miss/reject.
+    Session.aggregate([
+      { $match: { astrologer: p.user } },
+      { $group: { _id: '$status', n: { $sum: 1 } } },
+    ]),
     Session.countDocuments({ astrologer: p.user, status: 'completed', endedAt: { $gte: thirty } }),
-    Session.countDocuments({ astrologer: p.user, status: { $in: ['completed', 'missed', 'rejected'] } }),
-    Session.countDocuments({ astrologer: p.user, status: { $in: ['missed', 'rejected'] } }),
     Review.find({ astrologer: p.user, comment: { $ne: '' } }).sort({ createdAt: -1 }).limit(5).select('rating comment').lean(),
+    // Storefront items (astrologer-owned), all statuses, for merchandising advice.
+    Product.find({ astrologer: p.user }).select('name price mrp status soldCount').sort({ createdAt: -1 }).limit(20).lean(),
+    PoojaType.find({ astrologer: p.user }).select('name basePrice status bookedCount').sort({ createdAt: -1 }).limit(20).lean(),
   ]);
   const typeCount = {}; byType.forEach((r) => { typeCount[r._id] = r.n; });
+  const statusCount = {}; byStatus.forEach((r) => { statusCount[r._id] = r.n; });
+  // Requests the astrologer actually had a chance to answer (accepted+ or missed/
+  // rejected). `accepted` covers accepted-but-not-completed; completed implies it.
+  const acceptedCount = (statusCount.accepted || 0) + (statusCount.ongoing || 0) + (statusCount.completed || 0);
+  const missedCount = statusCount.missed || 0;
+  const rejectedCount = statusCount.rejected || 0;
+  const cancelledCount = statusCount.cancelled || 0;
+  const requestsReceived = acceptedCount + missedCount + rejectedCount; // excludes user-cancelled
+  const missedRequests = missedCount + rejectedCount;
   const lastOnline = p.lastOnlineAt ? new Date(p.lastOnlineAt) : null;
   const daysSinceOnline = lastOnline ? Math.floor((Date.now() - lastOnline.getTime()) / 86400000) : null;
+  const itemLine = (i, priceKey, soldKey) => ({
+    name: i.name, price: i[priceKey] || 0, status: i.status,
+    sold: i[soldKey] || 0,
+  });
   const stats = {
     displayName: p.displayName,
     hasAvatar: !!p.avatar, hasCover: !!p.coverPhoto,
@@ -385,12 +413,27 @@ async function optimizeProfile(astrologerUserId) {
     totalSessions: p.totalSessions || 0,
     chatSessions: typeCount.chat || 0, callSessions: typeCount.call || 0, videoSessions: typeCount.video || 0,
     sessionsLast30,
+    // Consultation lifecycle (accept/miss/reject/cancel) — feeds responsiveness advice.
     requestsReceived, missedRequests,
+    acceptedCount, missedCount, rejectedCount, cancelledCount,
+    acceptRatePct: requestsReceived ? Math.round((acceptedCount / requestsReceived) * 100) : null,
     missedRatePct: requestsReceived ? Math.round((missedRequests / requestsReceived) * 100) : null,
     totalMinutes: p.totalMinutes || 0, totalEarnings: p.totalEarnings || 0,
     rating: p.rating || 0, reviewCount: p.reviewCount || 0,
     chatRate: p.rates?.chat?.ratePerMin || 0, callRate, videoRate: videoRate.ratePerMin || 0, videoEnabled: !!videoRate.enabled,
     recentReviews: (recentReviews || []).map((r) => ({ rating: r.rating, comment: String(r.comment).slice(0, 160) })),
+    // Storefront snapshot — counts + a few named items with price/sold so the
+    // coach can suggest listing more, fixing pending/rejected, or pricing.
+    productCount: products.length,
+    productsApproved: products.filter((x) => x.status === 'approved').length,
+    productsPending: products.filter((x) => x.status === 'pending').length,
+    productsRejected: products.filter((x) => x.status === 'rejected').length,
+    poojaCount: poojas.length,
+    poojasApproved: poojas.filter((x) => x.status === 'approved').length,
+    poojasPending: poojas.filter((x) => x.status === 'pending').length,
+    poojasRejected: poojas.filter((x) => x.status === 'rejected').length,
+    products: products.slice(0, 8).map((i) => itemLine(i, 'price', 'soldCount')),
+    poojas: poojas.slice(0, 8).map((i) => itemLine(i, 'basePrice', 'bookedCount')),
   };
 
   const suggestions = [];
@@ -427,7 +470,7 @@ async function optimizeProfile(astrologerUserId) {
       const out = await llmService.completeJSON({
         system: await promptService.getSystem('profileOptimizer'),
         messages: [{ role: 'user', content: optimizerPrompt.buildUserMessage({
-          currentBio: bio, expertise, languages, experienceYears: p.experienceYears, stats,
+          currentBio: bio, expertise, languages, experienceYears: p.experienceYears, stats, lang,
         }) }],
         schema: optimizerPrompt.OPTIMIZER_SCHEMA,
         maxTokens: 900,
@@ -448,10 +491,32 @@ async function optimizeProfile(astrologerUserId) {
 
   // Prefer the AI's data-driven suggestions when present; otherwise fall back to
   // the deterministic heuristic list. Sort by impact (highest first).
-  const finalSuggestions = (aiSuggestions.length ? aiSuggestions : suggestions)
+  const usedAi = aiSuggestions.length > 0;
+  const finalSuggestions = (usedAi ? aiSuggestions : suggestions)
     .sort((a, b) => (b.impact || 0) - (a.impact || 0));
 
-  return { score, headline, suggestions: finalSuggestions, improvedBio, aiTips, stats };
+  // Language: the AI path already wrote everything in the astrologer's language
+  // (per the prompt). The DETERMINISTIC heuristic strings + the fixed headline are
+  // hardcoded English, so when we fall back to them (or the LLM didn't produce
+  // tips) translate the user-visible fields into `lang` so the whole screen is in
+  // one language. `area` stays English (it's a machine key mapped to an icon).
+  let outHeadline = headline;
+  let outTips = aiTips;
+  if (lang && lang !== 'en') {
+    const { localizeText } = require('./translateService');
+    const tr = (t) => (t && String(t).trim() ? localizeText(String(t), lang) : Promise.resolve(t));
+    outHeadline = await tr(headline);
+    if (!usedAi) {
+      await Promise.all(finalSuggestions.map(async (s) => {
+        s.issue = await tr(s.issue);
+        s.fix = await tr(s.fix);
+      }));
+    }
+    // Tips only exist from the AI path (already in-language); nothing to translate
+    // when they're absent. Leave aiTips as-is.
+  }
+
+  return { score, headline: outHeadline, suggestions: finalSuggestions, improvedBio, aiTips: outTips, stats };
 }
 
 // ── Live comment moderation — Tier 2 (Feature 4b) ───────────────────────────

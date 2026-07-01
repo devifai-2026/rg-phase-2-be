@@ -171,4 +171,6 @@ function localAshtakoot(b1, b2) {
   };
 }
 
-module.exports = { isConfigured, getChart, getKundli, getLalKitab, matchAshtakoot };
+// resolveConfig is exported so horoscopeService reuses the SAME admin-managed
+// key / baseUrl resolution (DB-first, env fallback) — no duplicated config path.
+module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot };

@@ -11,6 +11,7 @@ const NotificationTemplate = require('../models/NotificationTemplate');
 const fcmService = require('./fcmService');
 const bqService = require('./bqService');
 const jobService = require('./jobService');
+const { localizeForUser } = require('./notificationService');
 const emit = require('../websockets/emit');
 const logger = require('../utils/logger');
 
@@ -227,18 +228,21 @@ async function runFanout(log) {
   await runWithConcurrency(recipients, 20, async (userId) => {
     const payload = { ...data, broadcastId: String(log._id) };
     try {
+      // Localize to THIS recipient's app language (falls back to the original
+      // text). Each user in the audience gets the message in their own language.
+      const { title: lt, body: lb } = await localizeForUser(userId, title, body);
       // Persist the in-app record (unless push-only) + best-effort live socket.
       // We tag it with broadcastId so a tap can be attributed back to this log.
       if (!pushOnly) {
-        const rec = await Notification.create({ user: userId, type: 'system', title, body, data: payload });
+        const rec = await Notification.create({ user: userId, type: 'system', title: lt, body: lb, data: payload });
         try {
           emit.toUser(userId, 'new-notification', {
-            id: String(rec._id), type: 'system', title, body, data: payload, createdAt: rec.createdAt,
+            id: String(rec._id), type: 'system', title: lt, body: lb, data: payload, createdAt: rec.createdAt,
           });
         } catch (_) {/* socket optional */}
       }
       // viaBroadcast=true → tally per-user outcomes instead of throwing.
-      const r = await fcmService.sendToUserTokens({ userId, title, body, data: payload, viaBroadcast: true });
+      const r = await fcmService.sendToUserTokens({ userId, title: lt, body: lb, data: payload, viaBroadcast: true });
       totals.sent += 1;
       totals.delivered += r.delivered || 0;
       totals.failed += r.failed || 0;

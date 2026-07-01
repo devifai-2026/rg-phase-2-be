@@ -22,6 +22,22 @@ async function localizeField(src, i18nMap, lang) {
   return translateService.localizeText(text, lang);
 }
 
+/** Localize a NAME: prefer the stored nameI18n transliteration, else compute it
+ *  on the fly via the rule-based engine (GCP won't transliterate proper names,
+ *  so the translate-cache path is NOT used here). Returns source on failure. */
+function localizeName(src, i18nMap, lang) {
+  const text = String(src || '');
+  if (!text.trim()) return text;
+  const m = i18nMap || {};
+  const stored = m.get ? m.get(lang) : m[lang];
+  if (stored && stored !== text) return stored;
+  try {
+    return require('../services/transliterateService').transliterate(text, lang);
+  } catch (_) {
+    return text;
+  }
+}
+
 /**
  * Localize an astrologer's user-visible dynamic text into `lang` with NO English
  * fallback. Covers the BIO and the NAME (displayName, transliterated into the
@@ -34,11 +50,13 @@ async function localizeAstrologer(a, lang) {
   await Promise.all([
     (async () => { if (a.bio) a.bio = await localizeField(a.bio, a.bioI18n, lang); })(),
     (async () => {
-      if (a.displayName) a.displayName = await localizeField(a.displayName, a.displayNameI18n, lang);
+      // Name is transliterated (Latin proper names aren't translated by GCP), so
+      // prefer the stored nameI18n entry; else transliterate on the fly.
+      if (a.displayName) a.displayName = localizeName(a.displayName, a.nameI18n, lang);
     })(),
     (async () => {
       // The name can also arrive via the populated user.name fallback.
-      if (a.user && a.user.name) a.user.name = await localizeField(a.user.name, a.displayNameI18n, lang);
+      if (a.user && a.user.name) a.user.name = localizeName(a.user.name, a.nameI18n, lang);
     })(),
     // Expertise/specialty tags (e.g. "Vedic", "Tarot") shown on the card/detail.
     (async () => {
@@ -198,6 +216,15 @@ exports.notifyWhenAvailable = asyncHandler(async (req, res) => {
     { $setOnInsert: { astrologerProfile: profile._id } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
+
+  // A genuinely NEW waiter (not a repeat tap) → nudge the astrologer that
+  // someone is waiting, so they're pulled back online. Only fires on a fresh
+  // request; the notify-me button only appears when the astrologer is busy/
+  // offline, so this covers both. Throttled + fire-and-forget inside the service.
+  if (!existing) {
+    require('../services/presenceService').nudgeAstrologerWaiting(profile.user).catch(() => {});
+  }
+
   res.status(201).json({ success: true, data: { ...doc.toObject(), alreadyRequested: !!existing } });
 });
 
@@ -218,6 +245,19 @@ exports.myNotifyRequests = asyncHandler(async (req, res) => {
 exports.setOnline = asyncHandler(async (req, res) => {
   const data = await astrologerService.setOnline(req.user._id, req.body.online);
   res.json({ success: true, data: { isOnline: data.isOnline, currentCallStatus: data.currentCallStatus } });
+});
+
+/**
+ * Reachability ACK — the astrologer's device proves it has working internet by
+ * ACKing a silent FCM `presence_ping` (or on any app foreground). Refreshes
+ * lastReachableAt so a killed-but-online device stays online; a device with no
+ * internet can't call this, so its window lapses and reconcile flips it offline.
+ * Must be light + idempotent: called from the headless FCM background isolate.
+ */
+exports.presenceAck = asyncHandler(async (req, res) => {
+  const presenceService = require('../services/presenceService');
+  const data = await presenceService.markReachable(req.user._id);
+  res.json({ success: true, data: data || {} });
 });
 
 /** Astrologer reads their saved payout (bank / UPI) details. */

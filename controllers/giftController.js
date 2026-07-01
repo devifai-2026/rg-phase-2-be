@@ -84,6 +84,7 @@ exports.send = asyncHandler(async (req, res) => {
       sessionId,
       gift: gift.name,
       image: gift.image,
+      emoji: gift.emoji,
       fromAlias: sessionAlias || 'Seeker',
     });
   }
@@ -101,6 +102,7 @@ exports.send = asyncHandler(async (req, res) => {
         liveSessionId: String(ls._id),
         gift: gift.name,
         image: gift.image,
+        emoji: gift.emoji,
         amountRupees,
         fromName: req.user.name || 'Guest',
         superchatTotal: ls.superchatTotal,
@@ -131,7 +133,7 @@ exports.receivedForAstrologer = asyncHandler(async (req, res) => {
     { $group: { _id: '$gift', count: { $sum: 1 } } },
     { $lookup: { from: 'gifts', localField: '_id', foreignField: '_id', as: 'gift' } },
     { $unwind: '$gift' },
-    { $project: { _id: 0, count: 1, name: '$gift.name', image: '$gift.image' } },
+    { $project: { _id: 0, count: 1, name: '$gift.name', image: '$gift.image', emoji: '$gift.emoji' } },
     { $sort: { count: -1 } },
   ]);
   const total = rows.reduce((s, r) => s + r.count, 0);

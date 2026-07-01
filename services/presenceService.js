@@ -105,6 +105,53 @@ async function isOnline(userId) {
 }
 
 /**
+ * The device just PROVED it has working connectivity (a live socket heartbeat or
+ * an FCM presence-ping ACK from a killed/backgrounded app). Refresh reachability
+ * and re-derive presence through the single writer so an astrologer whose socket
+ * dropped but whose phone still has internet stays online. Cheap + idempotent;
+ * recompute only broadcasts on an actual status change.
+ */
+async function markReachable(userId) {
+  return recomputeAstrologerPresence(userId, { connected: true });
+}
+
+/**
+ * Silent-FCM reachability probe. For every toggled-on astrologer whose
+ * lastReachableAt is going stale, send a data-only `presence_ping`. The device
+ * (even killed/backgrounded, as long as it has internet) wakes its FCM isolate
+ * and ACKs via POST /presence/ping-ack → markReachable → stays online. A phone
+ * with no internet can't ACK, so its window lapses and reconcile() flips it
+ * offline. Best-effort; no-op in FCM mock mode (local dev without credentials).
+ */
+async function probeReachability() {
+  const staleBefore = new Date(Date.now() - env.presence.probeStaleAfterMs);
+  // Candidates: intend to be online AND reachability is stale (or never set).
+  const candidates = await AstrologerProfile.find({
+    availabilityPreference: true,
+    $or: [{ lastReachableAt: { $lt: staleBefore } }, { lastReachableAt: { $exists: false } }, { lastReachableAt: null }],
+  }).select('user').limit(500).lean();
+  if (!candidates.length) return 0;
+
+  const fcmService = require('./fcmService');
+  let pinged = 0;
+  for (const c of candidates) {
+    // Data-only, no title/body → the app ACKs silently without drawing a
+    // notification (its background handler special-cases type:'presence_ping').
+    fcmService
+      .sendToUserTokens({
+        userId: c.user,
+        title: '',
+        body: '',
+        data: { type: 'presence_ping', ts: String(Date.now()) },
+      })
+      .catch(() => {}); // dead-token pruning + retry handled inside; ignore here
+    pinged += 1;
+  }
+  logger.debug('presence reachability probe sent', { count: pinged });
+  return pinged;
+}
+
+/**
  * SINGLE SOURCE OF TRUTH for astrologer presence.
  *
  * Effective online = availabilityPreference (their saved toggle intent)
@@ -140,26 +187,34 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
     profile.availabilityPreference = !!profile.isOnline;
   }
 
-  // 2) Resolve the live-connection signal. NOTE: presence is now driven by the
-  //    astrologer's TOGGLE intent alone — a live socket is NOT required to be
-  //    shown online (so force-killing the app, backgrounding, or a dropped
-  //    socket does NOT flip them offline; requests still reach them via the FCM
-  //    full-screen call push and time out if unanswered). `live` is still
-  //    resolved for diagnostics/logging but no longer gates `wantOnline`.
+  // 2) Resolve the live-connection signal. A live socket (or an FCM ping ACK)
+  //    proves the device is reachable RIGHT NOW → refresh lastReachableAt so the
+  //    reachability window below stays fresh. `connected:true` is passed by the
+  //    socket heartbeat and the ping-ack path; `connected:false` by disconnect /
+  //    reconcile. When omitted, derive from the presence store.
   let live = connected;
   if (typeof live !== 'boolean') {
     const doc = await Presence.findOne({ user: userId }).select('online socketCount').lean();
     live = !!(doc && doc.online && doc.socketCount > 0);
   }
+  if (live) profile.lastReachableAt = new Date();
 
-  // 3) Derive the public truth. Online = the astrologer's availability TOGGLE.
+  // 3) Derive the public truth. Online = the astrologer's availability TOGGLE
+  //    AND the device is REACHABLE — i.e. it proved connectivity (socket beat or
+  //    FCM ping ACK) within env.presence.reachableTtlMs. This is what makes an
+  //    app-killed-but-internet-ON astrologer STAY online (the silent FCM ping
+  //    keeps lastReachableAt fresh) while a phone with NO internet auto-flips
+  //    offline once the window lapses — exactly the agreed rule.
+  //
   //    'busy' is sticky ONLY while a real session is actually live — otherwise a
   //    stale busy flag would survive the post-call socket churn (the astro app
   //    drops + reconnects its socket when tearing down a video call, and a plain
   //    currentCallStatus==='busy' check would re-derive busy on reconnect even
   //    though the session already ended → users saw "busy" for a few seconds).
   //    So we only keep busy when an ongoing session exists for this astrologer.
-  const wantOnline = !!profile.availabilityPreference;
+  const reachable = !!(profile.lastReachableAt &&
+    (Date.now() - profile.lastReachableAt.getTime()) < env.presence.reachableTtlMs);
+  const wantOnline = !!profile.availabilityPreference && reachable;
   // An astrologer is busy while EITHER in a 1-on-1 consultation (accepted/ongoing
   // Session) OR broadcasting a LIVE session. Both must be checked, else a periodic
   // presence recompute would drop the busy flag a live broadcaster sets in
@@ -342,6 +397,63 @@ async function fulfillNotifyRequests(profile) {
   logger.info('online alerts sent', { astrologer: String(profile._id), waiters: pending.length, followers: followers.length, users: seen.size });
 }
 
+/**
+ * A seeker just tapped "notify me" on a busy/offline astrologer → nudge the
+ * ASTROLOGER that someone is waiting, so they're pulled back online. Throttled
+ * to at most once per env.notifyMe.astroNudgeThrottleMs per astrologer (a burst
+ * of waiting seekers must not spam them), and carries the current waiting count.
+ *
+ * The throttle is claimed ATOMICALLY (findOneAndUpdate gated on lastWaitingNudgeAt)
+ * so concurrent taps across instances can't double-fire. Best-effort: never
+ * throws — a failed nudge must not break the seeker's notify-me request.
+ *
+ * @param {string} astrologerUserId  the astrologer's owning user id
+ */
+async function nudgeAstrologerWaiting(astrologerUserId) {
+  try {
+    const NotifyRequest = require('../models/NotifyRequest');
+    const notificationService = require('./notificationService');
+
+    const throttleMs = env.notifyMe.astroNudgeThrottleMs;
+    const cutoff = new Date(Date.now() - throttleMs);
+    // Atomically claim the nudge slot: only proceed if we haven't nudged within
+    // the window. This both throttles AND makes concurrent taps race-safe — the
+    // first update wins, the rest match nothing and return null.
+    const claimed = await AstrologerProfile.findOneAndUpdate(
+      {
+        user: astrologerUserId,
+        $or: [{ lastWaitingNudgeAt: { $lt: cutoff } }, { lastWaitingNudgeAt: null }, { lastWaitingNudgeAt: { $exists: false } }],
+      },
+      { $set: { lastWaitingNudgeAt: new Date() } },
+      { new: true }
+    ).select('displayName');
+    if (!claimed) return; // throttled — a recent nudge already went out
+
+    // Count DISTINCT users currently waiting (across all services) so the text
+    // reflects real demand. Dedupe by user (one person waiting on both call+chat
+    // is still one waiter).
+    const waiterIds = await NotifyRequest.distinct('user', { astrologer: astrologerUserId, status: 'pending' });
+    const count = waiterIds.length || 1; // at least the seeker who just tapped
+
+    const body = count === 1
+      ? 'A user is waiting for you. Go online to connect with them now.'
+      : `${count} people are waiting for you. Go online to connect with them now.`;
+
+    await notificationService.notify(astrologerUserId, {
+      type: 'users_waiting',
+      title: count === 1 ? 'Someone is waiting for you' : `${count} people are waiting`,
+      body,
+      // Deep-link to the astrologer dashboard (where the go-online toggle lives).
+      // `type` is duplicated into data so the FCM tap (data-only) routes like the
+      // in-app tap. `waiting` carries the count for any UI that wants it.
+      data: { type: 'users_waiting', kind: 'users_waiting', deeplink: 'rudraganga://astro/home', waiting: count },
+    });
+    logger.info('astrologer waiting-nudge sent', { astrologer: String(astrologerUserId), waiting: count });
+  } catch (e) {
+    logger.warn('nudgeAstrologerWaiting failed', e.message);
+  }
+}
+
 /** Reconcile ghost-online entries (instance crashed without disconnect). */
 async function reconcile() {
   const cutoff = new Date(Date.now() - 90 * 1000);
@@ -350,11 +462,27 @@ async function reconcile() {
     // Mark offline but KEEP the row (preserves last-seen + activity history).
     await Presence.updateOne({ _id: p._id }, { $set: { online: false, socketCount: 0 } });
     // Recompute through the single path so the apps get a proper broadcast,
-    // not just a silent DB write. No live socket → derives to offline.
+    // not just a silent DB write. No live socket → still recomputes; derived
+    // online now depends on reachability, handled by the sweep below.
     await recomputeAstrologerPresence(p.user, { connected: false }).catch(() => {});
   }
-  if (stale.length) logger.warn('Presence reconciled', { count: stale.length });
-  return stale.length;
+
+  // Reachability sweep: any astrologer currently SHOWN online whose device has
+  // not proved connectivity within the TTL (no socket heartbeat AND no FCM ping
+  // ACK — i.e. lost internet) must be flipped offline. recompute re-derives
+  // wantOnline off the now-stale lastReachableAt → offline + one broadcast.
+  const reachCutoff = new Date(Date.now() - env.presence.reachableTtlMs);
+  const unreachable = await AstrologerProfile.find({
+    isOnline: true,
+    $or: [{ lastReachableAt: { $lt: reachCutoff } }, { lastReachableAt: { $exists: false } }, { lastReachableAt: null }],
+  }).select('user').lean();
+  for (const a of unreachable) {
+    await recomputeAstrologerPresence(a.user, { connected: false }).catch(() => {});
+  }
+
+  const flipped = stale.length + unreachable.length;
+  if (flipped) logger.warn('Presence reconciled', { socketStale: stale.length, unreachable: unreachable.length });
+  return flipped;
 }
 
 module.exports = {
@@ -362,9 +490,12 @@ module.exports = {
   userDisconnected,
   heartbeat,
   isOnline,
+  markReachable,
+  probeReachability,
   reconcile,
   markAstrologerOnline,
   getOnlineAstrologerIds,
   recomputeAstrologerPresence,
   setAstrologerBreak,
+  nudgeAstrologerWaiting,
 };

@@ -255,7 +255,7 @@ module.exports = {
       pincode: Joi.string().required(),
     }).required(),
   }),
-  gift: Joi.object({ name: Joi.string().required(), image: Joi.string().allow(''), tokenCost: Joi.number().integer().min(1).required(), isActive: Joi.boolean() }),
+  gift: Joi.object({ name: Joi.string().required(), image: Joi.string().allow(''), emoji: Joi.string().allow(''), tokenCost: Joi.number().integer().min(1).required(), isActive: Joi.boolean() }),
   sendGift: Joi.object({ giftId: objectId.required(), receiverId: objectId.required(), sessionId: Joi.string().allow(''), liveSessionId: Joi.string().allow('') }),
 
   // ── Matrimony / Pooja ──
