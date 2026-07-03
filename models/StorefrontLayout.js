@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * An AI-generated storefront DESIGN SPEC for one astrologer ("Let the Stars
@@ -35,4 +36,4 @@ const storefrontLayoutSchema = new mongoose.Schema(
 
 storefrontLayoutSchema.index({ astrologer: 1, createdAt: -1 });
 
-module.exports = mongoose.model('StorefrontLayout', storefrontLayoutSchema);
+module.exports = defineModel('StorefrontLayout', storefrontLayoutSchema);

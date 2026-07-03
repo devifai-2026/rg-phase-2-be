@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Mongo-backed job for the in-process queue. Atomic claim via findOneAndUpdate. */
 const jobSchema = new mongoose.Schema(
@@ -21,4 +22,4 @@ const jobSchema = new mongoose.Schema(
 jobSchema.index({ status: 1, nextRunAt: 1 });
 jobSchema.index({ dedupeKey: 1 }, { unique: true, sparse: true });
 
-module.exports = mongoose.model('Job', jobSchema);
+module.exports = defineModel('Job', jobSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 // One persistent cart per user. Item prices are NEVER trusted from the cart —
 // they are always re-resolved from the live Product at read/checkout time.
@@ -18,4 +19,4 @@ const cartSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Cart', cartSchema);
+module.exports = defineModel('Cart', cartSchema);

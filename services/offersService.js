@@ -1,13 +1,13 @@
-const Coupon = require('../models/Coupon');
-const Bundle = require('../models/Bundle');
-const Product = require('../models/Product');
+const { defaultContext } = require('../utils/tenantContext');
 const AppError = require('../utils/AppError');
 
 /**
  * Validate a coupon against a cart and compute the discount (whole rupees).
  * cart = { items: [{ product, qty, price, category }], subtotal }
  */
-async function validateCoupon({ code, userId, cart }) {
+async function validateCoupon(ctx, { code, userId, cart }) {
+  ctx = ctx || defaultContext();
+  const Coupon = ctx.model('Coupon');
   const coupon = await Coupon.findOne({ code: String(code || '').toUpperCase().trim() });
   if (!coupon) throw new AppError('Invalid coupon code', 404);
   if (!coupon.isActive) throw new AppError('This coupon is not active', 400);
@@ -46,7 +46,9 @@ async function validateCoupon({ code, userId, cart }) {
 }
 
 /** Mark a coupon used (call after a successful order). */
-async function consumeCoupon(couponId, userId) {
+async function consumeCoupon(ctx, couponId, userId) {
+  ctx = ctx || defaultContext();
+  const Coupon = ctx.model('Coupon');
   if (!couponId) return;
   await Coupon.updateOne({ _id: couponId }, { $inc: { usedCount: 1 } });
   if (userId) {
@@ -58,14 +60,18 @@ async function consumeCoupon(couponId, userId) {
 }
 
 /** Bundles to surface on a product page, priced. */
-async function bundlesForProduct(productId) {
+async function bundlesForProduct(ctx, productId) {
+  ctx = ctx || defaultContext();
+  const Bundle = ctx.model('Bundle');
   const bundles = await Bundle.find({ isActive: true, $or: [{ anchorProduct: productId }, { products: productId }] })
     .populate('products', 'name price mrp images');
   return bundles.map((bd) => priceBundle(bd)).filter(Boolean);
 }
 
 /** All active, priced bundles (for the app's Bundles section / offers strip). */
-async function listActiveBundles({ limit = 50 } = {}) {
+async function listActiveBundles(ctx, { limit = 50 } = {}) {
+  ctx = ctx || defaultContext();
+  const Bundle = ctx.model('Bundle');
   const bundles = await Bundle.find({ isActive: true })
     .sort({ createdAt: -1 }).limit(limit)
     .populate('products', 'name price mrp images');

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Unified consultation session for CALL, CHAT and VIDEO.
@@ -94,4 +95,4 @@ sessionSchema.index({ user: 1, createdAt: -1 });
 sessionSchema.index({ astrologer: 1, createdAt: -1 });
 sessionSchema.index({ status: 1, type: 1 });
 
-module.exports = mongoose.model('Session', sessionSchema);
+module.exports = defineModel('Session', sessionSchema);

@@ -1,9 +1,9 @@
 const axios = require('axios');
-const AstroCache = require('../models/AstroCache');
 const { hashObject } = require('../utils/hash');
 const { decrypt } = require('../utils/secretCrypto');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Wraps VedicAstroAPI (vedicastroapi.com). Results are cached in AstroCache
@@ -20,10 +20,11 @@ const logger = require('../utils/logger');
 // Resolve { apiKey, baseUrl, cacheTtlDays }. Only the key is admin-managed (DB
 // first, env fallback); baseUrl/cacheTtlDays come straight from code. A DB hiccup
 // falls back to the env key so the app never breaks.
-async function resolveConfig() {
+async function resolveConfig(ctx) {
+  ctx = ctx || defaultContext();
   let apiKey = env.vedicAstro.apiKey || '';
   try {
-    const VedicAstroConfig = require('../models/VedicAstroConfig');
+    const VedicAstroConfig = ctx.model('VedicAstroConfig');
     const cfg = await VedicAstroConfig.get();
     const dbKey = cfg.apiKey ? decrypt(cfg.apiKey) : '';
     if (dbKey) apiKey = dbKey;
@@ -34,8 +35,9 @@ async function resolveConfig() {
 }
 
 /** True when a usable API key exists (DB or env). */
-async function isConfigured() {
-  const { apiKey } = await resolveConfig();
+async function isConfigured(ctx) {
+  ctx = ctx || defaultContext();
+  const { apiKey } = await resolveConfig(ctx);
   return !!apiKey;
 }
 
@@ -49,14 +51,16 @@ function normalizeBirth({ dob, tob, lat, lon, tz }) {
   };
 }
 
-async function cachedFetch(endpoint, params) {
+async function cachedFetch(ctx, endpoint, params) {
+  ctx = ctx || defaultContext();
+  const AstroCache = ctx.model('AstroCache');
   const norm = normalizeBirth(params);
   const cacheKey = hashObject({ endpoint, ...norm });
 
   const cached = await AstroCache.findOne({ cacheKey });
   if (cached) return cached.payload;
 
-  const { apiKey, baseUrl, cacheTtlDays } = await resolveConfig();
+  const { apiKey, baseUrl, cacheTtlDays } = await resolveConfig(ctx);
   if (!apiKey) {
     const payload = localCompute(endpoint, norm);
     await AstroCache.create({ cacheKey, endpoint, params: norm, payload, fetchedAt: new Date() });
@@ -102,25 +106,29 @@ function localCompute(endpoint, norm) {
   return { source: 'local', endpoint, moonSign, ascendant, note: 'Approximate local computation (no VedicAstroAPI key configured).' };
 }
 
-async function getChart(birth) {
-  const data = await cachedFetch('horoscope/planet-details', birth);
+async function getChart(ctx, birth) {
+  ctx = ctx || defaultContext();
+  const data = await cachedFetch(ctx, 'horoscope/planet-details', birth);
   // Best-effort extraction of ascendant/moon sign from provider or fallback.
   const moonSign = data.moonSign || (data.response && data.response.moon_sign) || (data.response && data.response.chandra_rasi && data.response.chandra_rasi.name);
   const ascendant = data.ascendant || (data.response && data.response.ascendant);
   return { moonSign, ascendant, raw: data };
 }
 
-async function getKundli(birth) {
-  return cachedFetch('horoscope/chart-image', birth);
+async function getKundli(ctx, birth) {
+  ctx = ctx || defaultContext();
+  return cachedFetch(ctx, 'horoscope/chart-image', birth);
 }
 
-async function getLalKitab(birth) {
-  return cachedFetch('lalkitab/debts', birth);
+async function getLalKitab(ctx, birth) {
+  ctx = ctx || defaultContext();
+  return cachedFetch(ctx, 'lalkitab/debts', birth);
 }
 
 /** Ashtakoot (Guna Milan) — uses provider if configured, else local. */
-async function matchAshtakoot(birth1, birth2) {
-  const { apiKey, baseUrl } = await resolveConfig();
+async function matchAshtakoot(ctx, birth1, birth2) {
+  ctx = ctx || defaultContext();
+  const { apiKey, baseUrl } = await resolveConfig(ctx);
   if (apiKey) {
     try {
       const url = `${baseUrl}/matching/ashtakoot-points`;

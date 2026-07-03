@@ -1,8 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
-const StoreCharges = require('../models/StoreCharges');
 
 /** The singleton charges doc (created with safe defaults on first access). */
-async function getOrCreate() {
+async function getOrCreate(StoreCharges) {
   let doc = await StoreCharges.findOne({ key: 'store' });
   if (!doc) doc = await StoreCharges.create({ key: 'store' });
   return doc;
@@ -10,13 +9,15 @@ async function getOrCreate() {
 
 /** GET /store-charges — public; the app uses this to render the bill. */
 exports.get = asyncHandler(async (req, res) => {
-  const doc = await getOrCreate();
+  const StoreCharges = req.model('StoreCharges');
+  const doc = await getOrCreate(StoreCharges);
   res.json({ success: true, data: doc });
 });
 
 /** PUT /admin/store-charges — admin updates the toggles/values. */
 exports.update = asyncHandler(async (req, res) => {
-  const doc = await getOrCreate();
+  const StoreCharges = req.model('StoreCharges');
+  const doc = await getOrCreate(StoreCharges);
   const { delivery, gst, shipping, platform, freeDeliveryAbove } = req.body;
   // Merge each charge block (keep label defaults).
   const merge = (cur, next) => {

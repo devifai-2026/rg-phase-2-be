@@ -1,6 +1,4 @@
 const axios = require('axios');
-const WithdrawalRequest = require('../models/WithdrawalRequest');
-const AdminSettings = require('../models/AdminSettings');
 const walletService = require('./walletService');
 const notificationService = require('./notificationService');
 const pubsubService = require('./pubsubService');
@@ -8,6 +6,7 @@ const { toRupees } = require('../utils/money');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 function isConfigured() {
   return !!(env.payu.payout.clientId && env.payu.payout.clientSecret);
@@ -16,7 +15,10 @@ function isConfigured() {
 /** Astrologer requests a withdrawal. Locks the funds; admin must approve.
  *  If no bank details are passed, fall back to the saved payout details — and
  *  require that at least one of them exists (no payout without an account). */
-async function requestWithdrawal({ astrologerUserId, amount, bankAccountDetails }) {
+async function requestWithdrawal(ctx, { astrologerUserId, amount, bankAccountDetails }) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
+  const AdminSettings = ctx.model('AdminSettings');
   const settings = await AdminSettings.get();
   if (amount < settings.withdrawalThreshold) {
     throw new AppError(`Minimum withdrawal is ₹${settings.withdrawalThreshold}`, 400);
@@ -25,7 +27,7 @@ async function requestWithdrawal({ astrologerUserId, amount, bankAccountDetails 
   // Resolve the payout target: explicit details, else the saved profile ones.
   let bank = bankAccountDetails;
   if (!bank || (!bank.accountNumber && !bank.upi)) {
-    const AstrologerProfile = require('../models/AstrologerProfile');
+    const AstrologerProfile = ctx.model('AstrologerProfile');
     const prof = await AstrologerProfile.findOne({ user: astrologerUserId }).select('payoutDetails').lean();
     const pd = prof && prof.payoutDetails;
     if (!pd || (!pd.accountNumber && !pd.upi)) {
@@ -34,11 +36,11 @@ async function requestWithdrawal({ astrologerUserId, amount, bankAccountDetails 
     bank = { accountNumber: pd.accountNumber, ifsc: pd.ifsc, name: pd.beneficiaryName, upi: pd.upi };
   }
 
-  const { available } = await walletService.getBalance(astrologerUserId);
+  const { available } = await walletService.getBalance(ctx, astrologerUserId);
   if (available < amount) throw new AppError('Insufficient earnings to withdraw', 402);
 
   // Lock the funds so they can't be spent elsewhere while in flight.
-  await walletService.lock({ userId: astrologerUserId, amount });
+  await walletService.lock(ctx, { userId: astrologerUserId, amount });
 
   const wr = await WithdrawalRequest.create({
     astrologer: astrologerUserId,
@@ -46,7 +48,7 @@ async function requestWithdrawal({ astrologerUserId, amount, bankAccountDetails 
     bankAccountDetails: bank,
     status: 'pending',
   });
-  await notificationService.notify(astrologerUserId, {
+  await notificationService.notify(ctx, astrologerUserId, {
     type: 'withdrawal_status',
     title: 'Withdrawal requested',
     body: `Your withdrawal of ₹${amount} is pending approval.`,
@@ -58,7 +60,9 @@ async function requestWithdrawal({ astrologerUserId, amount, bankAccountDetails 
 }
 
 /** Admin approves -> enqueue the payout job (idempotent by withdrawal id). */
-async function approveWithdrawal(withdrawalId, adminId, note) {
+async function approveWithdrawal(ctx, withdrawalId, adminId, note) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
   const wr = await WithdrawalRequest.findById(withdrawalId);
   if (!wr) throw new AppError('Withdrawal not found', 404);
   if (wr.status !== 'pending') throw new AppError(`Cannot approve a ${wr.status} withdrawal`, 409);
@@ -70,22 +74,24 @@ async function approveWithdrawal(withdrawalId, adminId, note) {
 
   // Pub/Sub fan-out (retries + DLQ via the subscription); falls back to the
   // Mongo queue if Pub/Sub is off. Idempotent: the handler dedupes by refId.
-  await pubsubService.publish('payouts', { withdrawalId: String(wr._id) }, { dedupeKey: `payout:${wr._id}` });
+  await pubsubService.publish('payouts', { withdrawalId: String(wr._id) }, { dedupeKey: `payout:${wr._id}`, tenantSlug: ctx && ctx.tenant && ctx.tenant.slug });
   return wr;
 }
 
-async function rejectWithdrawal(withdrawalId, adminId, note) {
+async function rejectWithdrawal(ctx, withdrawalId, adminId, note) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
   const wr = await WithdrawalRequest.findById(withdrawalId);
   if (!wr) throw new AppError('Withdrawal not found', 404);
   if (!['pending', 'approved'].includes(wr.status)) throw new AppError(`Cannot reject a ${wr.status} withdrawal`, 409);
 
-  await walletService.releaseLock({ userId: wr.astrologer, amount: wr.amount });
+  await walletService.releaseLock(ctx, { userId: wr.astrologer, amount: wr.amount });
   wr.status = 'rejected';
   wr.adminNote = note;
   wr.processedBy = adminId;
   wr.processedAt = new Date();
   await wr.save();
-  await notificationService.notify(wr.astrologer, {
+  await notificationService.notify(ctx, wr.astrologer, {
     type: 'withdrawal_status',
     title: 'Withdrawal rejected',
     body: note || 'Your withdrawal request was rejected.',
@@ -95,7 +101,9 @@ async function rejectWithdrawal(withdrawalId, adminId, note) {
 }
 
 /** Job handler: actually settle via PayU Payout. Retries on failure via queue. */
-async function runPayout({ withdrawalId }) {
+async function runPayout(ctx, { withdrawalId }) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
   const wr = await WithdrawalRequest.findById(withdrawalId);
   if (!wr) return { skipped: 'not found' };
   if (wr.status === 'paid') return { skipped: 'already paid' };
@@ -131,7 +139,7 @@ async function runPayout({ withdrawalId }) {
   }
 
   // Settle the locked funds out of the wallet (idempotent debit).
-  await walletService.settleLocked({
+  await walletService.settleLocked(ctx, {
     userId: wr.astrologer,
     amount: wr.amount,
     source: 'withdrawal',
@@ -143,7 +151,7 @@ async function runPayout({ withdrawalId }) {
     { _id: wr._id },
     { $set: { status: 'paid', payoutRef, processedAt: new Date() } }
   );
-  await notificationService.notify(wr.astrologer, {
+  await notificationService.notify(ctx, wr.astrologer, {
     type: 'withdrawal_status',
     title: 'Withdrawal paid',
     body: `₹${toRupees(wr.amount)} has been transferred to your account.`,
@@ -153,12 +161,14 @@ async function runPayout({ withdrawalId }) {
 }
 
 /** Called by jobWorker when payout permanently fails — release lock + alert. */
-async function onPayoutFailed({ withdrawalId }, errorMessage) {
+async function onPayoutFailed(ctx, { withdrawalId }, errorMessage) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
   const wr = await WithdrawalRequest.findById(withdrawalId);
   if (!wr || wr.status === 'paid') return;
-  await walletService.releaseLock({ userId: wr.astrologer, amount: wr.amount });
+  await walletService.releaseLock(ctx, { userId: wr.astrologer, amount: wr.amount });
   await WithdrawalRequest.updateOne({ _id: wr._id }, { $set: { status: 'failed', adminNote: errorMessage } });
-  await notificationService.notify(wr.astrologer, {
+  await notificationService.notify(ctx, wr.astrologer, {
     type: 'withdrawal_status',
     title: 'Withdrawal failed',
     body: 'We could not process your withdrawal. The amount has been returned to your wallet.',
@@ -166,11 +176,15 @@ async function onPayoutFailed({ withdrawalId }, errorMessage) {
   });
 }
 
-async function listMine(astrologerUserId) {
+async function listMine(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
   return WithdrawalRequest.find({ astrologer: astrologerUserId }).sort({ createdAt: -1 });
 }
 
-async function adminList({ status, page = 1, limit = 20 } = {}) {
+async function adminList(ctx, { status, page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const WithdrawalRequest = ctx.model('WithdrawalRequest');
   const q = status ? { status } : {};
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([

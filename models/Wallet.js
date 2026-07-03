@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 // Force any money value to a whole rupee on write — no decimals, ever.
 const rupees = { type: Number, default: 0, min: 0, set: (v) => Math.round(Number(v) || 0) };
@@ -21,4 +22,4 @@ walletSchema.virtual('available').get(function () {
 walletSchema.set('toJSON', { virtuals: true });
 walletSchema.set('toObject', { virtuals: true });
 
-module.exports = mongoose.model('Wallet', walletSchema);
+module.exports = defineModel('Wallet', walletSchema);

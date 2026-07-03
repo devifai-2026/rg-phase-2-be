@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Auto-generated when an order is paid. Immutable snapshot of the billed order
@@ -44,4 +45,4 @@ const invoiceSchema = new mongoose.Schema(
 // One invoice per (refType, refId). Sparse so legacy order-only docs are fine.
 invoiceSchema.index({ refType: 1, refId: 1 }, { unique: true, sparse: true });
 
-module.exports = mongoose.model('Invoice', invoiceSchema);
+module.exports = defineModel('Invoice', invoiceSchema);

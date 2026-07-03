@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A GLOBAL, shared daily Panchang (Hindu almanac) for one (calendar day,
@@ -30,4 +31,4 @@ const panchangSchema = new mongoose.Schema(
 panchangSchema.index({ date: 1, lat: 1, lon: 1, lang: 1 }, { unique: true });
 panchangSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-module.exports = mongoose.model('Panchang', panchangSchema);
+module.exports = defineModel('Panchang', panchangSchema);

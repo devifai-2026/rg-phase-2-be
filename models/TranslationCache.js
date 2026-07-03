@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Translate-on-read cache. Guarantees NO English fallback: when a piece of
@@ -26,4 +27,4 @@ translationCacheSchema.index({ hash: 1, lang: 1 }, { unique: true });
 
 translationCacheSchema.statics.hashOf = (s) => crypto.createHash('sha1').update(String(s || '')).digest('hex');
 
-module.exports = mongoose.model('TranslationCache', translationCacheSchema);
+module.exports = defineModel('TranslationCache', translationCacheSchema);

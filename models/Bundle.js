@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Curated "frequently bought together" bundle (Flipkart-style). Admin picks
@@ -18,4 +19,4 @@ const bundleSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Bundle', bundleSchema);
+module.exports = defineModel('Bundle', bundleSchema);

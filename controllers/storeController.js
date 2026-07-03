@@ -1,8 +1,5 @@
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
-const Product = require('../models/Product');
-const PoojaType = require('../models/PoojaType');
-const AstrologerProfile = require('../models/AstrologerProfile');
 
 // Fields an astrologer may set on their own product. Admin-only fields
 // (commissionPercent, status, adminNote) are never accepted from this path.
@@ -32,6 +29,7 @@ const STORE_THEMES = ['rudraksh', 'shiva', 'cosmic', 'royal', 'aurora', 'twiligh
 
 /** Save the astrologer's chosen storefront template. PUT /astrologers/me/store-theme */
 exports.setStoreTheme = asyncHandler(async (req, res) => {
+  const AstrologerProfile = req.model('AstrologerProfile');
   const theme = (req.body.theme || '').toString();
   if (!STORE_THEMES.includes(theme)) throw new AppError('Invalid store theme', 400);
   await AstrologerProfile.updateOne({ user: req.user._id }, { $set: { storeTheme: theme } });
@@ -41,6 +39,7 @@ exports.setStoreTheme = asyncHandler(async (req, res) => {
 // ── Astrologer product management ─────────────────────────────────────────
 /** My products (all statuses, for the manage tab). GET /astrologers/me/products */
 exports.myProducts = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const items = await Product.find({ astrologer: req.user._id }).sort({ createdAt: -1 }).lean();
   res.json({ success: true, data: items });
 });
@@ -53,7 +52,7 @@ exports.myProducts = asyncHandler(async (req, res) => {
  */
 exports.shareableCatalogue = asyncHandler(async (req, res) => {
   const aiInsights = require('../services/aiInsightsService');
-  const all = await aiInsights.candidateProducts(req.user._id);
+  const all = await aiInsights.candidateProducts(req.ctx, req.user._id);
   const q = (req.query.q || '').toString().trim().toLowerCase();
   const filtered = q ? all.filter((p) => (p.name || '').toLowerCase().includes(q)) : all;
   const items = filtered.map((p) => ({
@@ -69,6 +68,7 @@ exports.shareableCatalogue = asyncHandler(async (req, res) => {
 
 /** Create a product (starts pending). POST /astrologers/me/products */
 exports.createProduct = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const data = pickProduct(req.body);
   if (!data.name || data.price === undefined) throw new AppError('Name and price are required', 400);
   const product = await Product.create({
@@ -82,6 +82,7 @@ exports.createProduct = asyncHandler(async (req, res) => {
 
 /** Edit my product. Editing resets it to pending (re-review). Only my own. */
 exports.updateProduct = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const product = await Product.findOne({ _id: req.params.id, astrologer: req.user._id });
   if (!product) throw new AppError('Product not found', 404);
   Object.assign(product, pickProduct(req.body));
@@ -93,6 +94,7 @@ exports.updateProduct = asyncHandler(async (req, res) => {
 
 /** Delete my product. DELETE /astrologers/me/products/:id */
 exports.deleteProduct = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const r = await Product.deleteOne({ _id: req.params.id, astrologer: req.user._id });
   if (!r.deletedCount) throw new AppError('Product not found', 404);
   res.json({ success: true, data: { deleted: true } });
@@ -100,11 +102,13 @@ exports.deleteProduct = asyncHandler(async (req, res) => {
 
 // ── Astrologer pooja management ───────────────────────────────────────────
 exports.myPoojas = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const items = await PoojaType.find({ astrologer: req.user._id }).sort({ createdAt: -1 }).lean();
   res.json({ success: true, data: items });
 });
 
 exports.createPooja = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const data = pickPooja(req.body);
   if (!data.name || data.basePrice === undefined) throw new AppError('Name and price are required', 400);
   const pooja = await PoojaType.create({
@@ -119,6 +123,7 @@ exports.createPooja = asyncHandler(async (req, res) => {
 });
 
 exports.updatePooja = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const pooja = await PoojaType.findOne({ _id: req.params.id, astrologer: req.user._id });
   if (!pooja) throw new AppError('Pooja not found', 404);
   Object.assign(pooja, pickPooja(req.body));
@@ -129,6 +134,7 @@ exports.updatePooja = asyncHandler(async (req, res) => {
 });
 
 exports.deletePooja = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const r = await PoojaType.deleteOne({ _id: req.params.id, astrologer: req.user._id });
   if (!r.deletedCount) throw new AppError('Pooja not found', 404);
   res.json({ success: true, data: { deleted: true } });
@@ -141,7 +147,8 @@ exports.deletePooja = asyncHandler(async (req, res) => {
  * plus whether they've flagged it sent to admin. GET /astrologers/me/store-orders
  */
 exports.myStoreOrders = asyncHandler(async (req, res) => {
-  const Order = require('../models/Order');
+  const Order = req.model('Order');
+  const Product = req.model('Product');
   // Find this astrologer's product ids, then orders that include any of them.
   const myProductIds = await Product.find({ astrologer: req.user._id }).distinct('_id');
   if (!myProductIds.length) return res.json({ success: true, data: [] });
@@ -178,7 +185,8 @@ exports.myStoreOrders = asyncHandler(async (req, res) => {
  * POST /astrologers/me/store-orders/:id/sent
  */
 exports.markOrderSentToAdmin = asyncHandler(async (req, res) => {
-  const Order = require('../models/Order');
+  const Order = req.model('Order');
+  const Product = req.model('Product');
   const myProductIds = await Product.find({ astrologer: req.user._id }).distinct('_id');
   const order = await Order.findOne({ _id: req.params.id, 'items.product': { $in: myProductIds } });
   if (!order) throw new AppError('Order not found', 404);
@@ -190,7 +198,7 @@ exports.markOrderSentToAdmin = asyncHandler(async (req, res) => {
 
 /** My pooja bookings (read-only): bookings for my poojas + their status. */
 exports.myPoojaBookings = asyncHandler(async (req, res) => {
-  const PoojaBooking = require('../models/PoojaBooking');
+  const PoojaBooking = req.model('PoojaBooking');
   const rows = await PoojaBooking.find({ astrologer: req.user._id, paymentStatus: 'paid' })
     .sort({ createdAt: -1 }).limit(100).lean();
   const data = rows.map((b) => ({
@@ -212,6 +220,8 @@ exports.myPoojaBookings = asyncHandler(async (req, res) => {
  * GET /admin/store/submissions
  */
 exports.adminListSubmissions = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
+  const PoojaType = req.model('PoojaType');
   const status = req.query.status || 'pending';
   const ownerFilter = { astrologer: { $ne: null }, status };
   const [products, poojas] = await Promise.all([
@@ -223,6 +233,8 @@ exports.adminListSubmissions = asyncHandler(async (req, res) => {
 
 /** Approve an astrologer's item, setting commission. PATCH /admin/store/:kind/:id/approve */
 exports.adminApprove = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
+  const PoojaType = req.model('PoojaType');
   const Model = req.params.kind === 'pooja' ? PoojaType : Product;
   const commissionPercent = Math.max(0, Math.min(100, Number(req.body.commissionPercent) || 0));
   const item = await Model.findOneAndUpdate(
@@ -240,6 +252,8 @@ exports.adminApprove = asyncHandler(async (req, res) => {
  * without changing ownership or approval status. PATCH /admin/store/:kind/:id
  */
 exports.adminEdit = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
+  const PoojaType = req.model('PoojaType');
   const isPooja = req.params.kind === 'pooja';
   const Model = isPooja ? PoojaType : Product;
   const fields = isPooja
@@ -262,6 +276,8 @@ exports.adminEdit = asyncHandler(async (req, res) => {
 
 /** Reject an astrologer's item with a reason. PATCH /admin/store/:kind/:id/reject */
 exports.adminReject = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
+  const PoojaType = req.model('PoojaType');
   const Model = req.params.kind === 'pooja' ? PoojaType : Product;
   const note = (req.body.adminNote || '').toString().slice(0, 500);
   const item = await Model.findOneAndUpdate(
@@ -290,6 +306,9 @@ function notifyOwner(item, type, title, body) {
  * leaks to seekers). :id = AstrologerProfile id.
  */
 exports.publicStorefront = asyncHandler(async (req, res) => {
+  const AstrologerProfile = req.model('AstrologerProfile');
+  const Product = req.model('Product');
+  const PoojaType = req.model('PoojaType');
   const profile = await AstrologerProfile.findById(req.params.id)
     .select('user displayName avatar coverPhoto bio storeTheme activeStorefrontLayout expertise followerSeed followerCount rating reviewCount')
     .populate('user', 'name')

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * One record per (liveSession, user) the first time a user joins that broadcast.
@@ -24,4 +25,4 @@ liveJoinSchema.index({ liveSession: 1, user: 1 }, { unique: true });
 // Fast "has this user ever joined any live?" lookup.
 liveJoinSchema.index({ user: 1, firstJoinedAt: -1 });
 
-module.exports = mongoose.model('LiveJoin', liveJoinSchema);
+module.exports = defineModel('LiveJoin', liveJoinSchema);

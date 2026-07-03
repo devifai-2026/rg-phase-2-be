@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed Agora credentials. ONE document (key:'global'). The video/voice
@@ -31,4 +32,4 @@ agoraSchema.statics.get = async function () {
   return doc;
 };
 
-module.exports = mongoose.model('AgoraConfig', agoraSchema);
+module.exports = defineModel('AgoraConfig', agoraSchema);

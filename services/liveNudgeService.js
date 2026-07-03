@@ -1,9 +1,4 @@
-const LiveSession = require('../models/LiveSession');
-const LiveJoin = require('../models/LiveJoin');
-const LiveNudgeLog = require('../models/LiveNudgeLog');
-const Follow = require('../models/Follow');
-const User = require('../models/User');
-const AstrologerProfile = require('../models/AstrologerProfile');
+const { defaultContext } = require('../utils/tenantContext');
 const notificationService = require('./notificationService');
 const llmService = require('./llmService');
 const promptService = require('./promptService');
@@ -33,7 +28,9 @@ const RANDOM_SAMPLE = parseInt(process.env.LIVE_NUDGE_RANDOM_SAMPLE || '50', 10)
 const RECENT_NUDGE_MS = parseInt(process.env.LIVE_NUDGE_RECENT_MS || String(4 * 60 * 1000), 10);
 
 /** Mark (idempotently) that a user joined this broadcast. */
-async function recordJoin(liveSessionId, userId, astrologerUserId) {
+async function recordJoin(ctx, liveSessionId, userId, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const LiveJoin = ctx.model('LiveJoin');
   try {
     await LiveJoin.updateOne(
       { liveSession: liveSessionId, user: userId },
@@ -51,7 +48,9 @@ async function recordJoin(liveSessionId, userId, astrologerUserId) {
 }
 
 /** Set of userIds who've already joined a given live (so we skip them). */
-async function _joinedUserIds(liveSessionId) {
+async function _joinedUserIds(ctx, liveSessionId) {
+  ctx = ctx || defaultContext();
+  const LiveJoin = ctx.model('LiveJoin');
   const rows = await LiveJoin.find({ liveSession: liveSessionId }).select('user').lean();
   return new Set(rows.map((r) => String(r.user)));
 }
@@ -71,7 +70,9 @@ function _eligible(u) {
  * new count (truthy) if claimed, or 0 if we should skip. Prevents double-send
  * across concurrent instances.
  */
-async function _claimNudge({ liveSessionId, userId, kind, maxCount, minGapMs }) {
+async function _claimNudge(ctx, { liveSessionId, userId, kind, maxCount, minGapMs }) {
+  ctx = ctx || defaultContext();
+  const LiveNudgeLog = ctx.model('LiveNudgeLog');
   const cutoff = new Date(Date.now() - minGapMs);
   const res = await LiveNudgeLog.findOneAndUpdate(
     {
@@ -151,7 +152,11 @@ async function _send(userId, ls, profileId, body, kind) {
  * Targets: (a) all followers not yet joined, plus (b) a random sample of other
  * users who haven't joined THIS live. Each capped to avoid spam.
  */
-async function nudgeForPoll(liveSession, pollQuestion) {
+async function nudgeForPoll(ctx, liveSession, pollQuestion) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Follow = ctx.model('Follow');
+  const User = ctx.model('User');
   try {
     const ls = liveSession;
     const profile = ls.astrologerProfile
@@ -160,7 +165,7 @@ async function nudgeForPoll(liveSession, pollQuestion) {
     const astrologerName = (profile && profile.displayName) || 'Your astrologer';
     const profileId = profile && profile._id;
 
-    const joined = await _joinedUserIds(ls._id);
+    const joined = await _joinedUserIds(ctx, ls._id);
 
     // (a) Followers who haven't joined this live.
     const followRows = await Follow.find({ astrologer: ls.astrologer, active: true }).select('user').lean();
@@ -194,7 +199,7 @@ async function nudgeForPoll(liveSession, pollQuestion) {
       const u = byId.get(t.id);
       if (!_eligible(u)) continue;
       // Skip if we pinged them about this live very recently (any kind).
-      const claimed = await _claimNudge({
+      const claimed = await _claimNudge(ctx, {
         liveSessionId: ls._id, userId: t.id, kind: t.kind === 'follower' ? 'follower' : 'poll',
         maxCount: t.kind === 'follower' ? FOLLOWER_MAX : 2, minGapMs: RECENT_NUDGE_MS,
       });
@@ -219,7 +224,12 @@ async function nudgeForPoll(liveSession, pollQuestion) {
  * FOLLOWER_MAX. The atomic claim enforces both the gap and the cap, so this is
  * safe to run on every instance and self-throttles regardless of run frequency.
  */
-async function sweepLiveNudges() {
+async function sweepLiveNudges(ctx) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Follow = ctx.model('Follow');
+  const User = ctx.model('User');
   const lives = await LiveSession.find({ status: 'live' })
     .select('_id astrologer astrologerProfile topic channelName')
     .limit(100)
@@ -235,7 +245,7 @@ async function sweepLiveNudges() {
       const astrologerName = (profile && profile.displayName) || 'Your astrologer';
       const profileId = profile && profile._id;
 
-      const joined = await _joinedUserIds(ls._id);
+      const joined = await _joinedUserIds(ctx, ls._id);
       const followRows = await Follow.find({ astrologer: ls.astrologer, active: true }).select('user').lean();
       const followerIds = followRows.map((f) => String(f.user)).filter((id) => !joined.has(id));
       if (!followerIds.length) continue;
@@ -248,7 +258,7 @@ async function sweepLiveNudges() {
         const u = byId.get(id);
         if (!_eligible(u)) continue;
         // Claim under the 5-min gap + 3x cap. Skips users nudged recently or capped.
-        const claimed = await _claimNudge({
+        const claimed = await _claimNudge(ctx, {
           liveSessionId: ls._id, userId: id, kind: 'follower',
           maxCount: FOLLOWER_MAX, minGapMs: FOLLOWER_INTERVAL_MS,
         });

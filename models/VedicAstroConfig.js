@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed VedicAstroAPI (vedicastroapi.com) credentials. ONE document
@@ -26,4 +27,4 @@ vedicAstroSchema.statics.get = async function () {
   return doc;
 };
 
-module.exports = mongoose.model('VedicAstroConfig', vedicAstroSchema);
+module.exports = defineModel('VedicAstroConfig', vedicAstroSchema);

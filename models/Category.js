@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const categorySchema = new mongoose.Schema(
   {
@@ -17,4 +18,4 @@ categorySchema.pre('validate', function (next) {
   next();
 });
 
-module.exports = mongoose.model('Category', categorySchema);
+module.exports = defineModel('Category', categorySchema);

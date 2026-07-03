@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-editable override for an LLM SYSTEM prompt. The defaults live in code
@@ -19,4 +20,4 @@ const promptOverrideSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('PromptOverride', promptOverrideSchema);
+module.exports = defineModel('PromptOverride', promptOverrideSchema);

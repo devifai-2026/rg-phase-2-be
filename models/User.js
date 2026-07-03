@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 // One row per logged-in device. A user may be signed in on several devices at
 // once, so this is an array — each entry pairs the device's push token with a
@@ -148,4 +149,4 @@ userSchema.statics.assertPhoneAvailable = async function (phone) {
   throw new AppError(`This phone number is already registered as ${where} on the platform`, 409);
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = defineModel('User', userSchema);

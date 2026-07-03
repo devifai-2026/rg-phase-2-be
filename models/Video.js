@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed YouTube content shown on the app's Home in two horizontal rows:
@@ -23,4 +24,4 @@ const videoSchema = new mongoose.Schema(
 
 videoSchema.index({ kind: 1, isActive: 1, sortOrder: 1 });
 
-module.exports = mongoose.model('Video', videoSchema);
+module.exports = defineModel('Video', videoSchema);

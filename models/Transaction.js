@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Append-only ledger entry. Amounts are whole rupees (positive magnitude).
@@ -27,4 +28,4 @@ const transactionSchema = new mongoose.Schema(
 transactionSchema.index({ user: 1, createdAt: -1 });
 transactionSchema.index({ source: 1, status: 1 });
 
-module.exports = mongoose.model('Transaction', transactionSchema);
+module.exports = defineModel('Transaction', transactionSchema);

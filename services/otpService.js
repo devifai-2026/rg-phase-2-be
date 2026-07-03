@@ -1,10 +1,10 @@
 const bcrypt = require('bcryptjs');
-const OtpRequest = require('../models/OtpRequest');
 const waBridge = require('./waBridgeService');
 const { randomInt } = require('../utils/hash');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 function genCode() {
   // env.isDev uses a fixed code for easy testing; prod is random 6-digit.
@@ -15,7 +15,9 @@ function genCode() {
 }
 
 /** Send (or resend) an OTP to a phone with throttling. */
-async function requestOtp(phone) {
+async function requestOtp(ctx, phone) {
+  ctx = ctx || defaultContext();
+  const OtpRequest = ctx.model('OtpRequest');
   const now = Date.now();
 
   // Rate limiting removed from the platform — no per-phone cooldown / hourly cap.
@@ -52,7 +54,9 @@ async function requestOtp(phone) {
 }
 
 /** Verify a submitted code. Returns true on success; throws otherwise. */
-async function verifyOtp(phone, code) {
+async function verifyOtp(ctx, phone, code) {
+  ctx = ctx || defaultContext();
+  const OtpRequest = ctx.model('OtpRequest');
   const otp = await OtpRequest.findOne({ phone, consumed: false }).sort({ createdAt: -1 }).select('+codeHash');
   if (!otp) throw new AppError('No active OTP. Please request a new one.', 400);
   if (otp.expiresAt.getTime() < Date.now()) throw new AppError('OTP expired. Please request a new one.', 400);

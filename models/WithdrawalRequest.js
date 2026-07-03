@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const withdrawalRequestSchema = new mongoose.Schema(
   {
@@ -20,4 +21,4 @@ const withdrawalRequestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('WithdrawalRequest', withdrawalRequestSchema);
+module.exports = defineModel('WithdrawalRequest', withdrawalRequestSchema);

@@ -1,7 +1,4 @@
-const AstrologerProfile = require('../models/AstrologerProfile');
-const Escalation = require('../models/Escalation');
-const AdminSettings = require('../models/AdminSettings');
-const User = require('../models/User');
+const { defaultContext } = require('../utils/tenantContext');
 const emit = require('../websockets/emit');
 const logger = require('../utils/logger');
 
@@ -10,7 +7,13 @@ const logger = require('../utils/logger');
  * Escalation to admins if the count within the rolling window crosses the
  * configured threshold. The astrologer stays online (per business rule).
  */
-async function recordMiss({ astrologerUserId, sessionId, kind }) {
+async function recordMiss(ctx, { astrologerUserId, sessionId, kind }) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Escalation = ctx.model('Escalation');
+  const AdminSettings = ctx.model('AdminSettings');
+  const User = ctx.model('User');
+
   const settings = await AdminSettings.get();
   const windowMs = settings.escalationWindowMinutes * 60 * 1000;
   const now = Date.now();
@@ -63,7 +66,10 @@ async function recordMiss({ astrologerUserId, sessionId, kind }) {
   }
 }
 
-async function list({ status = 'open', page = 1, limit = 20 } = {}) {
+async function list(ctx, { status = 'open', page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const Escalation = ctx.model('Escalation');
+
   const q = status ? { status } : {};
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -73,7 +79,10 @@ async function list({ status = 'open', page = 1, limit = 20 } = {}) {
   return { items, total, page, limit };
 }
 
-async function resolve(id, adminId, note) {
+async function resolve(ctx, id, adminId, note) {
+  ctx = ctx || defaultContext();
+  const Escalation = ctx.model('Escalation');
+
   await Escalation.updateOne(
     { _id: id },
     { $set: { status: 'resolved', resolvedBy: adminId, resolvedAt: new Date(), adminNote: note } }

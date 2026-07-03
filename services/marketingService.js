@@ -1,6 +1,5 @@
 const crypto = require('crypto');
-const MarketingNotif = require('../models/MarketingNotif');
-const MarketingConfig = require('../models/MarketingConfig');
+const { defaultContext } = require('../utils/tenantContext');
 const llmService = require('./llmService');
 const promptService = require('./promptService');
 const marketingPrompt = require('./prompts/marketing');
@@ -25,16 +24,20 @@ const logger = require('../utils/logger');
 const DEFAULT_TOTAL = 30; // lines per generation (split across the two audiences)
 
 /** Pull up to N active lines for an audience as plain "title — body" strings. */
-async function exampleLines(audience, n = 12) {
+async function exampleLines(ctx, audience, n = 12) {
+  ctx = ctx || defaultContext();
+  const MarketingNotif = ctx.model('MarketingNotif');
   const rows = await MarketingNotif.find({ audience, status: 'active' })
     .sort({ createdAt: -1 }).limit(n).select('title body').lean();
   return rows.map((r) => `${r.title} — ${r.body}`);
 }
 
 /** Generate one audience's batch via the LLM (best-effort). Returns created docs. */
-async function generateFor(audience, count, batch, adminId) {
+async function generateFor(ctx, audience, count, batch, adminId) {
+  ctx = ctx || defaultContext();
+  const MarketingNotif = ctx.model('MarketingNotif');
   if (!llmService.available()) throw new Error('LLM not configured');
-  const examples = await exampleLines(audience);
+  const examples = await exampleLines(ctx, audience);
   const out = await llmService.completeJSON({
     system: await promptService.getSystem('marketing'),
     messages: [{ role: 'user', content: marketingPrompt.buildUserMessage({ audience, count, examples }) }],
@@ -59,12 +62,13 @@ async function generateFor(audience, count, batch, adminId) {
  * Generate a fresh review batch (half users, half astrologers). Returns the
  * pending items for the admin to Save/Reject. Throws if the LLM is unavailable.
  */
-async function generate({ total = DEFAULT_TOTAL, adminId } = {}) {
+async function generate(ctx, { total = DEFAULT_TOTAL, adminId } = {}) {
+  ctx = ctx || defaultContext();
   const batch = crypto.randomUUID();
   const perAudience = Math.max(1, Math.floor(total / 2));
   const [u, a] = await Promise.all([
-    generateFor('users', perAudience, batch, adminId).catch((e) => { logger.warn('marketing gen users failed', e.message); return []; }),
-    generateFor('astrologers', total - perAudience, batch, adminId).catch((e) => { logger.warn('marketing gen astro failed', e.message); return []; }),
+    generateFor(ctx, 'users', perAudience, batch, adminId).catch((e) => { logger.warn('marketing gen users failed', e.message); return []; }),
+    generateFor(ctx, 'astrologers', total - perAudience, batch, adminId).catch((e) => { logger.warn('marketing gen astro failed', e.message); return []; }),
   ]);
   const created = [...u, ...a];
   if (!created.length) throw new Error('Generation produced nothing (LLM unavailable?)');
@@ -73,7 +77,9 @@ async function generate({ total = DEFAULT_TOTAL, adminId } = {}) {
 }
 
 /** Admin review: save (→active) or reject (→rejected) a set of pending ids. */
-async function review({ saveIds = [], rejectIds = [] } = {}) {
+async function review(ctx, { saveIds = [], rejectIds = [] } = {}) {
+  ctx = ctx || defaultContext();
+  const MarketingNotif = ctx.model('MarketingNotif');
   if (saveIds.length) {
     await MarketingNotif.updateMany({ _id: { $in: saveIds }, status: 'pending' }, { $set: { status: 'active' } });
   }
@@ -84,7 +90,9 @@ async function review({ saveIds = [], rejectIds = [] } = {}) {
 }
 
 /** Pick a random active line for an audience (null if the pool is empty). */
-async function pickRandom(audience) {
+async function pickRandom(ctx, audience) {
+  ctx = ctx || defaultContext();
+  const MarketingNotif = ctx.model('MarketingNotif');
   const [doc] = await MarketingNotif.aggregate([
     { $match: { audience, status: 'active' } },
     { $sample: { size: 1 } },
@@ -93,13 +101,15 @@ async function pickRandom(audience) {
 }
 
 /** Broadcast one random active line to each audience. Marks usage. */
-async function sendCycle() {
+async function sendCycle(ctx) {
+  ctx = ctx || defaultContext();
+  const MarketingNotif = ctx.model('MarketingNotif');
   const audiences = ['users', 'astrologers'];
   let sent = 0;
   for (const audience of audiences) {
-    const pick = await pickRandom(audience);
+    const pick = await pickRandom(ctx, audience);
     if (!pick) continue;
-    await broadcastService.send({
+    await broadcastService.send(ctx, {
       title: pick.title, body: pick.body,
       audience, source: 'marketing_ai', channel: 'inapp_push',
       data: { type: 'marketing', deeplink: 'rudraganga://home' },
@@ -115,7 +125,9 @@ async function sendCycle() {
  * whether a cycle is due based on the admin's frequency, then sends. Cheap +
  * idempotent-ish (lastRunAt / lastFixedFireKey guard against double-fires).
  */
-async function tick() {
+async function tick(ctx) {
+  ctx = ctx || defaultContext();
+  const MarketingConfig = ctx.model('MarketingConfig');
   const cfg = await MarketingConfig.get();
   if (!cfg.enabled) return { skipped: 'disabled' };
   const now = new Date();
@@ -145,13 +157,15 @@ async function tick() {
   );
   if (!claim) return { skipped: 'claimed-elsewhere' };
 
-  const sent = await sendCycle();
+  const sent = await sendCycle(ctx);
   logger.info('marketing cycle sent', { frequency: cfg.frequency, sent });
   return { sent };
 }
 
 /** Admin: list the pool (optionally by status/audience). */
-async function list({ status, audience } = {}) {
+async function list(ctx, { status, audience } = {}) {
+  ctx = ctx || defaultContext();
+  const MarketingNotif = ctx.model('MarketingNotif');
   const q = {};
   if (status) q.status = status;
   if (audience) q.audience = audience;

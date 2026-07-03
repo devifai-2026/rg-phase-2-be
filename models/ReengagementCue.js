@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A time-bound, unresolved intent extracted from a chat consultation
@@ -28,4 +29,4 @@ const reengagementCueSchema = new mongoose.Schema(
 // The daily scan selects scheduled cues whose dueDate has arrived.
 reengagementCueSchema.index({ status: 1, dueDate: 1 });
 
-module.exports = mongoose.model('ReengagementCue', reengagementCueSchema);
+module.exports = defineModel('ReengagementCue', reengagementCueSchema);

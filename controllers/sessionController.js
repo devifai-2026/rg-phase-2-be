@@ -1,8 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const sessionService = require('../services/sessionService');
 const chatService = require('../services/chatService');
-const AstrologerProfile = require('../models/AstrologerProfile');
-const Session = require('../models/Session');
 const AppError = require('../utils/AppError');
 
 /**
@@ -24,44 +22,45 @@ function shapeSession(session, viewerId) {
 
 exports.start = asyncHandler(async (req, res) => {
   const { astrologerId, type } = req.body;
-  const data = await sessionService.requestSession({ userId: req.user._id, astrologerUserId: astrologerId, type });
+  const data = await sessionService.requestSession(req.ctx, { userId: req.user._id, astrologerUserId: astrologerId, type });
   res.status(201).json({ success: true, data });
 });
 
 exports.accept = asyncHandler(async (req, res) => {
-  const data = await sessionService.acceptSession({ sessionId: req.params.sessionId, astrologerUserId: req.user._id });
+  const data = await sessionService.acceptSession(req.ctx, { sessionId: req.params.sessionId, astrologerUserId: req.user._id });
   res.json({ success: true, data });
 });
 
 exports.reject = asyncHandler(async (req, res) => {
-  const data = await sessionService.rejectSession({ sessionId: req.params.sessionId, astrologerUserId: req.user._id });
+  const data = await sessionService.rejectSession(req.ctx, { sessionId: req.params.sessionId, astrologerUserId: req.user._id });
   res.json({ success: true, data });
 });
 
 exports.cancel = asyncHandler(async (req, res) => {
-  const data = await sessionService.cancelSession({ sessionId: req.params.sessionId, userId: req.user._id });
+  const data = await sessionService.cancelSession(req.ctx, { sessionId: req.params.sessionId, userId: req.user._id });
   res.json({ success: true, data });
 });
 
 exports.end = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
   // Either participant can end.
   const session = await Session.findOne({ sessionId: req.params.sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (String(session.user) !== String(req.user._id) && String(session.astrologer) !== String(req.user._id)) {
     throw new AppError('Not a participant', 403);
   }
-  const data = await sessionService.endSession({ sessionId: req.params.sessionId, endReason: 'hangup', byUserId: req.user._id });
+  const data = await sessionService.endSession(req.ctx, { sessionId: req.params.sessionId, endReason: 'hangup', byUserId: req.user._id });
   res.json({ success: true, data });
 });
 
 exports.token = asyncHandler(async (req, res) => {
-  const data = await sessionService.getToken(req.params.sessionId, req.user._id);
+  const data = await sessionService.getToken(req.ctx, req.params.sessionId, req.user._id);
   res.json({ success: true, data });
 });
 
 exports.history = asyncHandler(async (req, res) => {
   const role = req.user.role === 'astrologer' ? 'astrologer' : 'user';
-  const data = await sessionService.history(req.user._id, {
+  const data = await sessionService.history(req.ctx, req.user._id, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
     role,
@@ -73,7 +72,7 @@ exports.history = asyncHandler(async (req, res) => {
 });
 
 exports.messages = asyncHandler(async (req, res) => {
-  const data = await chatService.listMessages(req.params.sessionId, req.user._id, {
+  const data = await chatService.listMessages(req.ctx, req.params.sessionId, req.user._id, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '50', 10), 100),
   });
@@ -89,6 +88,7 @@ exports.messages = asyncHandler(async (req, res) => {
  * data:null when there's nothing to resume.
  */
 exports.active = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
   const me = req.user._id;
   const isAstro = req.user.role === 'astrologer';
   // Include 'ringing' so the USER app can resume its "requesting" screen after a
@@ -108,12 +108,13 @@ exports.active = asyncHandler(async (req, res) => {
   // Re-mint a token for media sessions so the app can rejoin the channel.
   let token = null;
   if (session.type === 'call' || session.type === 'video') {
-    try { token = await sessionService.getToken(session.sessionId, me); } catch (_) { /* chat or token issue */ }
+    try { token = await sessionService.getToken(req.ctx, session.sessionId, me); } catch (_) { /* chat or token issue */ }
   }
   res.json({ success: true, data: { session: shaped, token } });
 });
 
 exports.detail = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
   const session = await Session.findOne({ sessionId: req.params.sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (

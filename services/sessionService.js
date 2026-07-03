@@ -1,8 +1,4 @@
 const crypto = require('crypto');
-const Session = require('../models/Session');
-const AstrologerProfile = require('../models/AstrologerProfile');
-const User = require('../models/User');
-const AdminSettings = require('../models/AdminSettings');
 const walletService = require('./walletService');
 const agoraService = require('./agoraService');
 const escalationService = require('./escalationService');
@@ -17,6 +13,7 @@ const { randomSeekerAlias } = require('../utils/alias');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Unified engine for CALL, CHAT and VIDEO sessions. All three are per-minute
@@ -43,9 +40,10 @@ function ratesFor(profile, type) {
  * screen on a fully-closed device tears down instead of ringing to its own
  * timeout. Data-only (no in-app notification) — purely a control message.
  */
-function pushCallCancel(astrologerUserId, sessionId) {
+function pushCallCancel(ctx, astrologerUserId, sessionId) {
+  ctx = ctx || defaultContext();
   return fcmService
-    .sendToUserTokens({
+    .sendToUserTokens(ctx, {
       userId: astrologerUserId,
       title: '',
       body: '',
@@ -55,7 +53,11 @@ function pushCallCancel(astrologerUserId, sessionId) {
 }
 
 /** STEP 1 — user requests a session; we ring the astrologer for 60s. */
-async function requestSession({ userId, astrologerUserId, type }) {
+async function requestSession(ctx, { userId, astrologerUserId, type }) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const AdminSettings = ctx.model('AdminSettings');
+  const Session = ctx.model('Session');
   if (String(userId) === String(astrologerUserId)) throw new AppError('Cannot start a session with yourself', 400);
 
   const profile = await AstrologerProfile.findOne({ user: astrologerUserId });
@@ -68,14 +70,14 @@ async function requestSession({ userId, astrologerUserId, type }) {
   if (adminCutPerMin > ratePerMin) throw new AppError('Misconfigured rate', 500);
 
   // Affordability: require at least 1 minute, reserve up to maxMinutes.
-  const { available } = await walletService.getBalance(userId);
+  const { available } = await walletService.getBalance(ctx, userId);
   if (available < ratePerMin) throw new AppError('Insufficient balance for even 1 minute', 402);
 
   const settings = await AdminSettings.get();
   const maxByBalance = Math.floor(available / ratePerMin);
   const minutesToReserve = Math.min(maxByBalance, settings.callMaxMinutes || env.call.maxMinutes);
   const lockedAmount = ratePerMin * minutesToReserve;
-  await walletService.lock({ userId, amount: lockedAmount });
+  await walletService.lock(ctx, { userId, amount: lockedAmount });
 
   const sessionId = crypto.randomUUID();
   const seekerAlias = randomSeekerAlias(); // anonymous name the astrologer sees
@@ -92,7 +94,7 @@ async function requestSession({ userId, astrologerUserId, type }) {
     ratePerMin,
     adminCutPerMin,
     lockedAmount,
-    agora: isMedia ? { callerUid: agoraService.newUid(), receiverUid: agoraService.newUid() } : {},
+    agora: isMedia ? { callerUid: agoraService.newUid(ctx), receiverUid: agoraService.newUid(ctx) } : {},
   });
 
   // Mark astrologer busy so concurrent callers are gated (atomic).
@@ -109,7 +111,7 @@ async function requestSession({ userId, astrologerUserId, type }) {
     ratePerMin,
     expiresInSec: ringTimeoutSec,
   });
-  await notificationService.notify(astrologerUserId, {
+  await notificationService.notify(ctx, astrologerUserId, {
     type: 'incoming_request',
     title: 'Incoming consultation',
     body: `New ${type} request from ${seekerAlias}`,
@@ -129,7 +131,7 @@ async function requestSession({ userId, astrologerUserId, type }) {
   });
 
   // Schedule the no-answer timeout via the job queue (survives restarts).
-  await jobService.enqueue({
+  await jobService.enqueue(ctx, {
     type: 'ring_timeout',
     payload: { sessionId },
     dedupeKey: `ring:${sessionId}`,
@@ -137,14 +139,17 @@ async function requestSession({ userId, astrologerUserId, type }) {
     maxAttempts: 1,
   });
 
-  const caller = isMedia ? await agoraService.tokenForParticipant(session, userId) : undefined;
+  const caller = isMedia ? await agoraService.tokenForParticipant(ctx, session, userId) : undefined;
   return { session, token: isMedia ? caller : undefined, ringTimeoutSec };
 }
 
 /** STEP 2a — astrologer accepts. The room opens for BOTH but the timer/billing
  *  do NOT start yet — they begin only once both have joined the room (markJoined
  *  below). This guarantees the user isn't charged while the room is loading. */
-async function acceptSession({ sessionId, astrologerUserId }) {
+async function acceptSession(ctx, { sessionId, astrologerUserId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   // Atomic ringing -> accepted transition; only one accept wins.
   const session = await Session.findOneAndUpdate(
     { sessionId, astrologer: astrologerUserId, status: 'ringing' },
@@ -155,17 +160,17 @@ async function acceptSession({ sessionId, astrologerUserId }) {
 
   // Astrologer is now busy.
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { currentCallStatus: 'busy' } });
-  require('./astrologerService').broadcastStatusByUser(astrologerUserId, { isOnline: true, currentCallStatus: 'busy' });
-  await jobService.cancelByDedupe(`ring:${sessionId}`);
+  require('./astrologerService').broadcastStatusByUser(ctx, astrologerUserId, { isOnline: true, currentCallStatus: 'busy' });
+  await jobService.cancelByDedupe(ctx, `ring:${sessionId}`);
   // Dismiss the incoming CallKit screen on ALL the astrologer's devices the
   // moment one accepts — otherwise the original 'incoming' push keeps the native
   // call screen ringing / re-prompting "Accept?" even after they're in the
   // session (the duplicate-accept-notification bug).
-  pushCallCancel(astrologerUserId, sessionId);
+  pushCallCancel(ctx, astrologerUserId, sessionId);
 
   const isMedia = session.type === 'call' || session.type === 'video';
-  const tokenUser = isMedia ? await agoraService.tokenForParticipant(session, session.user) : undefined;
-  const tokenAstro = isMedia ? await agoraService.tokenForParticipant(session, astrologerUserId) : undefined;
+  const tokenUser = isMedia ? await agoraService.tokenForParticipant(ctx, session, session.user) : undefined;
+  const tokenAstro = isMedia ? await agoraService.tokenForParticipant(ctx, session, astrologerUserId) : undefined;
 
   // Tell both sides the request was accepted (room opens). No startedAt yet —
   // the timer starts on the 'session-started' event after both join.
@@ -173,7 +178,7 @@ async function acceptSession({ sessionId, astrologerUserId }) {
   emit.toUser(astrologerUserId, 'request-accepted', { sessionId, type: session.type, token: tokenAstro });
 
   // Notify the user that the astrologer connected.
-  await notificationService.notify(session.user, {
+  await notificationService.notify(ctx, session.user, {
     type: 'request_accepted',
     title: 'Astrologer connected',
     body: `Your ${session.type} consultation is ready.`,
@@ -181,7 +186,7 @@ async function acceptSession({ sessionId, astrologerUserId }) {
   }).catch(() => {});
 
   // The astrologer reaching accept counts as their join.
-  await markJoined({ sessionId, byUserId: astrologerUserId });
+  await markJoined(ctx, { sessionId, byUserId: astrologerUserId });
 
   return { session, token: tokenAstro };
 }
@@ -189,7 +194,9 @@ async function acceptSession({ sessionId, astrologerUserId }) {
 /** Mark that one participant has entered the room. When BOTH have joined we
  *  stamp startedAt, charge minute 1, schedule ticks, recording + system msgs,
  *  and broadcast 'session-started' (carries startedAt → both timers align). */
-async function markJoined({ sessionId, byUserId }) {
+async function markJoined(ctx, { sessionId, byUserId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   let session = await Session.findOne({ sessionId });
   if (!session) return null;
   if (session.status === 'ongoing') return session; // already started
@@ -211,8 +218,8 @@ async function markJoined({ sessionId, byUserId }) {
   );
   if (!started) return session; // someone else already started it
 
-  await _billOneMinute(started, 1);
-  await jobService.enqueue({
+  await _billOneMinute(ctx, started, 1);
+  await jobService.enqueue(ctx, {
     type: 'bill_tick',
     payload: { sessionId, minute: 2 },
     dedupeKey: `bill:${sessionId}:2`,
@@ -228,16 +235,18 @@ async function markJoined({ sessionId, byUserId }) {
   emit.toUser(started.astrologer, 'session-started', { sessionId, type: started.type, startedAt: startedAtIso, astrologerPerMin });
 
   if (started.type !== 'chat') {
-    pubsubService.publish('recordings_start', { sessionId }, { dedupeKey: `rec-start:${sessionId}` }).catch(() => {});
+    pubsubService.publish('recordings_start', { sessionId }, { dedupeKey: `rec-start:${sessionId}`, tenantSlug: ctx && ctx.tenant && ctx.tenant.slug }).catch(() => {});
   }
   if (started.type === 'chat') {
-    postChatJoinSystemMessages(started).catch((e) => logger.debug('join system messages failed', e.message));
+    postChatJoinSystemMessages(ctx, started).catch((e) => logger.debug('join system messages failed', e.message));
   }
   return started;
 }
 
 /** STEP 2b — astrologer rejects. ₹0 charged, lock released, escalation tick. */
-async function rejectSession({ sessionId, astrologerUserId }) {
+async function rejectSession(ctx, { sessionId, astrologerUserId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOneAndUpdate(
     { sessionId, astrologer: astrologerUserId, status: 'ringing' },
     { $set: { status: 'rejected', endedAt: new Date(), endReason: 'hangup' } },
@@ -245,23 +254,25 @@ async function rejectSession({ sessionId, astrologerUserId }) {
   );
   if (!session) throw new AppError('Session not available to reject', 409);
 
-  await walletService.releaseLock({ userId: session.user, amount: session.lockedAmount });
-  await jobService.cancelByDedupe(`ring:${sessionId}`);
+  await walletService.releaseLock(ctx, { userId: session.user, amount: session.lockedAmount });
+  await jobService.cancelByDedupe(ctx, `ring:${sessionId}`);
 
   emit.toUser(session.user, 'request-rejected', { sessionId });
-  await notificationService.notify(session.user, {
+  await notificationService.notify(ctx, session.user, {
     type: 'missed_call',
     title: 'Request declined',
     body: 'The astrologer is unavailable right now.',
     data: { sessionId },
   });
-  await escalationService.recordMiss({ astrologerUserId, sessionId: session._id, kind: 'rejected' });
+  await escalationService.recordMiss(ctx, { astrologerUserId, sessionId: session._id, kind: 'rejected' });
   return session;
 }
 
 /** STEP 2c — the USER cancels their own request while it is still ringing.
  *  ₹0 charged, lock released, ring job cancelled, astrologer ring dismissed. */
-async function cancelSession({ sessionId, userId }) {
+async function cancelSession(ctx, { sessionId, userId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOneAndUpdate(
     { sessionId, user: userId, status: 'ringing' },
     { $set: { status: 'cancelled', endedAt: new Date(), endReason: 'user_cancelled' } },
@@ -269,18 +280,20 @@ async function cancelSession({ sessionId, userId }) {
   );
   if (!session) throw new AppError('Session not available to cancel', 409);
 
-  await walletService.releaseLock({ userId: session.user, amount: session.lockedAmount });
-  await jobService.cancelByDedupe(`ring:${sessionId}`);
+  await walletService.releaseLock(ctx, { userId: session.user, amount: session.lockedAmount });
+  await jobService.cancelByDedupe(ctx, `ring:${sessionId}`);
 
   // Tell the astrologer's ring screen to dismiss, and log the event for admins.
   emit.toUser(session.astrologer, 'request-cancelled', { sessionId });
-  pushCallCancel(session.astrologer, sessionId); // dismiss CallKit on a closed app
+  pushCallCancel(ctx, session.astrologer, sessionId); // dismiss CallKit on a closed app
   emit.adminActivity('session_cancelled', { id: session._id, title: `Request cancelled (${session.type})` });
   return session;
 }
 
 /** Ring timeout (no answer within 60s) => missed, ₹0, lock released. */
-async function handleRingTimeout(sessionId) {
+async function handleRingTimeout(ctx, sessionId) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOneAndUpdate(
     { sessionId, status: 'ringing' },
     { $set: { status: 'missed', endedAt: new Date(), endReason: 'timeout' } },
@@ -288,17 +301,17 @@ async function handleRingTimeout(sessionId) {
   );
   if (!session) return; // already accepted/rejected
 
-  await walletService.releaseLock({ userId: session.user, amount: session.lockedAmount });
+  await walletService.releaseLock(ctx, { userId: session.user, amount: session.lockedAmount });
   emit.toUser(session.user, 'request-missed', { sessionId });
   emit.toUser(session.astrologer, 'request-expired', { sessionId });
-  pushCallCancel(session.astrologer, sessionId); // dismiss CallKit on a closed app
-  await notificationService.notify(session.user, {
+  pushCallCancel(ctx, session.astrologer, sessionId); // dismiss CallKit on a closed app
+  await notificationService.notify(ctx, session.user, {
     type: 'missed_call',
     title: 'No answer',
     body: 'The astrologer did not pick up.',
     data: { sessionId },
   });
-  await escalationService.recordMiss({ astrologerUserId: session.astrologer, sessionId: session._id, kind: 'missed' });
+  await escalationService.recordMiss(ctx, { astrologerUserId: session.astrologer, sessionId: session._id, kind: 'missed' });
 }
 
 /** Format a chat system message payload for emit (mirrors the chat send shape). */
@@ -319,7 +332,9 @@ function _systemPayload(doc, sessionId) {
  *   • User: a default prompt asking for DOB & TOB (only if not already on file),
  *     which they can answer or skip in the UI.
  */
-async function postChatJoinSystemMessages(session) {
+async function postChatJoinSystemMessages(ctx, session) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   const chatService = require('./chatService');
   const u = await User.findById(session.user).select('birthDetails profileCompleted');
   const bd = (u && u.birthDetails) || {};
@@ -335,19 +350,21 @@ async function postChatJoinSystemMessages(session) {
   } else {
     astroText = `${session.seekerAlias} joined. Birth details not provided yet.`;
   }
-  const astroDoc = await chatService.postSystemMessage({ sessionId: session.sessionId, message: astroText, audience: 'astrologer' });
+  const astroDoc = await chatService.postSystemMessage(ctx, { sessionId: session.sessionId, message: astroText, audience: 'astrologer' });
   emit.toUser(session.astrologer, 'receive-message', _systemPayload(astroDoc, session.sessionId));
 
   // ── User prompt (only when birth details are missing) ──
   if (!hasBirth) {
     const userText = 'To get a clearer reading, please share your date of birth and time of birth. You can also skip this.';
-    const userDoc = await chatService.postSystemMessage({ sessionId: session.sessionId, message: userText, audience: 'user' });
+    const userDoc = await chatService.postSystemMessage(ctx, { sessionId: session.sessionId, message: userText, audience: 'user' });
     emit.toUser(session.user, 'receive-message', _systemPayload(userDoc, session.sessionId));
   }
 }
 
 /** Charge exactly one minute against the locked reservation. */
-async function _billOneMinute(session, minute) {
+async function _billOneMinute(ctx, session, minute) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const split = billing.splitForOneMinute(session.ratePerMin, session.adminCutPerMin);
 
   // New-user free chat: if this is a chat session and the user has free minutes,
@@ -355,7 +372,7 @@ async function _billOneMinute(session, minute) {
   // NOT paid for free minutes (it's a platform-funded perk); to pay them, the
   // platform absorbs the cost — here we simply don't bill or credit.
   if (session.type === 'chat') {
-    const User = require('../models/User');
+    const User = ctx.model('User');
     const u = await User.findOneAndUpdate(
       { _id: session.user, freeChatMinutes: { $gte: 1 } },
       { $inc: { freeChatMinutes: -1 } },
@@ -369,7 +386,7 @@ async function _billOneMinute(session, minute) {
   }
 
   // settleLocked is idempotent via the per-minute refId.
-  await walletService.settleLocked({
+  await walletService.settleLocked(ctx, {
     userId: session.user,
     amount: split.total,
     source: session.type,
@@ -392,7 +409,7 @@ async function _billOneMinute(session, minute) {
     }
   );
 
-  emit.toUser(session.user, 'wallet-updated', await walletService.getBalance(session.user));
+  emit.toUser(session.user, 'wallet-updated', await walletService.getBalance(ctx, session.user));
 
   // Early low-balance warning: how many more whole minutes the remaining locked
   // funds can cover. At ≤2 we nudge the user to recharge BEFORE the session ends
@@ -405,7 +422,10 @@ async function _billOneMinute(session, minute) {
 }
 
 /** STEP 3 (recurring) — process a scheduled billing tick. */
-async function processBillTick(sessionId, minute) {
+async function processBillTick(ctx, sessionId, minute) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const AdminSettings = ctx.model('AdminSettings');
   const session = await Session.findOne({ sessionId });
   if (!session || session.status !== 'ongoing') return; // ended already
 
@@ -413,26 +433,26 @@ async function processBillTick(sessionId, minute) {
   const remainingLock = session.lockedAmount - session.totalAmount;
   if (remainingLock < session.ratePerMin) {
     // Cannot afford this minute -> end gracefully.
-    await endSession({ sessionId, endReason: 'low_balance' });
+    await endSession(ctx, { sessionId, endReason: 'low_balance' });
     return;
   }
 
   try {
-    await _billOneMinute(session, minute);
+    await _billOneMinute(ctx, session, minute);
   } catch (e) {
-    await endSession({ sessionId, endReason: 'low_balance' });
+    await endSession(ctx, { sessionId, endReason: 'low_balance' });
     return;
   }
 
   // Cap on max minutes.
   const settings = await AdminSettings.get();
   if (minute >= (settings.callMaxMinutes || env.call.maxMinutes)) {
-    await endSession({ sessionId, endReason: 'timeout' });
+    await endSession(ctx, { sessionId, endReason: 'timeout' });
     return;
   }
 
   // Schedule the next tick.
-  await jobService.enqueue({
+  await jobService.enqueue(ctx, {
     type: 'bill_tick',
     payload: { sessionId, minute: minute + 1 },
     dedupeKey: `bill:${sessionId}:${minute + 1}`,
@@ -445,7 +465,10 @@ async function processBillTick(sessionId, minute) {
  *  spendable funds that we now reserve onto the session so billing continues
  *  seamlessly (no low_balance end). Idempotent-safe: locks only what's available
  *  and capped at callMaxMinutes total. Returns the new minutesLeft. */
-async function topUpSessionLock({ sessionId }) {
+async function topUpSessionLock(ctx, { sessionId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const AdminSettings = ctx.model('AdminSettings');
   const session = await Session.findOne({ sessionId });
   if (!session || session.status !== 'ongoing') return null;
 
@@ -457,24 +480,27 @@ async function topUpSessionLock({ sessionId }) {
   const roomMinutes = Math.max(0, maxMinutes - reservedMinutes);
   if (roomMinutes <= 0) return null;
 
-  const { available } = await walletService.getBalance(session.user);
+  const { available } = await walletService.getBalance(ctx, session.user);
   const affordableMinutes = Math.floor(available / session.ratePerMin);
   const addMinutes = Math.min(roomMinutes, affordableMinutes);
   if (addMinutes <= 0) return null;
 
   const addAmount = addMinutes * session.ratePerMin;
-  await walletService.lock({ userId: session.user, amount: addAmount });
+  await walletService.lock(ctx, { userId: session.user, amount: addAmount });
   await Session.updateOne({ _id: session._id }, { $inc: { lockedAmount: addAmount } });
 
   const newLocked = session.lockedAmount + addAmount;
   const minutesLeft = Math.floor((newLocked - session.totalAmount) / session.ratePerMin);
   emit.toUser(session.user, 'session-extended', { sessionId, minutesLeft });
-  emit.toUser(session.user, 'wallet-updated', await walletService.getBalance(session.user));
+  emit.toUser(session.user, 'wallet-updated', await walletService.getBalance(ctx, session.user));
   return minutesLeft;
 }
 
 /** STEP 4 — end an ongoing session. Reconcile money, credit astrologer. */
-async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
+async function endSession(ctx, { sessionId, endReason = 'hangup', byUserId } = {}) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const session = await Session.findOne({ sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (['completed', 'missed', 'rejected', 'cancelled', 'failed'].includes(session.status)) {
@@ -482,7 +508,7 @@ async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
   }
 
   // Cancel any pending tick.
-  await jobService.cancelByDedupe(`bill:${sessionId}:${session.lastBilledMinute + 1}`);
+  await jobService.cancelByDedupe(ctx, `bill:${sessionId}:${session.lastBilledMinute + 1}`);
 
   const endedAt = new Date();
   const startedAt = session.startedAt || endedAt;
@@ -498,7 +524,7 @@ async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
     const affordable = Math.floor(remainingLock / session.ratePerMin);
     extraMinutes = Math.min(extraMinutes, Math.max(0, affordable));
     for (let i = 0; i < extraMinutes; i++) {
-      await _billOneMinute(session, session.billedMinutes + 1 + i);
+      await _billOneMinute(ctx, session, session.billedMinutes + 1 + i);
     }
   }
 
@@ -506,11 +532,11 @@ async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
 
   // Release any unspent reservation.
   const unspent = finalSession.lockedAmount - finalSession.totalAmount;
-  if (unspent > 0) await walletService.releaseLock({ userId: finalSession.user, amount: unspent });
+  if (unspent > 0) await walletService.releaseLock(ctx, { userId: finalSession.user, amount: unspent });
 
   // Credit astrologer their captured earnings (idempotent).
   if (finalSession.astrologerEarning > 0) {
-    await walletService.credit({
+    await walletService.credit(ctx, {
       userId: finalSession.astrologer,
       amount: finalSession.astrologerEarning,
       source: 'earning',
@@ -518,7 +544,7 @@ async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
       refId: `${sessionId}:earning`,
       relatedSession: finalSession._id,
     });
-    emit.toUser(finalSession.astrologer, 'wallet-updated', await walletService.getBalance(finalSession.astrologer));
+    emit.toUser(finalSession.astrologer, 'wallet-updated', await walletService.getBalance(ctx, finalSession.astrologer));
   }
 
   // Finalize session record.
@@ -565,14 +591,14 @@ async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
 
   // Stop recording for media sessions (Pub/Sub fan-out; Mongo fallback).
   if (finalSession.type !== 'chat') {
-    pubsubService.publish('recordings_stop', { sessionId }, { dedupeKey: `rec-stop:${sessionId}` }).catch(() => {});
+    pubsubService.publish('recordings_stop', { sessionId }, { dedupeKey: `rec-stop:${sessionId}`, tenantSlug: ctx && ctx.tenant && ctx.tenant.slug }).catch(() => {});
   } else {
     // Chat ended: generate the AI recap + product suggestions BEFORE the 7-day
     // ChatMessage TTL wipes the transcript. Fire-and-forget; the job is
     // idempotent (one SessionRecap per session). Only worth doing if the chat
     // actually started (was billed); skips ring-timeouts / never-joined.
     if (finalSession.startedAt) {
-      pubsubService.publish('ai_insights', { sessionId }, { dedupeKey: `recap:${sessionId}` }).catch(() => {});
+      pubsubService.publish('ai_insights', { sessionId }, { dedupeKey: `recap:${sessionId}`, tenantSlug: ctx && ctx.tenant && ctx.tenant.slug }).catch(() => {});
     }
   }
 
@@ -593,21 +619,25 @@ async function endSession({ sessionId, endReason = 'hangup', byUserId } = {}) {
   return summary;
 }
 
-async function getToken(sessionId, userId) {
+async function getToken(ctx, sessionId, userId) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOne({ sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (String(session.user) !== String(userId) && String(session.astrologer) !== String(userId)) {
     throw new AppError('Not a participant', 403);
   }
   if (session.type === 'chat') throw new AppError('Chat sessions have no RTC token', 400);
-  return await agoraService.tokenForParticipant(session, userId);
+  return await agoraService.tokenForParticipant(ctx, session, userId);
 }
 
 // Chat history is retained for 7 days (ChatMessage TTL). A completed chat is
 // only readable while its messages still exist — expose that as a per-row flag.
 const CHAT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-async function history(userId, { page = 1, limit = 20, role, type } = {}) {
+async function history(ctx, userId, { page = 1, limit = 20, role, type } = {}) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const q = role === 'astrologer' ? { astrologer: userId } : { user: userId };
   // Optional service-type filter (chat | call | video) for the history chips.
   if (type && ['chat', 'call', 'video'].includes(type)) q.type = type;

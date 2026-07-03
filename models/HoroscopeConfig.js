@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Single-doc (key:'global') bookkeeping for the daily horoscope PRE-WARM. Its
@@ -21,4 +22,4 @@ horoscopeConfigSchema.statics.get = async function () {
   return doc;
 };
 
-module.exports = mongoose.model('HoroscopeConfig', horoscopeConfigSchema);
+module.exports = defineModel('HoroscopeConfig', horoscopeConfigSchema);

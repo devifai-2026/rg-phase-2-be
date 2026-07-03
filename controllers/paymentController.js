@@ -2,9 +2,6 @@ const asyncHandler = require('../utils/asyncHandler');
 const env = require('../config/env');
 const payuService = require('../services/payuService');
 const walletService = require('../services/walletService');
-const Transaction = require('../models/Transaction');
-const Order = require('../models/Order');
-const Product = require('../models/Product');
 const notificationService = require('../services/notificationService');
 const { toRupees } = require('../utils/money');
 const emit = require('../websockets/emit');
@@ -16,12 +13,12 @@ const logger = require('../utils/logger');
  * locked reservation so per-minute billing keeps running (no low_balance end).
  * Fire-and-forget: must never break the recharge flow.
  */
-function extendActiveSession(userId) {
-  const Session = require('../models/Session');
+function extendActiveSession(ctx, userId) {
+  const Session = ctx.model('Session');
   const sessionService = require('../services/sessionService');
   Session.findOne({ user: userId, status: 'ongoing' })
     .select('sessionId')
-    .then((s) => (s ? sessionService.topUpSessionLock({ sessionId: s.sessionId }) : null))
+    .then((s) => (s ? sessionService.topUpSessionLock(ctx, { sessionId: s.sessionId }) : null))
     .catch((e) => logger.debug('extendActiveSession failed', e.message));
 }
 
@@ -104,8 +101,8 @@ function autoSubmitForm(payment) {
  * keeps it idempotent against the callback.
  */
 exports.payuRedirect = asyncHandler(async (req, res) => {
-  const PoojaBooking = require('../models/PoojaBooking');
-  const User = require('../models/User');
+  const PoojaBooking = req.model('PoojaBooking');
+  const User = req.model('User');
   const booking = await PoojaBooking.findById(req.params.bookingId);
   if (!booking) throw new AppError('Booking not found', 404);
   if (booking.paymentStatus === 'paid') {
@@ -127,8 +124,8 @@ exports.payuRedirect = asyncHandler(async (req, res) => {
     booking.paymentStatus = 'paid';
     booking.status = 'confirmed';
     await booking.save();
-    require('../services/storeEarningsService').bumpPoojaBooked(booking).catch(() => {});
-    require('../services/storeEarningsService').creditAstrologerForBooking(booking).catch(() => {});
+    require('../services/storeEarningsService').bumpPoojaBooked(req.ctx, booking).catch(() => {});
+    require('../services/storeEarningsService').creditAstrologerForBooking(req.ctx, booking).catch(() => {});
     return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h3>✅ Booking confirmed (mock payment)</h3><p>Return to the app.</p></body></html>');
   }
   sendPayuForm(res, payment);
@@ -140,7 +137,8 @@ exports.payuRedirect = asyncHandler(async (req, res) => {
  * browser; it rebuilds the signed form from the pending recharge intent.
  */
 exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
-  const User = require('../models/User');
+  const Transaction = req.model('Transaction');
+  const User = req.model('User');
   const gateways = require('../services/gateways');
   const { txnid } = req.params;
   const pending = await Transaction.findOne({ refId: `pending:${txnid}` });
@@ -149,7 +147,7 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
     return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:40px">Recharge already completed. Return to the app.</body></html>');
   }
   const user = await User.findById(pending.user).select('name email phone');
-  const { adapter, cfg } = await gateways.active();
+  const { adapter, cfg } = await gateways.active(req.ctx);
   const checkout = await adapter.buildCheckout({
     cfg, txnid,
     amountRupees: pending.amount,
@@ -160,11 +158,11 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
   });
   if (checkout.mock) {
     // No keys for the active gateway → credit immediately so dev flow is testable.
-    await walletService.credit({ userId: pending.user, amount: pending.amount, source: 'recharge', description: 'Wallet recharge (mock)', refId: txnid, meta: { txnid } });
+    await walletService.credit(req.ctx, { userId: pending.user, amount: pending.amount, source: 'recharge', description: 'Wallet recharge (mock)', refId: txnid, meta: { txnid } });
     await Transaction.updateOne({ _id: pending._id }, { $set: { status: 'completed' } });
-    require('../services/referralService').onFirstRecharge(pending.user).catch(() => {});
-    extendActiveSession(pending.user); // top up a live session's lock if any
-    emit.toUser(pending.user, 'wallet-updated', await walletService.getBalance(pending.user));
+    require('../services/referralService').onFirstRecharge(req.ctx, pending.user).catch(() => {});
+    extendActiveSession(req.ctx, pending.user); // top up a live session's lock if any
+    emit.toUser(pending.user, 'wallet-updated', await walletService.getBalance(req.ctx, pending.user));
     return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h3>✅ Recharge successful (mock)</h3><p>Return to the app.</p></body></html>');
   }
   sendCheckout(res, checkout);
@@ -172,6 +170,7 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
 
 /** Initiate a wallet recharge via the active gateway. */
 exports.initiateRecharge = asyncHandler(async (req, res) => {
+  const Transaction = req.model('Transaction');
   const gateways = require('../services/gateways');
   const amountRupees = toRupees(req.body.amountRupees);
   const txnid = gateways.newTxnId('rchg');
@@ -204,11 +203,14 @@ exports.initiateRecharge = asyncHandler(async (req, res) => {
 const resultUrl = (status) => `/api/payments/payu/result?status=${encodeURIComponent(status)}`;
 
 exports.payuCallback = asyncHandler(async (req, res) => {
+  const Transaction = req.model('Transaction');
+  const Order = req.model('Order');
+  const Product = req.model('Product');
   const gateways = require('../services/gateways');
   const body = { ...req.query, ...(req.body || {}) }; // GET (Cashfree return) or POST
   // Identify which gateway sent this (Razorpay/Cashfree tag it; default = active).
-  const gwId = body.gateway || (await gateways.active()).id;
-  const { adapter, cfg } = await gateways.byId(gwId);
+  const gwId = body.gateway || (await gateways.active(req.ctx)).id;
+  const { adapter, cfg } = await gateways.byId(req.ctx, gwId);
 
   // Verify the signature/status (may be async, e.g. Cashfree re-queries the order).
   const ok = await adapter.verifyCallback(cfg, body);
@@ -245,7 +247,7 @@ exports.payuCallback = asyncHandler(async (req, res) => {
     }
     const credited = amountRupees != null ? amountRupees : (pending ? pending.amount : 0);
     if (!credited) return res.redirect(resultUrl('failed'));
-    await walletService.credit({
+    await walletService.credit(req.ctx, {
       userId,
       amount: credited,
       source: 'recharge',
@@ -255,17 +257,17 @@ exports.payuCallback = asyncHandler(async (req, res) => {
     });
     if (pending) await Transaction.updateOne({ _id: pending._id }, { $set: { status: 'completed' } });
     // Referral: reward both sides on the referee's first recharge (idempotent).
-    require('../services/referralService').onFirstRecharge(userId).catch(() => {});
+    require('../services/referralService').onFirstRecharge(req.ctx, userId).catch(() => {});
     // If the user recharged DURING a live session, extend its reservation so
     // billing continues without a low_balance end (fire-and-forget).
-    extendActiveSession(userId);
-    const bal = await walletService.getBalance(userId);
+    extendActiveSession(req.ctx, userId);
+    const bal = await walletService.getBalance(req.ctx, userId);
     emit.toUser(userId, 'wallet-updated', bal);
     // System template: "Recharge successful" (sent only if super-admin enabled it).
     const broadcastService = require('../services/broadcastService');
-    const User = require('../models/User');
+    const User = req.model('User');
     const u = await User.findById(userId).select('name');
-    broadcastService.fireEvent('recharge_success', {
+    broadcastService.fireEvent(req.ctx, 'recharge_success', {
       userId,
       vars: { name: u?.name || 'there', amount: credited, balance: bal.balance },
     });
@@ -290,15 +292,15 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       order.status = 'confirmed'; // paid → enters fulfillment as confirmed
       await order.save();
       // Auto-credit astrologer-owned items' sellers (idempotent; non-fatal).
-      require('../services/storeEarningsService').creditAstrologersForOrder(order).catch(() => {});
+      require('../services/storeEarningsService').creditAstrologersForOrder(req.ctx, order).catch(() => {});
       // Auto-generate the invoice (idempotent) + consume coupon if used.
       const invoiceService = require('../services/invoiceService');
-      await invoiceService.createForOrder(order).catch((e) => logger.warn('invoice gen failed', e.message));
+      await invoiceService.createForOrder(req.ctx, order).catch((e) => logger.warn('invoice gen failed', e.message));
       if (order.couponId) {
         const offersService = require('../services/offersService');
-        await offersService.consumeCoupon(order.couponId, order.user).catch(() => {});
+        await offersService.consumeCoupon(req.ctx, order.couponId, order.user).catch(() => {});
       }
-      await notificationService.notify(order.user, {
+      await notificationService.notify(req.ctx, order.user, {
         type: 'order_status',
         title: 'Order confirmed',
         body: 'Your payment was received and your order is confirmed.',
@@ -312,16 +314,16 @@ exports.payuCallback = asyncHandler(async (req, res) => {
 
   // ── Pooja booking payment ──
   if (udf1 === 'pooja') {
-    const PoojaBooking = require('../models/PoojaBooking');
+    const PoojaBooking = req.model('PoojaBooking');
     const booking = await PoojaBooking.findOne({ paymentId: txnid });
     if (booking && booking.paymentStatus !== 'paid') {
       booking.paymentStatus = 'paid';
       booking.status = 'confirmed';
       await booking.save();
       // Bump booked count + auto-credit the astrologer (idempotent; non-fatal).
-      require('../services/storeEarningsService').bumpPoojaBooked(booking).catch(() => {});
-      require('../services/storeEarningsService').creditAstrologerForBooking(booking).catch(() => {});
-      await notificationService.notify(booking.user, {
+      require('../services/storeEarningsService').bumpPoojaBooked(req.ctx, booking).catch(() => {});
+      require('../services/storeEarningsService').creditAstrologerForBooking(req.ctx, booking).catch(() => {});
+      await notificationService.notify(req.ctx, booking.user, {
         type: 'pooja_status',
         title: 'Pooja booking confirmed',
         body: `Your booking for ${booking.poojaType} is confirmed.`,

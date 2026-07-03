@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const kundliMatchSchema = new mongoose.Schema(
   {
@@ -15,4 +16,4 @@ const kundliMatchSchema = new mongoose.Schema(
 
 kundliMatchSchema.index({ profile1: 1, profile2: 1 });
 
-module.exports = mongoose.model('KundliMatch', kundliMatchSchema);
+module.exports = defineModel('KundliMatch', kundliMatchSchema);

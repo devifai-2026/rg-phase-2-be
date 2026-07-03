@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Discount coupon. Amounts are whole rupees; percentages are 0–100. */
 const couponSchema = new mongoose.Schema(
@@ -25,4 +26,4 @@ const couponSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Coupon', couponSchema);
+module.exports = defineModel('Coupon', couponSchema);

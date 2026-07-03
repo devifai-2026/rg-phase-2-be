@@ -1,6 +1,6 @@
 const env = require('../config/env');
 const logger = require('../utils/logger');
-const User = require('../models/User');
+const { defaultContext } = require('../utils/tenantContext');
 const bqService = require('./bqService');
 
 /**
@@ -45,7 +45,9 @@ function init() {
  * (no tokens, only dead/invalid tokens, success) never throw. Bulk broadcasts
  * pass viaBroadcast=true to suppress the throw and tally the result instead.
  */
-async function sendToUserTokens({ userId, title, body, data = {}, viaBroadcast = false }) {
+async function sendToUserTokens(ctx, { userId, title, body, data = {}, viaBroadcast = false }) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   init();
   // Record the push delivery outcome (sent/failed) in BigQuery. no-op when off.
   const logSend = (ok, tokensTotal, tokensOk, error) =>

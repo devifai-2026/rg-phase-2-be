@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A user's request to be notified when a busy/offline astrologer becomes
@@ -20,4 +21,4 @@ const notifyRequestSchema = new mongoose.Schema(
 // One active pending request per (user, astrologer, service).
 notifyRequestSchema.index({ user: 1, astrologer: 1, service: 1, status: 1 });
 
-module.exports = mongoose.model('NotifyRequest', notifyRequestSchema);
+module.exports = defineModel('NotifyRequest', notifyRequestSchema);

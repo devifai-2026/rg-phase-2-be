@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A lightweight "Need help" request raised by a user from an order's detail
@@ -28,4 +29,4 @@ const orderSupportSchema = new mongoose.Schema(
 
 orderSupportSchema.index({ status: 1, createdAt: -1 });
 
-module.exports = mongoose.model('OrderSupport', orderSupportSchema);
+module.exports = defineModel('OrderSupport', orderSupportSchema);

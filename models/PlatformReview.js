@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A review of the PLATFORM/app itself (app rating + feedback), by any user or
@@ -17,4 +18,4 @@ const platformReviewSchema = new mongoose.Schema(
 
 platformReviewSchema.index({ isPublished: 1, createdAt: -1 });
 
-module.exports = mongoose.model('PlatformReview', platformReviewSchema);
+module.exports = defineModel('PlatformReview', platformReviewSchema);

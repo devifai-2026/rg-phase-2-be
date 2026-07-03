@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const supportMessageSchema = new mongoose.Schema(
   {
@@ -34,4 +35,4 @@ const supportTicketSchema = new mongoose.Schema(
 supportTicketSchema.index({ status: 1, createdAt: -1 });
 supportTicketSchema.index({ user: 1, createdAt: -1 });
 
-module.exports = mongoose.model('SupportTicket', supportTicketSchema);
+module.exports = defineModel('SupportTicket', supportTicketSchema);

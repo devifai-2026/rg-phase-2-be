@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A review for an ASTROLOGER. Two sources:
@@ -32,4 +33,4 @@ reviewSchema.index(
   { unique: true, name: 'user_astrologer_unique', partialFilterExpression: { source: 'user' } }
 );
 
-module.exports = mongoose.model('Review', reviewSchema);
+module.exports = defineModel('Review', reviewSchema);

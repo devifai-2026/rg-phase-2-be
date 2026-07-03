@@ -1,9 +1,8 @@
-const User = require('../models/User');
-const AstrologerProfile = require('../models/AstrologerProfile');
 const notificationService = require('./notificationService');
 const cacheService = require('./cacheService');
 const { toRupees } = require('../utils/money');
 const AppError = require('../utils/AppError');
+const { defaultContext } = require('../utils/tenantContext');
 
 // Cache namespace for public astrologer reads. Invalidated on any write below.
 const CACHE_NS = 'astro';
@@ -53,9 +52,10 @@ const DEFAULT_EXPERTISE = [
  * the canonical label). Called whenever an astrologer's expertise is saved so a
  * newly-typed specialization becomes available to everyone. Best-effort.
  */
-async function ensureExpertise(names) {
+async function ensureExpertise(ctx, names) {
+  ctx = ctx || defaultContext();
   if (!Array.isArray(names) || names.length === 0) return;
-  const Expertise = require('../models/Expertise');
+  const Expertise = ctx.model('Expertise');
   for (const raw of names) {
     const name = String(raw || '').trim();
     if (!name) continue;
@@ -75,11 +75,12 @@ async function ensureExpertise(names) {
  * The active expertise catalog (seeded with defaults on first read so the app
  * always gets a populated list). Returns plain display labels, ordered.
  */
-async function listExpertise() {
-  const Expertise = require('../models/Expertise');
+async function listExpertise(ctx) {
+  ctx = ctx || defaultContext();
+  const Expertise = ctx.model('Expertise');
   let rows = await Expertise.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).select('name').lean();
   if (rows.length === 0) {
-    await ensureExpertise(DEFAULT_EXPERTISE);
+    await ensureExpertise(ctx, DEFAULT_EXPERTISE);
     rows = await Expertise.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).select('name').lean();
   }
   return rows.map((r) => r.name);
@@ -90,7 +91,8 @@ async function listExpertise() {
  * lists/rails update in realtime (no refetch). Cheap public payload only.
  * Also drops the public list cache so any fresh fetch is consistent.
  */
-async function broadcastStatus(profileId, { isOnline, currentCallStatus, live, liveSessionId } = {}) {
+async function broadcastStatus(ctx, profileId, { isOnline, currentCallStatus, live, liveSessionId } = {}) {
+  ctx = ctx || defaultContext();
   try {
     const payload = {
       profileId: String(profileId),
@@ -109,9 +111,11 @@ async function broadcastStatus(profileId, { isOnline, currentCallStatus, live, l
 }
 
 /** Look up a profile id by its owning user id, then broadcast its status. */
-async function broadcastStatusByUser(userId, statusFields) {
+async function broadcastStatusByUser(ctx, userId, statusFields) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const p = await AstrologerProfile.findOne({ user: userId }).select('_id').lean();
-  if (p) await broadcastStatus(p._id, statusFields);
+  if (p) await broadcastStatus(ctx, p._id, statusFields);
 }
 
 /**
@@ -134,7 +138,10 @@ async function broadcastStatusByUser(userId, statusFields) {
  *                      a precise message. Omitted when the number is free.
  * No account leak beyond existence + role + stage.
  */
-async function checkExists(rawPhone) {
+async function checkExists(ctx, rawPhone) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const phone = require('../utils/phone').normalizePhone(rawPhone);
   if (!phone) throw new AppError('Enter a valid 10-digit phone number', 400);
   const user = await User.findOne({ phone }).select('role').lean();
@@ -153,7 +160,10 @@ async function checkExists(rawPhone) {
 }
 
 /** Public: submit an astrologer application (lead). No login required. */
-async function submitApplication({ name, phone, email, expertise, languages, experienceYears, note, fcmToken }) {
+async function submitApplication(ctx, { name, phone, email, expertise, languages, experienceYears, note, fcmToken }) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   // Normalize to the canonical stored format (91 + 10 digits) so the same
   // person is found by OTP login (verifyOtp) and the exists-check later.
   phone = require('../utils/phone').normalizePhone(phone);
@@ -166,7 +176,7 @@ async function submitApplication({ name, phone, email, expertise, languages, exp
   // Store the device push token so the "you're approved" notification reaches
   // this device when an admin activates the profile (best-effort).
   if (fcmToken) {
-    try { await require('./authService').registerFcmToken(user._id, fcmToken, 'android'); }
+    try { await require('./authService').registerFcmToken(ctx, user._id, fcmToken, 'android'); }
     catch (e) { require('../utils/logger').debug('apply fcm store failed', e.message); }
   }
 
@@ -184,8 +194,8 @@ async function submitApplication({ name, phone, email, expertise, languages, exp
     currentCallStatus: 'offline',
   });
   await User.updateOne({ _id: user._id }, { $set: { astrologerProfile: profile._id } });
-  await ensureExpertise(expertise); // grow the shared catalog with any new values
-  await translateName(profile); // transliterate name now (ready when activated)
+  await ensureExpertise(ctx, expertise); // grow the shared catalog with any new values
+  await translateName(ctx, profile); // transliterate name now (ready when activated)
 
   // Live admin-console badge + bell (new astrologer registration to review).
   // Routes to the Applications page in the admin.
@@ -218,7 +228,10 @@ function buildRates(input) {
 }
 
 /** Admin: update/activate an astrologer profile (rates, commission, KYC, status). */
-async function adminUpdate(profileId, body, adminId) {
+async function adminUpdate(ctx, profileId, body, adminId) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(profileId);
   if (!profile) throw new AppError('Astrologer profile not found', 404);
 
@@ -241,7 +254,7 @@ async function adminUpdate(profileId, body, adminId) {
     if (!owner) throw new AppError('Astrologer user not found', 404);
     if (newPhone !== owner.phone) {
       if (!code) throw new AppError('Phone verification code is required', 400);
-      await require('./otpService').verifyOtp(newPhone, code);
+      await require('./otpService').verifyOtp(ctx, newPhone, code);
       await User.assertPhoneAvailable(newPhone);
       owner.phone = newPhone;
       owner.isPhoneVerified = true;
@@ -274,7 +287,7 @@ async function adminUpdate(profileId, body, adminId) {
       profile.activatedBy = adminId;
       // Promote the user to astrologer role on activation.
       await User.updateOne({ _id: profile.user }, { $set: { role: 'astrologer' } });
-      await notificationService.notify(profile.user, {
+      await notificationService.notify(ctx, profile.user, {
         type: 'system',
         title: 'You are live!',
         body: 'Your astrologer profile has been approved. Go online to start receiving consultations.',
@@ -283,16 +296,19 @@ async function adminUpdate(profileId, body, adminId) {
   }
 
   await profile.save();
-  await ensureExpertise(rest.expertise); // catalog grows with admin-typed values
+  await ensureExpertise(ctx, rest.expertise); // catalog grows with admin-typed values
   // Re-translate bio / re-transliterate name if they changed.
-  if (bioChanged) await translateBio(profile);
-  if (nameChanged) await translateName(profile);
+  if (bioChanged) await translateBio(ctx, profile);
+  if (nameChanged) await translateName(ctx, profile);
   await invalidateAstroCache();
   return profile;
 }
 
 /** Admin creates an astrologer directly (manual onboarding). */
-async function adminCreate(body, adminId) {
+async function adminCreate(ctx, body, adminId) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const { name, email, rates, code, phone: _rawPhone, ...rest } = body;
   // Dedupe tag lists case-insensitively (no "bengali" + "Bengali").
   if (rest.languages !== undefined) rest.languages = dedupeTags(rest.languages);
@@ -305,7 +321,7 @@ async function adminCreate(body, adminId) {
   }
   // The phone is the astrologer's OTP login — verify it before claiming it.
   if (!code) throw new AppError('Phone verification code is required', 400);
-  await require('./otpService').verifyOtp(phone, code);
+  await require('./otpService').verifyOtp(ctx, phone, code);
   // Platform-wide uniqueness: the number must not already belong to any account.
   await User.assertPhoneAvailable(phone);
   const user = await User.create({ name, phone, email, role: 'astrologer', isPhoneVerified: true });
@@ -326,23 +342,24 @@ async function adminCreate(body, adminId) {
     currentCallStatus: 'offline',
   });
   await User.updateOne({ _id: user._id }, { $set: { astrologerProfile: profile._id } });
-  await ensureExpertise(rest.expertise); // catalog grows with admin-typed values
+  await ensureExpertise(ctx, rest.expertise); // catalog grows with admin-typed values
   // Auto-translate the bio (GCP) + transliterate the name (rule-based) into all
   // languages at insert-time so the user app renders them localized immediately.
-  await translateBio(profile);
-  await translateName(profile);
+  await translateBio(ctx, profile);
+  await translateName(ctx, profile);
   await invalidateAstroCache();
   // System template: welcome notification for the new astrologer (if enabled).
-  require('./broadcastService').fireEvent('astrologer_signup', { userId: user._id, vars: { name: name || 'there' } });
+  require('./broadcastService').fireEvent(ctx, 'astrologer_signup', { userId: user._id, vars: { name: name || 'there' } });
   return profile;
 }
 
 /** Translate a profile's bio into all supported languages and persist bioI18n. */
-async function translateBio(profile) {
+async function translateBio(ctx, profile) {
+  ctx = ctx || defaultContext();
   if (!profile.bio) return;
   try {
     const translateService = require('./translateService');
-    const map = await translateService.localize(profile.bio); // {en,hi,bn,mr,pa,as}
+    const map = await translateService.localize(ctx, profile.bio); // {en,hi,bn,mr,pa,as}
     delete map.en; // en lives in `bio`
     profile.bioI18n = map;
     await profile.save();
@@ -359,7 +376,8 @@ async function translateBio(profile) {
  * overridden is NOT done here — a fresh transliteration replaces the map; use
  * the admin edit path to pin a corrected name after.
  */
-async function translateName(profile) {
+async function translateName(ctx, profile) {
+  ctx = ctx || defaultContext();
   if (!profile.displayName) return;
   try {
     const transliterateService = require('./transliterateService');
@@ -373,7 +391,10 @@ async function translateName(profile) {
 }
 
 /** Admin removes (deactivates) an astrologer. */
-async function adminDelete(profileId, adminId) {
+async function adminDelete(ctx, profileId, adminId) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(profileId);
   if (!profile) throw new AppError('Astrologer not found', 404);
   profile.applicationStatus = 'suspended';
@@ -382,7 +403,7 @@ async function adminDelete(profileId, adminId) {
   await profile.save();
   await User.updateOne({ _id: profile.user }, { $set: { role: 'user' } });
   await invalidateAstroCache();
-  await broadcastStatus(profile._id, { isOnline: false, currentCallStatus: 'offline' });
+  await broadcastStatus(ctx, profile._id, { isOnline: false, currentCallStatus: 'offline' });
 }
 
 /**
@@ -392,7 +413,10 @@ async function adminDelete(profileId, adminId) {
  * removes that too — freeing the phone number for reuse. Refuses to delete an
  * active astrologer (suspend that via adminDelete instead).
  */
-async function adminDeleteApplication(profileId) {
+async function adminDeleteApplication(ctx, profileId) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(profileId);
   if (!profile) throw new AppError('Application not found', 404);
   if (profile.applicationStatus === 'active') {
@@ -416,7 +440,9 @@ async function adminDeleteApplication(profileId) {
 const PUBLIC_EXCLUDE = '-reviews -recentMisses -kycDocuments -payoutDetails -adminNote';
 
 /** Public list of active, available astrologers (optionally filtered). */
-async function listPublic({ q: search, expertise, language, online, featured, maxPrice, city, random, page = 1, limit = 20 } = {}) {
+async function listPublic(ctx, { q: search, expertise, language, online, featured, maxPrice, city, random, page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const term = (search || '').trim();
   // "Nearby" = same city. We match the leading city token (the device's
   // reverse-geocoded label can be "Bengaluru, Karnataka" while the stored
@@ -483,7 +509,9 @@ async function listPublic({ q: search, expertise, language, online, featured, ma
   return cacheService.withCache(CACHE_NS, cacheKey, LIST_TTL, run);
 }
 
-async function getPublic(profileId) {
+async function getPublic(ctx, profileId) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const cached = await cacheService.withCache(CACHE_NS, `profile:${profileId}`, PROFILE_TTL, async () => {
     const profile = await AstrologerProfile.findById(profileId)
       .select('-recentMisses -kycDocuments -payoutDetails -adminNote')
@@ -498,7 +526,7 @@ async function getPublic(profileId) {
   // 'busy' otherwise wouldn't tell the detail screen this is a LIVE session it
   // can join. Attach live + liveSessionId so the app shows "Live · tap to join".
   try {
-    const LiveSession = require('../models/LiveSession');
+    const LiveSession = ctx.model('LiveSession');
     const ls = await LiveSession.findOne({ astrologerProfile: profileId, status: 'live' }).select('_id').lean();
     if (ls) return { ...cached, live: true, liveSessionId: String(ls._id) };
   } catch (_) { /* best-effort — fall through to the plain profile */ }
@@ -511,7 +539,10 @@ async function getPublic(profileId) {
  * UI language and is saved on the User (mirrors the device choice). Re-translates
  * the bio if it changed. Returns the fresh profile.
  */
-async function updateMyProfile(userId, body) {
+async function updateMyProfile(ctx, userId, body) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profile = await AstrologerProfile.findOne({ user: userId });
   if (!profile) throw new AppError('Astrologer profile not found', 404);
 
@@ -525,8 +556,8 @@ async function updateMyProfile(userId, body) {
     if (editable[k] !== undefined) profile[k] = editable[k];
   }
   await profile.save();
-  if (editable.expertise !== undefined) await ensureExpertise(editable.expertise);
-  if (bioChanged) await translateBio(profile);
+  if (editable.expertise !== undefined) await ensureExpertise(ctx, editable.expertise);
+  if (bioChanged) await translateBio(ctx, profile);
 
   // UI language + onboarding-done flag live on the User.
   const userSet = {};
@@ -543,8 +574,9 @@ async function updateMyProfile(userId, body) {
  * minutes / earnings for chat/call/video) from completed sessions, plus
  * this-month earnings. Balance comes from the wallet endpoint separately.
  */
-async function myStats(userId) {
-  const Session = require('../models/Session');
+async function myStats(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -586,7 +618,9 @@ async function myStats(userId) {
  * derive the public truth (intent AND a live socket) + emit the one canonical
  * `astrologer-status` broadcast — keeping HTTP and socket paths identical.
  */
-async function setOnline(userId, online) {
+async function setOnline(ctx, userId, online) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profile = await AstrologerProfile.findOne({ user: userId });
   if (!profile) throw new AppError('Astrologer profile not found', 404);
   if (profile.applicationStatus !== 'active') throw new AppError('Profile not yet activated', 403);
@@ -594,7 +628,7 @@ async function setOnline(userId, online) {
   // billed; the astrologer must end the session first. (Going online is always
   // allowed.)
   if (!online) {
-    const Session = require('../models/Session');
+    const Session = ctx.model('Session');
     const inSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
     if (inSession) throw new AppError('You are in a consultation. End it before going offline.', 409);
   }
@@ -604,6 +638,7 @@ async function setOnline(userId, online) {
   // back to offline and clobber the socket path's correct result). Going offline:
   // intent forces offline regardless, so leave the connection signal to derive.
   const result = await require('./presenceService').recomputeAstrologerPresence(
+    ctx,
     userId,
     online ? { preference: true, connected: true } : { preference: false }
   );
@@ -611,7 +646,9 @@ async function setOnline(userId, online) {
 }
 
 /** Admin: list applications by status. */
-async function adminList({ status, page = 1, limit = 20 } = {}) {
+async function adminList(ctx, { status, page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const q = status ? { applicationStatus: status } : {};
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([

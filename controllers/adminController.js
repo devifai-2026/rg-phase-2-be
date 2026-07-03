@@ -8,16 +8,11 @@ const notificationService = require('../services/notificationService');
 const emit = require('../websockets/emit');
 const { randomToken } = require('../utils/hash');
 const { toRupees } = require('../utils/money');
-const AdminSettings = require('../models/AdminSettings');
-const User = require('../models/User');
-const Transaction = require('../models/Transaction');
-const Session = require('../models/Session');
-const Product = require('../models/Product');
 const AppError = require('../utils/AppError');
 
 // ── Astrologers ──
 exports.listAstrologers = asyncHandler(async (req, res) => {
-  const data = await astrologerService.adminList({
+  const data = await astrologerService.adminList(req.ctx, {
     status: req.query.status,
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
@@ -26,13 +21,13 @@ exports.listAstrologers = asyncHandler(async (req, res) => {
 });
 
 exports.updateAstrologer = asyncHandler(async (req, res) => {
-  const data = await astrologerService.adminUpdate(req.params.id, req.body, req.user._id);
+  const data = await astrologerService.adminUpdate(req.ctx, req.params.id, req.body, req.user._id);
   res.json({ success: true, data });
 });
 
 // ── Withdrawals ──
 exports.listWithdrawals = asyncHandler(async (req, res) => {
-  const data = await payoutService.adminList({
+  const data = await payoutService.adminList(req.ctx, {
     status: req.query.status,
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
@@ -41,18 +36,18 @@ exports.listWithdrawals = asyncHandler(async (req, res) => {
 });
 
 exports.approveWithdrawal = asyncHandler(async (req, res) => {
-  const data = await payoutService.approveWithdrawal(req.params.id, req.user._id, req.body.note);
+  const data = await payoutService.approveWithdrawal(req.ctx, req.params.id, req.user._id, req.body.note);
   res.json({ success: true, data });
 });
 
 exports.rejectWithdrawal = asyncHandler(async (req, res) => {
-  const data = await payoutService.rejectWithdrawal(req.params.id, req.user._id, req.body.note);
+  const data = await payoutService.rejectWithdrawal(req.ctx, req.params.id, req.user._id, req.body.note);
   res.json({ success: true, data });
 });
 
 // ── Escalations ──
 exports.listEscalations = asyncHandler(async (req, res) => {
-  const data = await escalationService.list({
+  const data = await escalationService.list(req.ctx, {
     status: req.query.status || 'open',
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
@@ -61,17 +56,19 @@ exports.listEscalations = asyncHandler(async (req, res) => {
 });
 
 exports.resolveEscalation = asyncHandler(async (req, res) => {
-  await escalationService.resolve(req.params.id, req.user._id, req.body.note);
+  await escalationService.resolve(req.ctx, req.params.id, req.user._id, req.body.note);
   res.json({ success: true });
 });
 
 // ── Settings ──
 exports.getSettings = asyncHandler(async (req, res) => {
+  const AdminSettings = req.model('AdminSettings');
   const s = await AdminSettings.get();
   res.json({ success: true, data: s });
 });
 
 exports.updateSettings = asyncHandler(async (req, res) => {
+  const AdminSettings = req.model('AdminSettings');
   const s = await AdminSettings.get();
   Object.assign(s, req.body);
   await s.save();
@@ -82,13 +79,13 @@ exports.updateSettings = asyncHandler(async (req, res) => {
 // ── Admin adds a user (with OTP verification) ──
 exports.requestUserOtp = asyncHandler(async (req, res) => {
   const authService = require('../services/authService');
-  const data = await authService.adminRequestUserOtp(req.body.phone);
+  const data = await authService.adminRequestUserOtp(req.ctx, req.body.phone);
   res.json({ success: true, data });
 });
 
 exports.createUser = asyncHandler(async (req, res) => {
   const authService = require('../services/authService');
-  const user = await authService.adminCreateUser({
+  const user = await authService.adminCreateUser(req.ctx, {
     phone: req.body.phone,
     code: req.body.code,
     name: req.body.name,
@@ -98,7 +95,8 @@ exports.createUser = asyncHandler(async (req, res) => {
 });
 
 exports.listUsers = asyncHandler(async (req, res) => {
-  const Wallet = require('../models/Wallet');
+  const User = req.model('User');
+  const Wallet = req.model('Wallet');
   const q = req.query.role ? { role: req.query.role } : { role: 'user' };
   if (req.query.search) {
     q.$or = [{ name: new RegExp(req.query.search, 'i') }, { phone: new RegExp(req.query.search, 'i') }];
@@ -122,6 +120,7 @@ exports.listUsers = asyncHandler(async (req, res) => {
 });
 
 exports.blockUser = asyncHandler(async (req, res) => {
+  const User = req.model('User');
   await User.updateOne({ _id: req.params.id }, { $set: { isBlocked: !!req.body.blocked } });
   res.json({ success: true });
 });
@@ -134,8 +133,9 @@ exports.blockUser = asyncHandler(async (req, res) => {
  * for audit (it references the id but the account is gone).
  */
 exports.deleteUser = asyncHandler(async (req, res) => {
-  const Wallet = require('../models/Wallet');
-  const RefreshToken = require('../models/RefreshToken');
+  const User = req.model('User');
+  const Wallet = req.model('Wallet');
+  const RefreshToken = req.model('RefreshToken');
   const user = await User.findById(req.params.id).select('role');
   if (!user) throw new AppError('User not found', 404);
   if (user.role !== 'user') throw new AppError('Only seeker accounts can be deleted here. Use the Astrologers tab for astrologers.', 400);
@@ -150,12 +150,15 @@ exports.deleteUser = asyncHandler(async (req, res) => {
 
 // ── Full 360° user detail ──
 exports.userDetail = asyncHandler(async (req, res) => {
-  const Wallet = require('../models/Wallet');
-  const Order = require('../models/Order');
-  const GiftTransaction = require('../models/GiftTransaction');
-  const Presence = require('../models/Presence');
-  const Follow = require('../models/Follow');
-  const Notification = require('../models/Notification');
+  const User = req.model('User');
+  const Transaction = req.model('Transaction');
+  const Session = req.model('Session');
+  const Wallet = req.model('Wallet');
+  const Order = req.model('Order');
+  const GiftTransaction = req.model('GiftTransaction');
+  const Presence = req.model('Presence');
+  const Follow = req.model('Follow');
+  const Notification = req.model('Notification');
   const id = req.params.id;
 
   const user = await User.findById(id).lean();
@@ -234,11 +237,12 @@ exports.userDetail = asyncHandler(async (req, res) => {
 
 // ── Full astrologer detail (earnings, withdrawals, gifts, reviews, sessions) ──
 exports.astrologerFull = asyncHandler(async (req, res) => {
-  const AstrologerProfile = require('../models/AstrologerProfile');
-  const Wallet = require('../models/Wallet');
-  const WithdrawalRequest = require('../models/WithdrawalRequest');
-  const GiftTransaction = require('../models/GiftTransaction');
-  const Review = require('../models/Review');
+  const Session = req.model('Session');
+  const AstrologerProfile = req.model('AstrologerProfile');
+  const Wallet = req.model('Wallet');
+  const WithdrawalRequest = req.model('WithdrawalRequest');
+  const GiftTransaction = req.model('GiftTransaction');
+  const Review = req.model('Review');
   const presenceService = require('../services/presenceService');
 
   const profile = await AstrologerProfile.findById(req.params.id).populate('user', 'name phone email isBlocked permissions language').lean();
@@ -251,7 +255,7 @@ exports.astrologerFull = asyncHandler(async (req, res) => {
     GiftTransaction.find({ receiver: uid }).sort({ createdAt: -1 }).limit(50).populate('gift', 'name').populate('sender', 'name').lean(),
     Review.find({ astrologer: uid }).sort({ createdAt: -1 }).limit(50).populate('user', 'name').lean(),
     Session.find({ astrologer: uid }).sort({ createdAt: -1 }).limit(100).populate('user', 'name').lean(),
-    presenceService.isOnline(uid).catch(() => false),
+    presenceService.isOnline(req.ctx, uid).catch(() => false),
     Session.aggregate([{ $match: { astrologer: uid, status: 'completed' } }, { $group: { _id: '$type', count: { $sum: 1 }, earnings: { $sum: '$astrologerEarning' }, minutes: { $sum: '$billedMinutes' } } }]),
   ]);
 
@@ -276,7 +280,7 @@ exports.astrologerFull = asyncHandler(async (req, res) => {
 // ── Support tickets ──
 const supportService = require('../services/supportService');
 exports.listTickets = asyncHandler(async (req, res) => {
-  const data = await supportService.adminList({
+  const data = await supportService.adminList(req.ctx, {
     status: req.query.status,
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
@@ -284,11 +288,11 @@ exports.listTickets = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 exports.replyTicket = asyncHandler(async (req, res) => {
-  const data = await supportService.reply({ ticketId: req.params.id, senderId: req.user._id, fromRole: 'admin', message: req.body.message, isAdmin: true });
+  const data = await supportService.reply(req.ctx, { ticketId: req.params.id, senderId: req.user._id, fromRole: 'admin', message: req.body.message, isAdmin: true });
   res.json({ success: true, data });
 });
 exports.setTicketStatus = asyncHandler(async (req, res) => {
-  const data = await supportService.setStatus({ ticketId: req.params.id, status: req.body.status, adminId: req.user._id });
+  const data = await supportService.setStatus(req.ctx, { ticketId: req.params.id, status: req.body.status, adminId: req.user._id });
   res.json({ success: true, data });
 });
 
@@ -313,6 +317,8 @@ function txnMatch(q) {
 }
 
 exports.listTransactions = asyncHandler(async (req, res) => {
+  const User = req.model('User');
+  const Transaction = req.model('Transaction');
   const match = txnMatch(req.query);
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '25', 10), 200);
@@ -331,6 +337,8 @@ exports.listTransactions = asyncHandler(async (req, res) => {
 });
 
 exports.transactionsSummary = asyncHandler(async (req, res) => {
+  const User = req.model('User');
+  const Transaction = req.model('Transaction');
   const match = txnMatch(req.query);
   if (req.query.search) {
     const users = await User.find({ $or: [{ name: new RegExp(req.query.search, 'i') }, { phone: new RegExp(req.query.search, 'i') }] }).select('_id').limit(200);
@@ -351,18 +359,22 @@ exports.transactionsSummary = asyncHandler(async (req, res) => {
 
 // ── Dashboard / earnings ──
 exports.dashboard = asyncHandler(async (req, res) => {
-  const Order = require('../models/Order');
-  const PoojaBooking = require('../models/PoojaBooking');
-  const AstrologerProfile = require('../models/AstrologerProfile');
-  const WithdrawalRequest = require('../models/WithdrawalRequest');
-  const Escalation = require('../models/Escalation');
-  const SupportTicket = require('../models/SupportTicket');
+  const User = req.model('User');
+  const Product = req.model('Product');
+  const Session = req.model('Session');
+  const Transaction = req.model('Transaction');
+  const Order = req.model('Order');
+  const PoojaBooking = req.model('PoojaBooking');
+  const AstrologerProfile = req.model('AstrologerProfile');
+  const WithdrawalRequest = req.model('WithdrawalRequest');
+  const Escalation = req.model('Escalation');
+  const SupportTicket = req.model('SupportTicket');
 
   // Window is admin-selectable (7/30/90 days); default 30. KPIs labelled "month"
   // are really "selected window".
-  const Presence = require('../models/Presence');
-  const Banner = require('../models/Banner');
-  const Video = require('../models/Video');
+  const Presence = req.model('Presence');
+  const Banner = req.model('Banner');
+  const Video = req.model('Video');
 
   const days = Math.min(parseInt(req.query.days || '30', 10), 365);
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
@@ -511,7 +523,8 @@ exports.dashboard = asyncHandler(async (req, res) => {
 
 // ── Astrologers leaderboard (ranked by earnings/sessions over a window) ──
 exports.leaderboard = asyncHandler(async (req, res) => {
-  const AstrologerProfile = require('../models/AstrologerProfile');
+  const Session = req.model('Session');
+  const AstrologerProfile = req.model('AstrologerProfile');
   const days = parseInt(req.query.days || '30', 10);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -530,6 +543,7 @@ exports.leaderboard = asyncHandler(async (req, res) => {
 
 // ── Low-stock products (dashboard inventory alerts) ──
 exports.lowStock = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const threshold = parseInt(req.query.threshold || '10', 10);
   const items = await Product.find({ stock: { $lt: threshold }, isActive: true }).sort({ stock: 1 }).limit(50);
   res.json({ success: true, data: items });
@@ -539,7 +553,8 @@ exports.lowStock = asyncHandler(async (req, res) => {
 // The admin picks a RechargeTemplate; the user is credited EXACTLY that pack's
 // `tokens` value (advertised value incl. bonus) — no free-form amount.
 exports.rechargeUser = asyncHandler(async (req, res) => {
-  const RechargeTemplate = require('../models/RechargeTemplate');
+  const User = req.model('User');
+  const RechargeTemplate = req.model('RechargeTemplate');
   const { userId, templateId, reason } = req.body;
   const target = await User.findById(userId);
   if (!target) throw new AppError('User not found', 404);
@@ -549,7 +564,7 @@ exports.rechargeUser = asyncHandler(async (req, res) => {
   const amount = pack.tokens; // exact value credited (whole rupees, incl. bonus)
   const packLabel = pack.name || `₹${pack.amount}`;
 
-  const txn = await walletService.credit({
+  const txn = await walletService.credit(req.ctx, {
     userId,
     amount,
     source: 'admin_manual',
@@ -558,14 +573,14 @@ exports.rechargeUser = asyncHandler(async (req, res) => {
     meta: { by: String(req.user._id), reason, templateId: String(pack._id), paidValue: pack.amount, creditedValue: pack.tokens },
   });
 
-  emit.toUser(userId, 'wallet-updated', await walletService.getBalance(userId));
-  await notificationService.notify(userId, {
+  emit.toUser(userId, 'wallet-updated', await walletService.getBalance(req.ctx, userId));
+  await notificationService.notify(req.ctx, userId, {
     type: 'wallet',
     title: 'Recharge successful',
     body: `₹${amount} added to your wallet (${packLabel} pack).`,
     data: { amount, templateId: String(pack._id) },
   });
-  await auditService.log({
+  await auditService.log(req.ctx, {
     actor: req.user,
     action: 'wallet.recharge',
     targetType: 'user',
@@ -581,6 +596,7 @@ exports.rechargeUser = asyncHandler(async (req, res) => {
 // A chat is "live" once the astrologer has accepted (room open) and while both
 // are connected (ongoing). Both states show with a green heartbeat in the admin.
 exports.liveChats = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
   const items = await Session.find({ type: 'chat', status: { $in: ['accepted', 'ongoing'] } })
     .sort({ startedAt: -1, acceptedAt: -1 })
     .populate('user', 'name phone')
@@ -593,12 +609,12 @@ exports.liveChats = asyncHandler(async (req, res) => {
 // :id is the astrologer's USER id (StorefrontLayout.astrologer / the user ref).
 exports.listStorefrontLayouts = asyncHandler(async (req, res) => {
   const svc = require('../services/storefrontDesignService');
-  res.json({ success: true, data: await svc.list(req.params.id) });
+  res.json({ success: true, data: await svc.list(req.ctx, req.params.id) });
 });
 
 exports.setStorefrontLayout = asyncHandler(async (req, res) => {
   const svc = require('../services/storefrontDesignService');
-  const data = await svc.setActive(req.params.id, req.body.layoutId);
+  const data = await svc.setActive(req.ctx, req.params.id, req.body.layoutId);
   res.json({ success: true, data });
 });
 
@@ -607,7 +623,7 @@ exports.setStorefrontLayout = asyncHandler(async (req, res) => {
 exports.listServiceFeedback = asyncHandler(async (req, res) => {
   const serviceFeedbackService = require('../services/serviceFeedbackService');
   const { page, limit, serviceType, kind, astrologerId, minRating, from, to } = req.query;
-  const data = await serviceFeedbackService.adminList({
+  const data = await serviceFeedbackService.adminList(req.ctx, {
     page: parseInt(page, 10) || 1,
     limit: Math.min(parseInt(limit, 10) || 20, 100),
     serviceType,
@@ -621,6 +637,7 @@ exports.listServiceFeedback = asyncHandler(async (req, res) => {
 });
 
 exports.activeCalls = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
   const items = await Session.find({ type: { $in: ['call', 'video'] }, status: 'ongoing' })
     .sort({ startedAt: -1 })
     .populate('user', 'name phone')
@@ -629,6 +646,7 @@ exports.activeCalls = asyncHandler(async (req, res) => {
 });
 
 exports.callLogs = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
   const q = { type: { $in: ['call', 'video'] } };
   if (req.query.astrologer) q.astrologer = req.query.astrologer;
   const page = parseInt(req.query.page || '1', 10);
@@ -641,7 +659,7 @@ exports.callLogs = asyncHandler(async (req, res) => {
 });
 
 exports.sessionMessages = asyncHandler(async (req, res) => {
-  const ChatMessage = require('../models/ChatMessage');
+  const ChatMessage = req.model('ChatMessage');
   const items = await ChatMessage.find({ sessionId: req.params.sessionId }).sort({ timestamp: 1 }).populate('sender', 'name');
   res.json({ success: true, data: items });
 });
@@ -652,7 +670,7 @@ exports.sessionMessages = asyncHandler(async (req, res) => {
  * scope. Filters: user (id), astrologer (id), q (name/phone of either party),
  * from/to (createdAt range). History = chat sessions, any status.
  */
-async function buildChatMatch(query = {}) {
+async function buildChatMatch(User, query = {}) {
   const match = { type: 'chat' };
   if (query.user) match.user = query.user;
   if (query.astrologer) match.astrologer = query.astrologer;
@@ -677,7 +695,9 @@ async function buildChatMatch(query = {}) {
  * includeLive=true to show them too (e.g. an "all" view).
  */
 exports.chatLogs = asyncHandler(async (req, res) => {
-  const match = await buildChatMatch(req.query);
+  const Session = req.model('Session');
+  const User = req.model('User');
+  const match = await buildChatMatch(User, req.query);
   if (req.query.includeLive !== 'true') {
     match.status = { $nin: ['accepted', 'ongoing'] };
   }
@@ -707,7 +727,9 @@ exports.chatLogs = asyncHandler(async (req, res) => {
  * have no settled amount), but `chats` counts every chat in range.
  */
 exports.chatAnalytics = asyncHandler(async (req, res) => {
-  const match = await buildChatMatch(req.query);
+  const Session = req.model('Session');
+  const User = req.model('User');
+  const match = await buildChatMatch(User, req.query);
   const completedMatch = { ...match, status: 'completed' };
 
   const [totalsAgg, completedAgg, daily] = await Promise.all([
@@ -766,7 +788,7 @@ exports.chatAnalytics = asyncHandler(async (req, res) => {
 
 // ── Audit logs (super admin) ──
 exports.auditLogs = asyncHandler(async (req, res) => {
-  const data = await auditService.list({
+  const data = await auditService.list(req.ctx, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '30', 10), 100),
     action: req.query.action,
@@ -778,7 +800,7 @@ exports.auditLogs = asyncHandler(async (req, res) => {
 // ── Pooja catalog (managed pooja types) ──
 // ── Recharge templates (app "Add money" packs) ──
 exports.listRechargeTemplates = asyncHandler(async (req, res) => {
-  const RechargeTemplate = require('../models/RechargeTemplate');
+  const RechargeTemplate = req.model('RechargeTemplate');
   const items = await RechargeTemplate.find().sort({ sortOrder: 1, amount: 1 });
   res.json({ success: true, data: items });
 });
@@ -787,27 +809,27 @@ exports.listRechargeTemplates = asyncHandler(async (req, res) => {
 const bustRechargeCache = () => require('../services/cacheService').delNamespace('recharge').catch(() => {});
 
 exports.createRechargeTemplate = asyncHandler(async (req, res) => {
-  const RechargeTemplate = require('../models/RechargeTemplate');
+  const RechargeTemplate = req.model('RechargeTemplate');
   const item = await RechargeTemplate.create(req.body);
   bustRechargeCache();
   res.status(201).json({ success: true, data: item });
 });
 exports.updateRechargeTemplate = asyncHandler(async (req, res) => {
-  const RechargeTemplate = require('../models/RechargeTemplate');
+  const RechargeTemplate = req.model('RechargeTemplate');
   const item = await RechargeTemplate.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!item) throw new AppError('Recharge template not found', 404);
   bustRechargeCache();
   res.json({ success: true, data: item });
 });
 exports.deleteRechargeTemplate = asyncHandler(async (req, res) => {
-  const RechargeTemplate = require('../models/RechargeTemplate');
+  const RechargeTemplate = req.model('RechargeTemplate');
   await RechargeTemplate.findByIdAndDelete(req.params.id);
   bustRechargeCache();
   res.json({ success: true });
 });
 
 exports.listPoojaTypes = asyncHandler(async (req, res) => {
-  const PoojaType = require('../models/PoojaType');
+  const PoojaType = req.model('PoojaType');
   const items = await PoojaType.find().populate('category', 'name').sort({ createdAt: -1 });
   res.json({ success: true, data: items });
 });
@@ -823,7 +845,7 @@ function normalizeWindow(body) {
 }
 
 exports.createPoojaType = asyncHandler(async (req, res) => {
-  const PoojaType = require('../models/PoojaType');
+  const PoojaType = req.model('PoojaType');
   if (!req.body.category) throw new AppError('Category is required', 400);
   if (!req.body.imagePortrait && !req.body.imageLandscape && !req.body.image) {
     throw new AppError('Add at least one image (portrait or landscape)', 400);
@@ -832,38 +854,38 @@ exports.createPoojaType = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: item });
 });
 exports.updatePoojaType = asyncHandler(async (req, res) => {
-  const PoojaType = require('../models/PoojaType');
+  const PoojaType = req.model('PoojaType');
   const item = await PoojaType.findByIdAndUpdate(req.params.id, normalizeWindow(req.body), { new: true });
   if (!item) throw new AppError('Pooja type not found', 404);
   res.json({ success: true, data: item });
 });
 exports.deletePoojaType = asyncHandler(async (req, res) => {
-  const PoojaType = require('../models/PoojaType');
+  const PoojaType = req.model('PoojaType');
   await PoojaType.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
 
 // ── Pooja categories (admin-managed; poojas bind to one) ──
 exports.listPoojaCategories = asyncHandler(async (req, res) => {
-  const PoojaCategory = require('../models/PoojaCategory');
+  const PoojaCategory = req.model('PoojaCategory');
   const items = await PoojaCategory.find().sort({ sortOrder: 1, name: 1 });
   res.json({ success: true, data: items });
 });
 exports.createPoojaCategory = asyncHandler(async (req, res) => {
-  const PoojaCategory = require('../models/PoojaCategory');
+  const PoojaCategory = req.model('PoojaCategory');
   if (!req.body.name || !req.body.name.trim()) throw new AppError('Category name is required', 400);
   const item = await PoojaCategory.create(req.body);
   res.status(201).json({ success: true, data: item });
 });
 exports.updatePoojaCategory = asyncHandler(async (req, res) => {
-  const PoojaCategory = require('../models/PoojaCategory');
+  const PoojaCategory = req.model('PoojaCategory');
   const item = await PoojaCategory.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!item) throw new AppError('Category not found', 404);
   res.json({ success: true, data: item });
 });
 exports.deletePoojaCategory = asyncHandler(async (req, res) => {
-  const PoojaCategory = require('../models/PoojaCategory');
-  const PoojaType = require('../models/PoojaType');
+  const PoojaCategory = req.model('PoojaCategory');
+  const PoojaType = req.model('PoojaType');
   // Unbind any poojas pointing at this category so they don't dangle.
   await PoojaType.updateMany({ category: req.params.id }, { $unset: { category: 1 } });
   await PoojaCategory.findByIdAndDelete(req.params.id);
@@ -872,7 +894,7 @@ exports.deletePoojaCategory = asyncHandler(async (req, res) => {
 
 // ── Payment gateway config (active gateway + per-gateway keys + live/test) ──
 exports.getPaymentGateway = asyncHandler(async (req, res) => {
-  const PaymentGatewayConfig = require('../models/PaymentGatewayConfig');
+  const PaymentGatewayConfig = req.model('PaymentGatewayConfig');
   const doc = await PaymentGatewayConfig.get();
   res.json({ success: true, data: doc });
 });
@@ -891,19 +913,19 @@ exports.requestPaymentGatewayOtp = asyncHandler(async (req, res) => {
   const otpService = require('../services/otpService');
   const phone = req.user.phone;
   if (!phone) throw new AppError('Your admin account has no phone number for OTP', 400);
-  const data = await otpService.requestOtp(phone);
+  const data = await otpService.requestOtp(req.ctx, phone);
   // Don't leak the masked-but-present devCode in prod; otpService already omits it there.
   res.json({ success: true, data: { message: 'OTP sent to your registered number', expiresInSec: data.expiresInSec, devCode: data.devCode } });
 });
 
 exports.updatePaymentGateway = asyncHandler(async (req, res) => {
-  const PaymentGatewayConfig = require('../models/PaymentGatewayConfig');
+  const PaymentGatewayConfig = req.model('PaymentGatewayConfig');
   const otpService = require('../services/otpService');
   const b = req.body || {};
 
   // Step 2: verify the OTP (to the admin's phone) before any change commits.
   if (!b.otp) throw new AppError('OTP required to change payment gateway', 400);
-  await otpService.verifyOtp(req.user.phone, String(b.otp)); // throws on invalid/expired
+  await otpService.verifyOtp(req.ctx, req.user.phone, String(b.otp)); // throws on invalid/expired
 
   const doc = await PaymentGatewayConfig.get();
 
@@ -933,7 +955,7 @@ exports.updatePaymentGateway = asyncHandler(async (req, res) => {
 // ── Agora credentials (App ID + REST key/secret; secret encrypted at rest) ──
 // The secret is never returned in full except via the OTP-gated reveal below.
 exports.getAgoraConfig = asyncHandler(async (req, res) => {
-  const AgoraConfig = require('../models/AgoraConfig');
+  const AgoraConfig = req.model('AgoraConfig');
   const { decrypt, mask } = require('../utils/secretCrypto');
   const doc = await AgoraConfig.get();
   const secret = decrypt(doc.restSecret);
@@ -959,20 +981,20 @@ exports.requestAgoraOtp = asyncHandler(async (req, res) => {
   const otpService = require('../services/otpService');
   const phone = req.user.phone;
   if (!phone) throw new AppError('Your admin account has no phone number for OTP', 400);
-  const data = await otpService.requestOtp(phone);
+  const data = await otpService.requestOtp(req.ctx, phone);
   res.json({ success: true, data: { message: 'OTP sent to your registered number', expiresInSec: data.expiresInSec, devCode: data.devCode } });
 });
 
 // Step 2 (save): verify OTP, then persist. Only provided fields change; the
 // secret is re-encrypted when supplied (blank secret keeps the existing one).
 exports.updateAgoraConfig = asyncHandler(async (req, res) => {
-  const AgoraConfig = require('../models/AgoraConfig');
+  const AgoraConfig = req.model('AgoraConfig');
   const otpService = require('../services/otpService');
   const { encrypt } = require('../utils/secretCrypto');
   const b = req.body || {};
 
   if (!b.otp) throw new AppError('OTP required to change Agora credentials', 400);
-  await otpService.verifyOtp(req.user.phone, String(b.otp)); // throws on invalid/expired
+  await otpService.verifyOtp(req.ctx, req.user.phone, String(b.otp)); // throws on invalid/expired
 
   const doc = await AgoraConfig.get();
   if (b.appId !== undefined) doc.appId = String(b.appId).trim();
@@ -1004,12 +1026,12 @@ exports.updateAgoraConfig = asyncHandler(async (req, res) => {
 
 // Reveal the full secret (OTP-gated) — powers the "unmask eye" button.
 exports.revealAgoraSecret = asyncHandler(async (req, res) => {
-  const AgoraConfig = require('../models/AgoraConfig');
+  const AgoraConfig = req.model('AgoraConfig');
   const otpService = require('../services/otpService');
   const { decrypt } = require('../utils/secretCrypto');
   const code = (req.body || {}).otp;
   if (!code) throw new AppError('OTP required to reveal the secret', 400);
-  await otpService.verifyOtp(req.user.phone, String(code));
+  await otpService.verifyOtp(req.ctx, req.user.phone, String(code));
   const doc = await AgoraConfig.get();
   // Reveal both encrypted-at-rest values behind the single OTP gate: the REST
   // secret and the App Certificate (needed to verify token signing creds).
@@ -1026,7 +1048,7 @@ exports.revealAgoraSecret = asyncHandler(async (req, res) => {
 // vedicAstroService reads these at runtime (DB first, env fallback). The key is
 // never returned in full except via the OTP-gated reveal below.
 exports.getVedicAstroConfig = asyncHandler(async (req, res) => {
-  const VedicAstroConfig = require('../models/VedicAstroConfig');
+  const VedicAstroConfig = req.model('VedicAstroConfig');
   const { decrypt, mask } = require('../utils/secretCrypto');
   const doc = await VedicAstroConfig.get();
   const apiKey = decrypt(doc.apiKey);
@@ -1045,20 +1067,20 @@ exports.requestVedicAstroOtp = asyncHandler(async (req, res) => {
   const otpService = require('../services/otpService');
   const phone = req.user.phone;
   if (!phone) throw new AppError('Your admin account has no phone number for OTP', 400);
-  const data = await otpService.requestOtp(phone);
+  const data = await otpService.requestOtp(req.ctx, phone);
   res.json({ success: true, data: { message: 'OTP sent to your registered number', expiresInSec: data.expiresInSec, devCode: data.devCode } });
 });
 
 // Step 2 (save): verify OTP, then persist. Only provided fields change; the key
 // is re-encrypted when supplied (a blank key keeps the existing one).
 exports.updateVedicAstroConfig = asyncHandler(async (req, res) => {
-  const VedicAstroConfig = require('../models/VedicAstroConfig');
+  const VedicAstroConfig = req.model('VedicAstroConfig');
   const otpService = require('../services/otpService');
   const { encrypt, decrypt, mask } = require('../utils/secretCrypto');
   const b = req.body || {};
 
   if (!b.otp) throw new AppError('OTP required to change VedicAstro credentials', 400);
-  await otpService.verifyOtp(req.user.phone, String(b.otp)); // throws on invalid/expired
+  await otpService.verifyOtp(req.ctx, req.user.phone, String(b.otp)); // throws on invalid/expired
 
   const doc = await VedicAstroConfig.get();
   // Only overwrite the key when a new non-empty value is sent (encrypted at rest).
@@ -1078,12 +1100,12 @@ exports.updateVedicAstroConfig = asyncHandler(async (req, res) => {
 
 // Reveal the full API key (OTP-gated) — powers the "unmask eye" button.
 exports.revealVedicAstroSecret = asyncHandler(async (req, res) => {
-  const VedicAstroConfig = require('../models/VedicAstroConfig');
+  const VedicAstroConfig = req.model('VedicAstroConfig');
   const otpService = require('../services/otpService');
   const { decrypt } = require('../utils/secretCrypto');
   const code = (req.body || {}).otp;
   if (!code) throw new AppError('OTP required to reveal the key', 400);
-  await otpService.verifyOtp(req.user.phone, String(code));
+  await otpService.verifyOtp(req.ctx, req.user.phone, String(code));
   const doc = await VedicAstroConfig.get();
   res.json({ success: true, data: { apiKey: decrypt(doc.apiKey) } });
 });
@@ -1094,40 +1116,40 @@ exports.revealVedicAstroSecret = asyncHandler(async (req, res) => {
 // recording REST creds (customerId/customerSecret).
 exports.agoraChannelDiagnostics = asyncHandler(async (req, res) => {
   const recordingService = require('../services/recordingService');
-  const data = await recordingService.channelDiagnostics(req.params.sessionId);
+  const data = await recordingService.channelDiagnostics(req.ctx, req.params.sessionId);
   res.json({ success: true, data });
 });
 
 // ── Firebase / GA4 analytics (native admin charts via the GA4 Data API) ──
 exports.gaAnalytics = asyncHandler(async (req, res) => {
   const ga = require('../services/gaService');
-  if (!ga.enabled()) {
+  if (!ga.enabled(req.ctx)) {
     // Not configured yet → tell the admin UI to show the setup hint + deep links.
     return res.json({ success: true, data: { configured: false } });
   }
   const { startDate, endDate } = req.query;
   const [overview, realtime] = await Promise.all([
-    ga.overview({ startDate, endDate }),
-    ga.realtime(),
+    ga.overview(req.ctx, { startDate, endDate }),
+    ga.realtime(req.ctx),
   ]);
   res.json({ success: true, data: { configured: true, ...overview, realtime } });
 });
 
 // ── Invoice templates (admin-managed branding for invoice PDFs) ──
 exports.listInvoiceTemplates = asyncHandler(async (req, res) => {
-  const InvoiceTemplate = require('../models/InvoiceTemplate');
+  const InvoiceTemplate = req.model('InvoiceTemplate');
   const items = await InvoiceTemplate.find().sort({ isDefault: -1, createdAt: 1 });
   res.json({ success: true, data: items });
 });
 exports.createInvoiceTemplate = asyncHandler(async (req, res) => {
-  const InvoiceTemplate = require('../models/InvoiceTemplate');
+  const InvoiceTemplate = req.model('InvoiceTemplate');
   if (!req.body.name) throw new AppError('Template name is required', 400);
   const item = await InvoiceTemplate.create(req.body);
   if (item.isDefault) await InvoiceTemplate.updateMany({ _id: { $ne: item._id } }, { $set: { isDefault: false } });
   res.status(201).json({ success: true, data: item });
 });
 exports.updateInvoiceTemplate = asyncHandler(async (req, res) => {
-  const InvoiceTemplate = require('../models/InvoiceTemplate');
+  const InvoiceTemplate = req.model('InvoiceTemplate');
   const item = await InvoiceTemplate.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!item) throw new AppError('Template not found', 404);
   // Exactly one default.
@@ -1135,7 +1157,7 @@ exports.updateInvoiceTemplate = asyncHandler(async (req, res) => {
   res.json({ success: true, data: item });
 });
 exports.deleteInvoiceTemplate = asyncHandler(async (req, res) => {
-  const InvoiceTemplate = require('../models/InvoiceTemplate');
+  const InvoiceTemplate = req.model('InvoiceTemplate');
   await InvoiceTemplate.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
@@ -1144,7 +1166,7 @@ exports.deleteInvoiceTemplate = asyncHandler(async (req, res) => {
 // Accepts a saved template id (?id=) OR ad-hoc template fields in the query/body
 // (design, businessName, logo, address…) so the admin can preview before saving.
 exports.previewInvoiceTemplate = asyncHandler(async (req, res) => {
-  const InvoiceTemplate = require('../models/InvoiceTemplate');
+  const InvoiceTemplate = req.model('InvoiceTemplate');
   const invoicePdfService = require('../services/invoicePdfService');
   const src = { ...req.query, ...req.body };
   let tpl;
@@ -1168,7 +1190,7 @@ exports.previewInvoiceTemplate = asyncHandler(async (req, res) => {
     ],
     subtotal: 3200, discount: 200, total: 3000,
   };
-  const buffer = await invoicePdfService.render(sample, tpl);
+  const buffer = await invoicePdfService.render(req.ctx, sample, tpl);
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', 'inline; filename="invoice-preview.pdf"');
   res.send(buffer);
@@ -1176,7 +1198,7 @@ exports.previewInvoiceTemplate = asyncHandler(async (req, res) => {
 
 // ── Invoices (list + regenerate PDF) ──
 exports.listInvoices = asyncHandler(async (req, res) => {
-  const Invoice = require('../models/Invoice');
+  const Invoice = req.model('Invoice');
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
   const q = {};
@@ -1189,19 +1211,19 @@ exports.listInvoices = asyncHandler(async (req, res) => {
 });
 // Re-enqueue PDF generation for an invoice (e.g. after editing the template).
 exports.regenerateInvoicePdf = asyncHandler(async (req, res) => {
-  const Invoice = require('../models/Invoice');
+  const Invoice = req.model('Invoice');
   const jobService = require('../services/jobService');
   const inv = await Invoice.findById(req.params.id);
   if (!inv) throw new AppError('Invoice not found', 404);
   inv.pdfStatus = 'pending';
   await inv.save();
-  await jobService.enqueue({ type: 'invoice_pdf', payload: { invoiceId: String(inv._id) }, dedupeKey: `invoice-pdf:${inv._id}:regen:${Date.now()}` });
+  await jobService.enqueue(req.ctx, { type: 'invoice_pdf', payload: { invoiceId: String(inv._id) }, dedupeKey: `invoice-pdf:${inv._id}:regen:${Date.now()}` });
   res.json({ success: true });
 });
 
 // ── Pooja bookings (all users' app bookings) ──
 exports.listPoojaBookings = asyncHandler(async (req, res) => {
-  const PoojaBooking = require('../models/PoojaBooking');
+  const PoojaBooking = req.model('PoojaBooking');
   const q = req.query.status ? { status: req.query.status } : {};
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
@@ -1213,13 +1235,13 @@ exports.listPoojaBookings = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { items, total, page, limit } });
 });
 exports.updatePoojaBooking = asyncHandler(async (req, res) => {
-  const PoojaBooking = require('../models/PoojaBooking');
+  const PoojaBooking = req.model('PoojaBooking');
   const booking = await PoojaBooking.findById(req.params.id);
   if (!booking) throw new AppError('Booking not found', 404);
   if (req.body.status) booking.status = req.body.status;
   if (req.body.astrologerId !== undefined) booking.astrologer = req.body.astrologerId || undefined;
   await booking.save();
-  await notificationService.notify(booking.user, {
+  await notificationService.notify(req.ctx, booking.user, {
     type: 'pooja_status', title: 'Pooja booking update', body: `Your pooja booking is now ${booking.status}.`,
     data: { bookingId: String(booking._id), status: booking.status },
   });
@@ -1228,57 +1250,60 @@ exports.updatePoojaBooking = asyncHandler(async (req, res) => {
 
 // ── AI personas (admin-managed AI astrologer cards) ──
 exports.listPersonas = asyncHandler(async (req, res) => {
-  const AiPersona = require('../models/AiPersona');
+  const AiPersona = req.model('AiPersona');
   const items = await AiPersona.find().sort({ sortOrder: 1, createdAt: -1 });
   res.json({ success: true, data: items });
 });
 exports.createPersona = asyncHandler(async (req, res) => {
-  const AiPersona = require('../models/AiPersona');
+  const AiPersona = req.model('AiPersona');
   const item = await AiPersona.create(req.body);
   res.status(201).json({ success: true, data: item });
 });
 exports.updatePersona = asyncHandler(async (req, res) => {
-  const AiPersona = require('../models/AiPersona');
+  const AiPersona = req.model('AiPersona');
   const item = await AiPersona.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!item) throw new AppError('Persona not found', 404);
   res.json({ success: true, data: item });
 });
 exports.deletePersona = asyncHandler(async (req, res) => {
-  const AiPersona = require('../models/AiPersona');
+  const AiPersona = req.model('AiPersona');
   await AiPersona.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
 
 // ── Admin management (super admin only): list / create / delete admins ──
 exports.listAdmins = asyncHandler(async (req, res) => {
+  const User = req.model('User');
   const items = await User.find({ role: { $in: ['admin', 'super_admin'] } }).sort({ createdAt: -1 });
   res.json({ success: true, data: items });
 });
 
 exports.createAdmin = asyncHandler(async (req, res) => {
+  const User = req.model('User');
   const { name, email, code, role = 'admin' } = req.body;
   const phone = require('../utils/phone').normalizePhone(req.body.phone);
   if (!phone) throw new AppError('Enter a valid 10-digit phone number', 400);
   if (!['admin', 'super_admin'].includes(role)) throw new AppError('Invalid admin role', 400);
   // Verify the phone via OTP (dev: 123456) before claiming it.
   if (!code) throw new AppError('Phone verification code is required', 400);
-  await require('../services/otpService').verifyOtp(phone, code);
+  await require('../services/otpService').verifyOtp(req.ctx, phone, code);
   // Platform-wide uniqueness: a number already used by any account (user,
   // astrologer or another admin) can't be reused for an admin.
   await User.assertPhoneAvailable(phone);
   const user = await User.create({ name, phone, email, role, isPhoneVerified: true });
-  await auditService.log({ actor: req.user, action: 'admin.create', targetType: 'admin', target: user._id, summary: `${req.user.name || 'Super Admin'} created ${role} ${name || phone}`, ip: req.ip });
+  await auditService.log(req.ctx, { actor: req.user, action: 'admin.create', targetType: 'admin', target: user._id, summary: `${req.user.name || 'Super Admin'} created ${role} ${name || phone}`, ip: req.ip });
   res.status(201).json({ success: true, data: user });
 });
 
 exports.deleteAdmin = asyncHandler(async (req, res) => {
+  const User = req.model('User');
   if (String(req.params.id) === String(req.user._id)) throw new AppError('You cannot remove yourself', 400);
   const user = await User.findById(req.params.id);
   if (!user || !['admin', 'super_admin'].includes(user.role)) throw new AppError('Admin not found', 404);
   // Demote to a normal user rather than hard-delete (preserves audit/history).
   user.role = 'user';
   await user.save();
-  await auditService.log({ actor: req.user, action: 'admin.delete', targetType: 'admin', target: user._id, summary: `${req.user.name || 'Super Admin'} removed admin ${user.name || user.phone}`, ip: req.ip });
+  await auditService.log(req.ctx, { actor: req.user, action: 'admin.delete', targetType: 'admin', target: user._id, summary: `${req.user.name || 'Super Admin'} removed admin ${user.name || user.phone}`, ip: req.ip });
   res.json({ success: true });
 });
 
@@ -1289,7 +1314,7 @@ const PROMPT_OTP_PHONE = '8777468277';
 
 exports.requestPromptOtp = asyncHandler(async (req, res) => {
   const otpService = require('../services/otpService');
-  const data = await otpService.requestOtp(PROMPT_OTP_PHONE);
+  const data = await otpService.requestOtp(req.ctx, PROMPT_OTP_PHONE);
   res.json({
     success: true,
     data: {
@@ -1303,7 +1328,7 @@ exports.requestPromptOtp = asyncHandler(async (req, res) => {
 
 exports.listPrompts = asyncHandler(async (req, res) => {
   const promptService = require('../services/promptService');
-  const data = await promptService.listForAdmin();
+  const data = await promptService.listForAdmin(req.ctx);
   res.json({ success: true, data });
 });
 
@@ -1314,13 +1339,13 @@ exports.updatePrompt = asyncHandler(async (req, res) => {
   const { key, system, otp } = req.body || {};
   if (!key) throw new AppError('Prompt key required', 400);
   if (!otp) throw new AppError('OTP required to change a prompt', 400);
-  await otpService.verifyOtp(PROMPT_OTP_PHONE, String(otp)); // throws on invalid/expired
-  await promptService.saveOverride(key, system, req.user._id);
-  await auditService.log({
+  await otpService.verifyOtp(req.ctx, PROMPT_OTP_PHONE, String(otp)); // throws on invalid/expired
+  await promptService.saveOverride(req.ctx, key, system, req.user._id);
+  await auditService.log(req.ctx, {
     actor: req.user, action: 'prompt.update', targetType: 'prompt', target: key,
     summary: `${req.user.name || 'Admin'} edited the "${key}" AI prompt`, ip: req.ip,
   }).catch(() => {});
-  const data = await promptService.listForAdmin();
+  const data = await promptService.listForAdmin(req.ctx);
   res.json({ success: true, data });
 });
 
@@ -1328,7 +1353,7 @@ exports.updatePrompt = asyncHandler(async (req, res) => {
 // Every reminder the AI extracted + the astrologer confirmed (mantra recurring /
 // one-off event), with its reason and schedule. Admin-only oversight.
 exports.listReminders = asyncHandler(async (req, res) => {
-  const ScheduledReminder = require('../models/ScheduledReminder');
+  const ScheduledReminder = req.model('ScheduledReminder');
   const { status, type, page = '1', limit = '50' } = req.query;
   const q = {};
   if (status) q.status = status;
@@ -1346,7 +1371,7 @@ exports.listReminders = asyncHandler(async (req, res) => {
 // AI chat recaps (summary + suggestions + reminders + status). Admin oversight of
 // what the AI produced and what the astrologer published.
 exports.listRecaps = asyncHandler(async (req, res) => {
-  const SessionRecap = require('../models/SessionRecap');
+  const SessionRecap = req.model('SessionRecap');
   const { status, page = '1', limit = '50' } = req.query;
   const q = {};
   if (status) q.status = status;
@@ -1363,7 +1388,7 @@ exports.listRecaps = asyncHandler(async (req, res) => {
 
 // ── LLM Logs (every AI call: resolved prompt + real input + output + tokens) ──
 exports.listAiLogs = asyncHandler(async (req, res) => {
-  const AiLog = require('../models/AiLog');
+  const AiLog = req.model('AiLog');
   const { feature, astrologer, page = '1', limit = '50' } = req.query;
   const q = {};
   if (feature) q.feature = feature;
@@ -1381,8 +1406,8 @@ exports.listAiLogs = asyncHandler(async (req, res) => {
 // ── AI Notifications: scheduled reminders (mantra/event) + re-engagement cues,
 // merged into one timeline so admins see everything the AI scheduled to fire. ──
 exports.listAiNotifications = asyncHandler(async (req, res) => {
-  const ScheduledReminder = require('../models/ScheduledReminder');
-  const ReengagementCue = require('../models/ReengagementCue');
+  const ScheduledReminder = req.model('ScheduledReminder');
+  const ReengagementCue = req.model('ReengagementCue');
   const { status } = req.query;
   const [reminders, cues] = await Promise.all([
     ScheduledReminder.find(status ? { status } : {}).sort({ createdAt: -1 }).limit(300)
@@ -1411,8 +1436,8 @@ exports.listAiNotifications = asyncHandler(async (req, res) => {
 
 // ── AI Marketing Agent (engagement push generator + scheduler) ──
 exports.getMarketingConfig = asyncHandler(async (req, res) => {
-  const MarketingConfig = require('../models/MarketingConfig');
-  const MarketingNotif = require('../models/MarketingNotif');
+  const MarketingConfig = req.model('MarketingConfig');
+  const MarketingNotif = req.model('MarketingNotif');
   const cfg = await MarketingConfig.get();
   const [activeUsers, activeAstro, pending] = await Promise.all([
     MarketingNotif.countDocuments({ status: 'active', audience: 'users' }),
@@ -1426,7 +1451,7 @@ exports.getMarketingConfig = asyncHandler(async (req, res) => {
 });
 
 exports.updateMarketingConfig = asyncHandler(async (req, res) => {
-  const MarketingConfig = require('../models/MarketingConfig');
+  const MarketingConfig = req.model('MarketingConfig');
   const cfg = await MarketingConfig.get();
   const b = req.body || {};
   if (b.enabled !== undefined) cfg.enabled = !!b.enabled;
@@ -1441,7 +1466,7 @@ exports.updateMarketingConfig = asyncHandler(async (req, res) => {
 exports.generateMarketing = asyncHandler(async (req, res) => {
   const marketingService = require('../services/marketingService');
   const total = Math.min(parseInt(req.body?.total || '30', 10) || 30, 60);
-  const out = await marketingService.generate({ total, adminId: req.user._id });
+  const out = await marketingService.generate(req.ctx, { total, adminId: req.user._id });
   res.json({ success: true, data: out });
 });
 
@@ -1449,21 +1474,21 @@ exports.generateMarketing = asyncHandler(async (req, res) => {
 exports.reviewMarketing = asyncHandler(async (req, res) => {
   const marketingService = require('../services/marketingService');
   const { saveIds = [], rejectIds = [] } = req.body || {};
-  const out = await marketingService.review({ saveIds, rejectIds });
+  const out = await marketingService.review(req.ctx, { saveIds, rejectIds });
   res.json({ success: true, data: out });
 });
 
 // List the pool (filter by status/audience).
 exports.listMarketing = asyncHandler(async (req, res) => {
   const marketingService = require('../services/marketingService');
-  const items = await marketingService.list({ status: req.query.status, audience: req.query.audience });
+  const items = await marketingService.list(req.ctx, { status: req.query.status, audience: req.query.audience });
   res.json({ success: true, data: { items } });
 });
 
 // Manually fire one send cycle now (test).
 exports.runMarketingNow = asyncHandler(async (req, res) => {
   const marketingService = require('../services/marketingService');
-  const sent = await marketingService.sendCycle();
+  const sent = await marketingService.sendCycle(req.ctx);
   res.json({ success: true, data: { sent } });
 });
 
@@ -1472,10 +1497,10 @@ exports.runMarketingNow = asyncHandler(async (req, res) => {
 // reflects progress even after navigating away and back.
 exports.runTranslation = asyncHandler(async (req, res) => {
   const translateService = require('../services/translateService');
-  if (!translateService.configured()) {
+  if (!translateService.configured(req.ctx)) {
     return res.json({ success: true, data: { configured: false, running: false, message: 'GCP Translate not configured' } });
   }
-  const state = translateService.startFullTranslation();
+  const state = translateService.startFullTranslation(req.ctx);
   res.json({ success: true, data: state });
 });
 
@@ -1483,19 +1508,19 @@ exports.runTranslation = asyncHandler(async (req, res) => {
 // (running / startedAt / lastResult), so the UI restores "running" on return.
 exports.translationStatus = asyncHandler(async (req, res) => {
   const translateService = require('../services/translateService');
-  const TranslationCache = require('../models/TranslationCache');
+  const TranslationCache = req.model('TranslationCache');
   const cached = await TranslationCache.countDocuments({}).catch(() => 0);
   res.json({ success: true, data: {
-    configured: translateService.configured(),
+    configured: translateService.configured(req.ctx),
     languages: translateService.LANGUAGES,
     cachedTranslations: cached,
-    run: translateService.getRunState(),
+    run: translateService.getRunState(req.ctx),
   } });
 });
 
 // Translation run history — the audit table on the admin Translation page.
 exports.translationRuns = asyncHandler(async (req, res) => {
-  const TranslationRun = require('../models/TranslationRun');
+  const TranslationRun = req.model('TranslationRun');
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
   const runs = await TranslationRun.find({}).sort({ createdAt: -1 }).limit(limit).lean();
   res.json({ success: true, data: runs });

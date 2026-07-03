@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Atomic sequence counters (e.g. invoice numbering). */
 const counterSchema = new mongoose.Schema({
@@ -6,4 +7,4 @@ const counterSchema = new mongoose.Schema({
   seq: { type: Number, default: 0 },
 });
 
-module.exports = mongoose.model('Counter', counterSchema);
+module.exports = defineModel('Counter', counterSchema);

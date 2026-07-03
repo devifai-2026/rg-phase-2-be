@@ -1,6 +1,7 @@
 const env = require('../config/env');
 const { randomInt } = require('../utils/hash');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Agora RTC credentials + token generation for call/video.
@@ -25,41 +26,62 @@ try {
 
 const { decrypt } = require('../utils/secretCrypto');
 
-/** Resolve the active Agora creds: DB (admin) first, then env fallback. */
-async function getCreds() {
+/**
+ * Resolve the active Agora creds for THIS tenant. Priority:
+ *   1) TenantSecret (per-tenant Agora app the OWNER enters at account creation
+ *      via the owner console — each tenant bills their own Agora usage),
+ *   2) AgoraConfig (tenant-admin editable DB singleton in the tenant DB),
+ *   3) env.agora (platform default / single-tenant fallback).
+ */
+async function getCreds(ctx) {
+  ctx = ctx || defaultContext();
   let appId = env.agora.appId || '';
   let appCertificate = env.agora.appCertificate || '';
+
+  // 2) tenant-admin AgoraConfig (also overrides env).
   try {
-    const AgoraConfig = require('../models/AgoraConfig');
+    const AgoraConfig = ctx.model('AgoraConfig');
     const cfg = await AgoraConfig.get();
     if (cfg.appId) appId = cfg.appId;
     if (cfg.appCertificate) {
-      // Stored encrypted; decrypt for signing. Tolerate plain values too.
       try { appCertificate = decrypt(cfg.appCertificate); }
       catch (_) { appCertificate = cfg.appCertificate; }
     }
   } catch (e) {
     logger.debug('AgoraConfig lookup failed; using env', e.message);
   }
+
+  // 1) owner-set per-tenant secret wins when present (highest priority).
+  try {
+    const secrets = ctx.secrets ? await ctx.secrets() : {};
+    if (secrets.agoraAppId) appId = secrets.agoraAppId;
+    if (secrets.agoraAppCertificate) appCertificate = secrets.agoraAppCertificate;
+  } catch (e) {
+    logger.debug('tenant Agora secret lookup failed; using AgoraConfig/env', e.message);
+  }
+
   return { appId, appCertificate };
 }
 
 /** True when we have at least an App ID (media can flow, token or App-ID-only). */
-async function isConfigured() {
-  const { appId } = await getCreds();
+async function isConfigured(ctx) {
+  ctx = ctx || defaultContext();
+  const { appId } = await getCreds(ctx);
   return !!appId;
 }
 
-function newUid() {
+function newUid(ctx) {
+  ctx = ctx || defaultContext();
   return randomInt(1, 2147483646);
 }
 
 /** Issue join credentials for one participant. Signs a token when a certificate
  *  is available; otherwise returns an empty token (App-ID-only mode). */
-async function tokenForParticipant(session, userId) {
+async function tokenForParticipant(ctx, session, userId) {
+  ctx = ctx || defaultContext();
   const isCaller = String(session.user) === String(userId);
   const uid = isCaller ? session.agora.callerUid : session.agora.receiverUid;
-  const { appId, appCertificate } = await getCreds();
+  const { appId, appCertificate } = await getCreds(ctx);
 
   let token = '';
   if (appId && appCertificate && RtcTokenBuilder) {
@@ -94,8 +116,9 @@ async function tokenForParticipant(session, userId) {
 
 /** Sign a token for an arbitrary channel + uid (used by Cloud Recording for the
  *  recorder uid in Secure-mode projects). Returns '' in App-ID-only mode. */
-async function tokenForChannel(channelName, uid) {
-  const { appId, appCertificate } = await getCreds();
+async function tokenForChannel(ctx, channelName, uid) {
+  ctx = ctx || defaultContext();
+  const { appId, appCertificate } = await getCreds(ctx);
   if (!(appId && appCertificate && RtcTokenBuilder)) return '';
   // RELATIVE seconds, not an absolute timestamp (see tokenForParticipant).
   const ttlSec = env.agora.tokenTtlSec || 3600;
@@ -113,8 +136,9 @@ async function tokenForChannel(channelName, uid) {
  * App-ID-only mode (works only if the Agora project is in testing/App-ID mode).
  * Returns { token, uid, channelName, appId, role }.
  */
-async function tokenForLive(channelName, uid, role = 'audience') {
-  const { appId, appCertificate } = await getCreds();
+async function tokenForLive(ctx, channelName, uid, role = 'audience') {
+  ctx = ctx || defaultContext();
+  const { appId, appCertificate } = await getCreds(ctx);
   const rtcRole = role === 'broadcaster'
     ? (RtcRole ? RtcRole.PUBLISHER : null)
     : (RtcRole ? RtcRole.SUBSCRIBER : null);

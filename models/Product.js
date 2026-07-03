@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const productReviewSchema = new mongoose.Schema(
   {
@@ -72,4 +73,4 @@ productSchema.virtual('displayReviewCount').get(function () {
 productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });
 
-module.exports = mongoose.model('Product', productSchema);
+module.exports = defineModel('Product', productSchema);

@@ -1,6 +1,4 @@
 const asyncHandler = require('../utils/asyncHandler');
-const Order = require('../models/Order');
-const Product = require('../models/Product');
 const payuService = require('../services/payuService');
 const notificationService = require('../services/notificationService');
 const AppError = require('../utils/AppError');
@@ -42,6 +40,8 @@ function resolveAddress(req) {
  * cart, and generate the invoice. The wallet debit is idempotent on the txnid.
  */
 exports.checkoutWallet = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
+  const Product = req.model('Product');
   const address = resolveAddress(req);
 
   // Source the lines from the server cart unless explicit items are passed.
@@ -72,7 +72,7 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
   if (req.body.couponCode) {
     const cart = { items: built.map((b) => ({ product: b.product, price: b.priceSnapshot, qty: b.qty })), subtotal };
     try {
-      const res2 = await require('../services/offersService').validateCoupon({ code: req.body.couponCode, userId: req.user._id, cart });
+      const res2 = await require('../services/offersService').validateCoupon(req.ctx, { code: req.body.couponCode, userId: req.user._id, cart });
       if (res2 && res2.discount > 0) { discount = res2.discount; couponId = res2.couponId; couponCode = req.body.couponCode; }
     } catch (_) {/* invalid coupon → ignore, charge full */}
   }
@@ -93,7 +93,7 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
   // Atomic wallet debit (throws 402 if insufficient; idempotent on refId).
   const walletService = require('../services/walletService');
   try {
-    await walletService.debit({
+    await walletService.debit(req.ctx, {
       userId: req.user._id, amount: total, source: 'product',
       description: `Store order ${String(order._id).slice(-6)}`, refId: txnid,
       meta: { orderId: String(order._id) },
@@ -123,18 +123,18 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
 
   // Consume the coupon (usage counters) once the order is paid.
   if (order.couponId) {
-    require('../services/offersService').consumeCoupon(order.couponId, req.user._id).catch(() => {});
+    require('../services/offersService').consumeCoupon(req.ctx, order.couponId, req.user._id).catch(() => {});
   }
 
   if (cart) { cart.items = []; await cart.save(); } // empty the server cart
-  else { await require('../models/Cart').findOneAndUpdate({ user: req.user._id }, { $set: { items: [] } }); }
+  else { await req.model('Cart').findOneAndUpdate({ user: req.user._id }, { $set: { items: [] } }); }
 
   // Auto-credit any astrologer-owned items' sellers (idempotent; non-fatal).
-  require('../services/storeEarningsService').creditAstrologersForOrder(order).catch(() => {});
+  require('../services/storeEarningsService').creditAstrologersForOrder(req.ctx, order).catch(() => {});
 
-  require('../services/invoiceService').createForOrder(order).catch((err) => require('../utils/logger').warn('invoice gen failed', err.message));
+  require('../services/invoiceService').createForOrder(req.ctx, order).catch((err) => require('../utils/logger').warn('invoice gen failed', err.message));
   const confirmCopy = statusCopy('confirmed');
-  notificationService.notify(req.user._id, {
+  notificationService.notify(req.ctx, req.user._id, {
     type: 'order_status', title: confirmCopy.label,
     body: 'Paid from your wallet. Your order is confirmed.',
     data: { orderId: String(order._id), status: 'confirmed' },
@@ -147,6 +147,8 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
 
 /** Create an order from cart items and start a PayU payment. */
 exports.create = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
+  const Product = req.model('Product');
   const { items, addressId } = req.body;
   // Resolve a saved address by id, else use the inline address.
   let address = req.body.address;
@@ -185,6 +187,7 @@ exports.create = asyncHandler(async (req, res) => {
 
 // Invoice for an order (admin or the owning user).
 exports.getInvoice = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
   const invoiceService = require('../services/invoiceService');
   const order = await Order.findById(req.params.id);
   if (!order) throw new AppError('Order not found', 404);
@@ -193,26 +196,28 @@ exports.getInvoice = asyncHandler(async (req, res) => {
   if (req.user.role !== 'admin' && String(order.user) !== String(req.user._id)) {
     throw new AppError('Not authorized', 403);
   }
-  let invoice = await invoiceService.getByOrder(order._id);
+  let invoice = await invoiceService.getByOrder(req.ctx, order._id);
   // Backfill: if paid but no invoice yet (e.g. created before this feature), generate now.
-  if (!invoice && order.paymentStatus === 'paid') invoice = await invoiceService.createForOrder(order);
+  if (!invoice && order.paymentStatus === 'paid') invoice = await invoiceService.createForOrder(req.ctx, order);
   if (!invoice) throw new AppError('Invoice not available until the order is paid', 404);
   // Resolve the branding template so callers (admin print, app) can render it.
   // Falls back to the active/default template when the invoice predates stamping.
   let template = null;
   if (invoice.template) {
-    template = await require('../models/InvoiceTemplate').findById(invoice.template);
+    template = await req.model('InvoiceTemplate').findById(invoice.template);
   }
-  if (!template) template = await invoiceService.defaultTemplate();
+  if (!template) template = await invoiceService.defaultTemplate(req.ctx);
   res.json({ success: true, data: { ...invoice.toObject(), template } });
 });
 
 exports.listMine = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
   const items = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
   res.json({ success: true, data: items });
 });
 
 exports.get = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
   const order = await Order.findById(req.params.id);
   if (!order) throw new AppError('Order not found', 404);
   if (String(order.user) !== String(req.user._id) && req.user.role !== 'admin') throw new AppError('Not authorized', 403);
@@ -233,6 +238,7 @@ function buildOrderFilter(query) {
 
 // ── Admin: lifecycle ──
 exports.adminList = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
   // Only paid orders reach fulfillment (no COD; unpaid checkouts are hidden).
   const q = buildOrderFilter(req.query);
   let items = await Order.find(q).sort({ createdAt: -1 }).limit(500).populate('user', 'name phone');
@@ -251,6 +257,7 @@ exports.adminList = asyncHandler(async (req, res) => {
 
 // ── Admin: orders analytics (KPIs + time series + repeat-customer retention) ──
 exports.adminAnalytics = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
   const match = buildOrderFilter(req.query);
   const orders = await Order.find(match).select('total status createdAt user').lean();
 
@@ -293,7 +300,7 @@ exports.adminAnalytics = asyncHandler(async (req, res) => {
   // Top repeat buyers (most orders, then most spent) — hydrate names.
   const topUsers = Object.values(perUser).filter((u) => u.orders >= 2)
     .sort((a, b) => b.orders - a.orders || b.spent - a.spent).slice(0, 10);
-  const User = require('../models/User');
+  const User = req.model('User');
   const names = await User.find({ _id: { $in: topUsers.map((u) => u.user) } }).select('name phone').lean();
   const nameMap = Object.fromEntries(names.map((n) => [String(n._id), n.name || n.phone || '—']));
   const topRepeat = topUsers.map((u) => ({ user: u.user, name: nameMap[u.user] || '—', orders: u.orders, spent: u.spent }));
@@ -313,6 +320,8 @@ exports.adminAnalytics = asyncHandler(async (req, res) => {
 // Forward-only fulfillment workflow (cancel/refund allowed from non-terminal).
 const ORDER_FLOW = ['confirmed', 'packed', 'shipped', 'out_for_delivery', 'delivered'];
 exports.updateStatus = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
+  const Product = req.model('Product');
   const order = await Order.findById(req.params.id);
   if (!order) throw new AppError('Order not found', 404);
   const next = req.body.status;
@@ -339,7 +348,7 @@ exports.updateStatus = asyncHandler(async (req, res) => {
 
   // Fire a customer notification on every status change.
   const copy = statusCopy(next);
-  await notificationService.notify(order.user, {
+  await notificationService.notify(req.ctx, order.user, {
     type: 'order_status',
     title: copy.label,
     body: copy.body,
@@ -349,11 +358,12 @@ exports.updateStatus = asyncHandler(async (req, res) => {
 });
 
 // ── Order support ("Need help" from the order detail screen) ──
-const OrderSupport = require('../models/OrderSupport');
 const orderNo = (id) => { const s = String(id); return s.length > 6 ? s.slice(-6).toUpperCase() : s.toUpperCase(); };
 
 /** User: raise a help request for one of their orders. */
 exports.createSupport = asyncHandler(async (req, res) => {
+  const Order = req.model('Order');
+  const OrderSupport = req.model('OrderSupport');
   const order = await Order.findById(req.params.id);
   if (!order) throw new AppError('Order not found', 404);
   if (String(order.user) !== String(req.user._id)) throw new AppError('Not authorized', 403);
@@ -378,6 +388,7 @@ exports.createSupport = asyncHandler(async (req, res) => {
 
 /** Admin: list order-support requests (optionally filtered by status). */
 exports.adminListSupport = asyncHandler(async (req, res) => {
+  const OrderSupport = req.model('OrderSupport');
   const q = {};
   if (req.query.status && ['new', 'done'].includes(req.query.status)) q.status = req.query.status;
   const items = await OrderSupport.find(q)
@@ -390,6 +401,7 @@ exports.adminListSupport = asyncHandler(async (req, res) => {
 
 /** Admin: flip a request's status (new ↔ done). */
 exports.adminSetSupportStatus = asyncHandler(async (req, res) => {
+  const OrderSupport = req.model('OrderSupport');
   const ticket = await OrderSupport.findById(req.params.id);
   if (!ticket) throw new AppError('Support request not found', 404);
   ticket.status = req.body.status;

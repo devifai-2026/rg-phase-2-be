@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Shared presence (used when SOCKET_ADAPTER=mongo/memory, i.e. no Redis). */
 const presenceSchema = new mongoose.Schema(
@@ -27,4 +28,4 @@ const presenceSchema = new mongoose.Schema(
 // Reconcile ghost-online: a sweeper marks offline if lastSeen is stale.
 presenceSchema.index({ lastSeen: 1 });
 
-module.exports = mongoose.model('Presence', presenceSchema);
+module.exports = defineModel('Presence', presenceSchema);

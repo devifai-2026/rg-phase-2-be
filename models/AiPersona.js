@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed AI astrologer "card" shown in the app as a selectable AI guide.
@@ -19,4 +20,4 @@ const aiPersonaSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('AiPersona', aiPersonaSchema);
+module.exports = defineModel('AiPersona', aiPersonaSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const NOTIF_TYPES = [
   'incoming_request',
@@ -33,5 +34,5 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ user: 1, createdAt: -1 });
 notificationSchema.index({ user: 1, isRead: 1 });
 
-module.exports = mongoose.model('Notification', notificationSchema);
+module.exports = defineModel('Notification', notificationSchema);
 module.exports.TYPES = NOTIF_TYPES;

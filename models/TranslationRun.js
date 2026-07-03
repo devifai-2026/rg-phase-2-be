@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Audit log of each "Run translation" pass from the admin panel. One row per
@@ -25,4 +26,4 @@ const translationRunSchema = new mongoose.Schema(
 
 translationRunSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.model('TranslationRun', translationRunSchema);
+module.exports = defineModel('TranslationRun', translationRunSchema);

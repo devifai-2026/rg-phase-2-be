@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Tombstone for a broadcast log the admin deleted.
@@ -52,4 +53,4 @@ deletedBroadcastSchema.statics.allIds = async function allIds() {
   return rows.map((r) => r.broadcastId);
 };
 
-module.exports = mongoose.model('DeletedBroadcast', deletedBroadcastSchema);
+module.exports = defineModel('DeletedBroadcast', deletedBroadcastSchema);

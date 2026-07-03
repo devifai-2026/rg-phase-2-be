@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed promo banner shown in the app's auto-rotating carousel on Home.
@@ -27,4 +28,4 @@ const bannerSchema = new mongoose.Schema(
 
 bannerSchema.index({ placement: 1, isActive: 1, sortOrder: 1 });
 
-module.exports = mongoose.model('Banner', bannerSchema);
+module.exports = defineModel('Banner', bannerSchema);

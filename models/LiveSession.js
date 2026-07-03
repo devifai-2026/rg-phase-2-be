@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * An astrologer LIVE BROADCAST (one-to-many), distinct from the 1-on-1 timed
@@ -87,4 +88,4 @@ const liveSessionSchema = new mongoose.Schema(
 
 liveSessionSchema.index({ status: 1, startedAt: -1 });
 
-module.exports = mongoose.model('LiveSession', liveSessionSchema);
+module.exports = defineModel('LiveSession', liveSessionSchema);

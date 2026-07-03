@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Caches VedicAstroAPI responses keyed by sha256(endpoint + normalized birth params). */
 const astroCacheSchema = new mongoose.Schema(
@@ -16,4 +17,4 @@ const astroCacheSchema = new mongoose.Schema(
 // TTL only fires on docs that set expiresAt.
 astroCacheSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-module.exports = mongoose.model('AstroCache', astroCacheSchema);
+module.exports = defineModel('AstroCache', astroCacheSchema);

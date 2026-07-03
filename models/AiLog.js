@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * One LLM call, logged for admin oversight + debugging + rate-limiting.
@@ -37,4 +38,4 @@ aiLogSchema.index({ feature: 1, astrologer: 1, createdAt: -1 });
 // Auto-expire after 30 days.
 aiLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
-module.exports = mongoose.model('AiLog', aiLogSchema);
+module.exports = defineModel('AiLog', aiLogSchema);

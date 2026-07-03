@@ -1,8 +1,10 @@
-const Enquiry = require('../models/Enquiry');
+const { defaultContext } = require('../utils/tenantContext');
 const AppError = require('../utils/AppError');
 
 /** Public: create a contact-us enquiry from the landing page. */
-async function create({ name, email, phone, subject, message, anonId, source, ip, userAgent }) {
+async function create(ctx, { name, email, phone, subject, message, anonId, source, ip, userAgent }) {
+  ctx = ctx || defaultContext();
+  const Enquiry = ctx.model('Enquiry');
   const doc = await Enquiry.create({
     name,
     email: email || '',
@@ -20,7 +22,9 @@ async function create({ name, email, phone, subject, message, anonId, source, ip
 }
 
 /** Admin: paginated list with optional status filter. */
-async function list({ page = 1, limit = 20, status } = {}) {
+async function list(ctx, { page = 1, limit = 20, status } = {}) {
+  ctx = ctx || defaultContext();
+  const Enquiry = ctx.model('Enquiry');
   const q = status ? { status } : {};
   const skip = (page - 1) * limit;
   const [items, total, newCount] = await Promise.all([
@@ -31,14 +35,18 @@ async function list({ page = 1, limit = 20, status } = {}) {
   return { items, total, page, limit, newCount };
 }
 
-async function getOne(id) {
+async function getOne(ctx, id) {
+  ctx = ctx || defaultContext();
+  const Enquiry = ctx.model('Enquiry');
   const doc = await Enquiry.findById(id).populate('handledBy', 'name').lean();
   if (!doc) throw new AppError('Enquiry not found', 404);
   return doc;
 }
 
 /** Admin: update status / note. */
-async function update(id, { status, adminNote }, actorId) {
+async function update(ctx, id, { status, adminNote }, actorId) {
+  ctx = ctx || defaultContext();
+  const Enquiry = ctx.model('Enquiry');
   const doc = await Enquiry.findById(id);
   if (!doc) throw new AppError('Enquiry not found', 404);
   if (status) {

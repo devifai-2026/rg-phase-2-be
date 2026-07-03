@@ -1,7 +1,4 @@
 const asyncHandler = require('../utils/asyncHandler');
-const Product = require('../models/Product');
-const Category = require('../models/Category');
-const Session = require('../models/Session');
 const { toRupees } = require('../utils/money');
 const AppError = require('../utils/AppError');
 const translateService = require('../services/translateService');
@@ -24,6 +21,7 @@ async function localizeProduct(p, lang) {
 }
 
 exports.list = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const { category, q, page = '1', limit = '20', all, minPrice, maxPrice, sort } = req.query;
   // Public RudraStore (the global shop): show ONLY admin-owned catalog products
   // (`astrologer: null`), active + in stock. Admin products are authored by the
@@ -65,6 +63,7 @@ exports.list = asyncHandler(async (req, res) => {
 });
 
 exports.get = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const product = await Product.findById(req.params.id).populate('reviews.user', 'name').lean();
   if (!product) throw new AppError('Product not found', 404);
   await localizeProduct(product, reqLang(req));
@@ -72,6 +71,8 @@ exports.get = asyncHandler(async (req, res) => {
 });
 
 exports.create = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
+  const Category = req.model('Category');
   const body = { ...req.body, price: toRupees(req.body.priceRupees) };
   if (req.body.mrpRupees != null) body.mrp = toRupees(req.body.mrpRupees);
   delete body.priceRupees; delete body.mrpRupees;
@@ -81,13 +82,15 @@ exports.create = asyncHandler(async (req, res) => {
   }
   const product = await Product.create(body);
   // System template: announce the new product to all users (if enabled).
-  require('../services/broadcastService').fireEvent('product_added', {
+  require('../services/broadcastService').fireEvent(req.ctx, 'product_added', {
     vars: { productName: product.name, price: product.price },
   });
   res.status(201).json({ success: true, data: product });
 });
 
 exports.update = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
+  const Category = req.model('Category');
   const body = { ...req.body };
   if (body.priceRupees != null) { body.price = toRupees(body.priceRupees); delete body.priceRupees; }
   if (body.mrpRupees != null) { body.mrp = toRupees(body.mrpRupees); delete body.mrpRupees; }
@@ -101,11 +104,13 @@ exports.update = asyncHandler(async (req, res) => {
 });
 
 exports.remove = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   await Product.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
 
 exports.addReview = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const product = await Product.findById(req.params.id);
   if (!product) throw new AppError('Product not found', 404);
   product.reviews = product.reviews.filter((r) => String(r.user) !== String(req.user._id));

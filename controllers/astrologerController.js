@@ -1,6 +1,5 @@
 const asyncHandler = require('../utils/asyncHandler');
 const astrologerService = require('../services/astrologerService');
-const AstrologerProfile = require('../models/AstrologerProfile');
 const AppError = require('../utils/AppError');
 const trackService = require('../services/trackService');
 const translateService = require('../services/translateService');
@@ -71,26 +70,26 @@ async function localizeAstrologer(a, lang) {
 // Astrologer login gate: does an account exist for this phone? The app uses
 // `exists` to decide between OTP login and sending the person to registration.
 exports.checkExists = asyncHandler(async (req, res) => {
-  const data = await astrologerService.checkExists(req.params.phone);
+  const data = await astrologerService.checkExists(req.ctx, req.params.phone);
   res.json({ success: true, data });
 });
 
 // Shared expertise catalog (public). Drives the app + admin pickers so options
 // always match and admin-created expertise shows everywhere.
 exports.listExpertise = asyncHandler(async (req, res) => {
-  const data = await astrologerService.listExpertise();
+  const data = await astrologerService.listExpertise(req.ctx);
   res.json({ success: true, data });
 });
 
 exports.submitApplication = asyncHandler(async (req, res) => {
-  const data = await astrologerService.submitApplication(req.body);
+  const data = await astrologerService.submitApplication(req.ctx, req.body);
   // Attribute this anonId's visits to an astrologer-apply conversion (fire-and-forget).
-  if (req.body.anonId) trackService.attributeConversion(req.body.anonId, 'astrologer_apply');
+  if (req.body.anonId) trackService.attributeConversion(req.ctx, req.body.anonId, 'astrologer_apply');
   res.status(201).json({ success: true, data, message: 'Application received. Our team will contact you.' });
 });
 
 exports.listPublic = asyncHandler(async (req, res) => {
-  const data = await astrologerService.listPublic({
+  const data = await astrologerService.listPublic(req.ctx, {
     q: req.query.q,
     expertise: req.query.expertise,
     language: req.query.language,
@@ -108,14 +107,15 @@ exports.listPublic = asyncHandler(async (req, res) => {
 });
 
 exports.getPublic = asyncHandler(async (req, res) => {
-  const data = await astrologerService.getPublic(req.params.id);
+  const data = await astrologerService.getPublic(req.ctx, req.params.id);
   await localizeAstrologer(data, reqLang(req));
   res.json({ success: true, data });
 });
 
 /** Follow / unfollow an astrologer (unfollow keeps an optional reason). :id = profile id. */
 exports.toggleFollow = asyncHandler(async (req, res) => {
-  const Follow = require('../models/Follow');
+  const Follow = req.model('Follow');
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(req.params.id).select('user followerSeed followerCount');
   if (!profile) throw new AppError('Astrologer not found', 404);
   const follow = req.body.follow !== false; // default true
@@ -141,9 +141,9 @@ exports.toggleFollow = asyncHandler(async (req, res) => {
     followerCount = r.followerCount;
     // Tell the astrologer they gained a follower (push + in-app). Tapping opens
     // their followers page. Best-effort — never block the follow response.
-    const follower = await require('../models/User').findById(req.user._id).select('name').lean();
+    const follower = await req.model('User').findById(req.user._id).select('name').lean();
     require('../services/notificationService')
-      .notify(profile.user, {
+      .notify(req.ctx, profile.user, {
         type: 'new_follower',
         title: 'New follower! 🌟',
         body: `${(follower && follower.name) || 'Someone'} just followed you. Your guidance is reaching more seekers — keep shining!`,
@@ -165,7 +165,7 @@ exports.toggleFollow = asyncHandler(async (req, res) => {
  * Drives the astrologer app's Followers page.
  */
 exports.myFollowers = asyncHandler(async (req, res) => {
-  const Follow = require('../models/Follow');
+  const Follow = req.model('Follow');
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '30', 10), 100);
   const skip = (page - 1) * limit;
@@ -188,7 +188,8 @@ exports.myFollowers = asyncHandler(async (req, res) => {
  * :id = AstrologerProfile id.
  */
 exports.myFollow = asyncHandler(async (req, res) => {
-  const Follow = require('../models/Follow');
+  const Follow = req.model('Follow');
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(req.params.id).select('user followerSeed followerCount');
   if (!profile) throw new AppError('Astrologer not found', 404);
   const doc = await Follow.findOne({ user: req.user._id, astrologer: profile.user }).select('active');
@@ -202,7 +203,8 @@ exports.myFollow = asyncHandler(async (req, res) => {
  * reuses the pending row. :id = AstrologerProfile id.
  */
 exports.notifyWhenAvailable = asyncHandler(async (req, res) => {
-  const NotifyRequest = require('../models/NotifyRequest');
+  const NotifyRequest = req.model('NotifyRequest');
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(req.params.id).select('user');
   if (!profile) throw new AppError('Astrologer not found', 404);
   const service = req.body.service;
@@ -222,7 +224,7 @@ exports.notifyWhenAvailable = asyncHandler(async (req, res) => {
   // request; the notify-me button only appears when the astrologer is busy/
   // offline, so this covers both. Throttled + fire-and-forget inside the service.
   if (!existing) {
-    require('../services/presenceService').nudgeAstrologerWaiting(profile.user).catch(() => {});
+    require('../services/presenceService').nudgeAstrologerWaiting(req.ctx, profile.user).catch(() => {});
   }
 
   res.status(201).json({ success: true, data: { ...doc.toObject(), alreadyRequested: !!existing } });
@@ -234,7 +236,8 @@ exports.notifyWhenAvailable = asyncHandler(async (req, res) => {
  * open. :id = AstrologerProfile id. Returns { services: ['chat', ...] }.
  */
 exports.myNotifyRequests = asyncHandler(async (req, res) => {
-  const NotifyRequest = require('../models/NotifyRequest');
+  const NotifyRequest = req.model('NotifyRequest');
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(req.params.id).select('user');
   if (!profile) throw new AppError('Astrologer not found', 404);
   const rows = await NotifyRequest.find({ user: req.user._id, astrologer: profile.user, status: 'pending' }).select('service');
@@ -243,7 +246,7 @@ exports.myNotifyRequests = asyncHandler(async (req, res) => {
 
 // ── Astrologer self-service ──
 exports.setOnline = asyncHandler(async (req, res) => {
-  const data = await astrologerService.setOnline(req.user._id, req.body.online);
+  const data = await astrologerService.setOnline(req.ctx, req.user._id, req.body.online);
   res.json({ success: true, data: { isOnline: data.isOnline, currentCallStatus: data.currentCallStatus } });
 });
 
@@ -256,12 +259,13 @@ exports.setOnline = asyncHandler(async (req, res) => {
  */
 exports.presenceAck = asyncHandler(async (req, res) => {
   const presenceService = require('../services/presenceService');
-  const data = await presenceService.markReachable(req.user._id);
+  const data = await presenceService.markReachable(req.ctx, req.user._id);
   res.json({ success: true, data: data || {} });
 });
 
 /** Astrologer reads their saved payout (bank / UPI) details. */
 exports.getPayoutDetails = asyncHandler(async (req, res) => {
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findOne({ user: req.user._id }).select('payoutDetails').lean();
   if (!profile) throw new AppError('No astrologer profile', 404);
   res.json({ success: true, data: profile.payoutDetails || {} });
@@ -277,6 +281,7 @@ exports.savePayoutDetails = asyncHandler(async (req, res) => {
   if (!accountNumber && !upi) throw new AppError('Enter a bank account or a UPI id', 400);
   if (accountNumber && !ifsc) throw new AppError('IFSC is required with a bank account', 400);
 
+  const AstrologerProfile = req.model('AstrologerProfile');
   const payoutDetails = {
     accountNumber: (accountNumber || '').trim() || undefined,
     ifsc: (ifsc || '').trim().toUpperCase() || undefined,
@@ -303,6 +308,7 @@ exports.savePayoutDetails = asyncHandler(async (req, res) => {
 });
 
 exports.myProfile = asyncHandler(async (req, res) => {
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findOne({ user: req.user._id })
     .populate('user', 'name phone email language profileCompleted');
   if (!profile) throw new AppError('No astrologer profile', 404);
@@ -311,7 +317,7 @@ exports.myProfile = asyncHandler(async (req, res) => {
   //   followers = admin seed + real active follows (followerCount)
   //   giftCount = real gifts actually received (GiftTransaction), not the seed
   //   rating/reviewCount already live on the doc (recomputed on each new review)
-  const GiftTransaction = require('../models/GiftTransaction');
+  const GiftTransaction = req.model('GiftTransaction');
   const realGiftCount = await GiftTransaction.countDocuments({ receiver: req.user._id });
 
   const data = profile.toObject();
@@ -324,19 +330,19 @@ exports.myProfile = asyncHandler(async (req, res) => {
 // Astrologer edits their own editable fields (bio/expertise/languages/
 // experience/photos) + UI language. Rates/commission/KYC/name stay admin-only.
 exports.updateMyProfile = asyncHandler(async (req, res) => {
-  const data = await astrologerService.updateMyProfile(req.user._id, req.body);
+  const data = await astrologerService.updateMyProfile(req.ctx, req.user._id, req.body);
   res.json({ success: true, data });
 });
 
 // Dashboard consultation stats (per-service + this-month earnings).
 exports.myStats = asyncHandler(async (req, res) => {
-  const data = await astrologerService.myStats(req.user._id);
+  const data = await astrologerService.myStats(req.ctx, req.user._id);
   res.json({ success: true, data });
 });
 
 // ── Admin ──
 exports.adminList = asyncHandler(async (req, res) => {
-  const data = await astrologerService.adminList({
+  const data = await astrologerService.adminList(req.ctx, {
     status: req.query.status,
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
@@ -345,7 +351,7 @@ exports.adminList = asyncHandler(async (req, res) => {
 });
 
 exports.adminUpdate = asyncHandler(async (req, res) => {
-  const data = await astrologerService.adminUpdate(req.params.id, req.body, req.user._id);
+  const data = await astrologerService.adminUpdate(req.ctx, req.params.id, req.body, req.user._id);
   res.json({ success: true, data });
 });
 
@@ -356,29 +362,30 @@ exports.adminRequestAstrologerOtp = asyncHandler(async (req, res) => {
   const { normalizePhone } = require('../utils/phone');
   const phone = normalizePhone(req.body.phone);
   if (!phone) throw new AppError('Enter a valid 10-digit phone number', 400);
-  await require('../models/User').assertPhoneAvailable(phone);
-  const data = await require('../services/otpService').requestOtp(phone);
+  await req.model('User').assertPhoneAvailable(phone);
+  const data = await require('../services/otpService').requestOtp(req.ctx, phone);
   res.json({ success: true, data });
 });
 
 // Admin manually creates an astrologer (skips the public lead flow).
 exports.adminCreate = asyncHandler(async (req, res) => {
-  const data = await astrologerService.adminCreate(req.body, req.user._id);
+  const data = await astrologerService.adminCreate(req.ctx, req.body, req.user._id);
   res.status(201).json({ success: true, data });
 });
 
 exports.adminDelete = asyncHandler(async (req, res) => {
-  await astrologerService.adminDelete(req.params.id, req.user._id);
+  await astrologerService.adminDelete(req.ctx, req.params.id, req.user._id);
   res.json({ success: true });
 });
 
 // Permanently delete a non-active application (lead) + its placeholder user.
 exports.adminDeleteApplication = asyncHandler(async (req, res) => {
-  await astrologerService.adminDeleteApplication(req.params.id);
+  await astrologerService.adminDeleteApplication(req.ctx, req.params.id);
   res.json({ success: true });
 });
 
 exports.adminDetail = asyncHandler(async (req, res) => {
+  const AstrologerProfile = req.model('AstrologerProfile');
   const data = await AstrologerProfile.findById(req.params.id).populate('user', 'name phone email isBlocked');
   if (!data) throw new AppError('Astrologer not found', 404);
   res.json({ success: true, data });

@@ -27,6 +27,17 @@ async function start() {
   // override them and survive restarts. Best-effort: never block boot.
   require('./services/promptService').seedPrompts().catch((e) => logger.warn('prompt seed failed', e.message));
 
+  // ── SaaS control-plane boot (only when multi-tenant is enabled) ──
+  // Connects the control DB and seeds the built-in plans (incl. free_trial).
+  // Guarded so single-tenant deploys never touch the control plane.
+  if (env.saas.enabled) {
+    const { connectControlDB } = require('./config/controlDb');
+    connectControlDB()
+      .then(() => require('./services/control/planService').seedPlans())
+      .then(() => logger.info('SaaS control-plane ready'))
+      .catch((e) => logger.error('SaaS control-plane boot failed', e.message));
+  }
+
   server.listen(env.port, () => {
     logger.info(`Server listening on :${env.port}`, { env: env.nodeEnv, docs: `http://localhost:${env.port}/api-docs` });
   });

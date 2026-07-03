@@ -1,6 +1,4 @@
-const AiConversation = require('../models/AiConversation');
-const AiMessage = require('../models/AiMessage');
-const User = require('../models/User');
+const { defaultContext } = require('../utils/tenantContext');
 const vedicAstroService = require('./vedicAstroService');
 const llmService = require('./llmService');
 const AppError = require('../utils/AppError');
@@ -34,7 +32,12 @@ async function buildSystemPrompt(user) {
   );
 }
 
-async function chat({ userId, conversationId, message }) {
+async function chat(ctx, { userId, conversationId, message }) {
+  ctx = ctx || defaultContext();
+  const AiConversation = ctx.model('AiConversation');
+  const AiMessage = ctx.model('AiMessage');
+  const User = ctx.model('User');
+
   const user = await User.findById(userId);
   if (!user) throw new AppError('User not found', 404);
 
@@ -81,11 +84,16 @@ async function chat({ userId, conversationId, message }) {
   return { conversationId: conversation._id, reply: answer, messageId: assistantMsg._id };
 }
 
-async function listConversations(userId) {
+async function listConversations(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const AiConversation = ctx.model('AiConversation');
   return AiConversation.find({ user: userId }).sort({ lastMessageAt: -1 }).limit(50);
 }
 
-async function getConversation(userId, conversationId) {
+async function getConversation(ctx, userId, conversationId) {
+  ctx = ctx || defaultContext();
+  const AiConversation = ctx.model('AiConversation');
+  const AiMessage = ctx.model('AiMessage');
   const conv = await AiConversation.findOne({ _id: conversationId, user: userId });
   if (!conv) throw new AppError('Conversation not found', 404);
   const messages = await AiMessage.find({ conversation: conversationId }).sort({ createdAt: 1 });

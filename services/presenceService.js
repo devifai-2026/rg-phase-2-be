@@ -1,31 +1,42 @@
-const Presence = require('../models/Presence');
-const AstrologerProfile = require('../models/AstrologerProfile');
 const cacheService = require('./cacheService');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
+
+// Models are resolved per-request from the tenant DB via ctx.model(...). Every
+// exported fn takes ctx as its first arg; callers without a request context
+// (socket layer, reconcile worker) pass none → defaultContext() (single-tenant).
 
 // Fast "who's online" set in Memorystore (cache layer; Mongo stays authoritative).
-// Key: rg:presence:online-astrologers  → SET of astrologer userIds.
-const ONLINE_SET = `${env.cache.keyPrefix}:presence:online-astrologers`;
+// The key is TENANT-SCOPED (all tenants share one Redis) so tenant A's online
+// astrologers never leak into tenant B's fast-path read.
+// Key: rg:<tenantSlug>:presence:online-astrologers → SET of astrologer userIds.
+function onlineSetKey(ctx) {
+  const slug = (ctx && ctx.tenant && ctx.tenant.slug) || 'default';
+  return `${env.cache.keyPrefix}:${slug}:presence:online-astrologers`;
+}
 
 /** Add/remove an astrologer from the Redis online set (no-op if cache off). */
-async function markAstrologerOnline(userId, online) {
+async function markAstrologerOnline(ctx, userId, online) {
+  ctx = ctx || defaultContext();
   try {
     const c = await cacheService.raw();
     if (!c) return;
-    if (online) await c.sAdd(ONLINE_SET, String(userId));
-    else await c.sRem(ONLINE_SET, String(userId));
+    const key = onlineSetKey(ctx);
+    if (online) await c.sAdd(key, String(userId));
+    else await c.sRem(key, String(userId));
   } catch (e) {
     logger.debug('online-set update failed', e.message);
   }
 }
 
 /** Fast read of online astrologer ids from Redis; null if cache unavailable. */
-async function getOnlineAstrologerIds() {
+async function getOnlineAstrologerIds(ctx) {
+  ctx = ctx || defaultContext();
   try {
     const c = await cacheService.raw();
     if (!c) return null; // caller falls back to Mongo (isOnline)
-    return c.sMembers(ONLINE_SET);
+    return c.sMembers(onlineSetKey(ctx));
   } catch (e) {
     logger.debug('online-set read failed', e.message);
     return null;
@@ -42,7 +53,9 @@ async function getOnlineAstrologerIds() {
 // cumulative activity even when the user is offline. `online` reflects live
 // connection; `socketCount` tracks multi-device.
 
-async function userConnected(userId, role) {
+async function userConnected(ctx, userId, role) {
+  ctx = ctx || defaultContext();
+  const Presence = ctx.model('Presence');
   // Heal any negative drift first: racy disconnects / missed disconnect events
   // (app killed while backgrounded) can push socketCount below 0, after which a
   // single connect only brings it to 0 and the user reads "offline" forever.
@@ -61,7 +74,9 @@ async function userConnected(userId, role) {
   );
 }
 
-async function userDisconnected(userId) {
+async function userDisconnected(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const Presence = ctx.model('Presence');
   const doc = await Presence.findOneAndUpdate(
     { user: userId },
     { $inc: { socketCount: -1 }, $set: { lastSeen: new Date() } },
@@ -80,7 +95,9 @@ async function userDisconnected(userId) {
  * carried since the last beat: page views, searches, last page/search.
  * @param {object} [activity] { pageViews, searches, lastPage, lastSearch }
  */
-async function heartbeat(userId, activity = {}) {
+async function heartbeat(ctx, userId, activity = {}) {
+  ctx = ctx || defaultContext();
+  const Presence = ctx.model('Presence');
   const inc = {};
   if (activity.pageViews) inc['activity.pageViews'] = activity.pageViews;
   if (activity.searches) inc['activity.searches'] = activity.searches;
@@ -99,7 +116,9 @@ async function heartbeat(userId, activity = {}) {
   );
 }
 
-async function isOnline(userId) {
+async function isOnline(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const Presence = ctx.model('Presence');
   const doc = await Presence.findOne({ user: userId });
   return !!(doc && doc.online && doc.socketCount > 0);
 }
@@ -111,8 +130,9 @@ async function isOnline(userId) {
  * dropped but whose phone still has internet stays online. Cheap + idempotent;
  * recompute only broadcasts on an actual status change.
  */
-async function markReachable(userId) {
-  return recomputeAstrologerPresence(userId, { connected: true });
+async function markReachable(ctx, userId) {
+  ctx = ctx || defaultContext();
+  return recomputeAstrologerPresence(ctx, userId, { connected: true });
 }
 
 /**
@@ -123,7 +143,9 @@ async function markReachable(userId) {
  * with no internet can't ACK, so its window lapses and reconcile() flips it
  * offline. Best-effort; no-op in FCM mock mode (local dev without credentials).
  */
-async function probeReachability() {
+async function probeReachability(ctx) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const staleBefore = new Date(Date.now() - env.presence.probeStaleAfterMs);
   // Candidates: intend to be online AND reachability is stale (or never set).
   const candidates = await AstrologerProfile.find({
@@ -138,7 +160,7 @@ async function probeReachability() {
     // Data-only, no title/body → the app ACKs silently without drawing a
     // notification (its background handler special-cases type:'presence_ping').
     fcmService
-      .sendToUserTokens({
+      .sendToUserTokens(ctx, {
         userId: c.user,
         title: '',
         body: '',
@@ -170,7 +192,10 @@ async function probeReachability() {
  *        derive it from the presence store (socketCount > 0).
  * @returns {{isOnline:boolean,currentCallStatus:string}|null}
  */
-async function recomputeAstrologerPresence(userId, { preference, connected } = {}) {
+async function recomputeAstrologerPresence(ctx, userId, { preference, connected } = {}) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Presence = ctx.model('Presence');
   const profile = await AstrologerProfile.findOne({ user: userId });
   if (!profile) return null;
 
@@ -222,8 +247,8 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
   let busy = profile.currentCallStatus === 'busy';
   if (busy) {
     try {
-      const Session = require('../models/Session');
-      const LiveSession = require('../models/LiveSession');
+      const Session = ctx.model('Session');
+      const LiveSession = ctx.model('LiveSession');
       const [hasSession, hasLive] = await Promise.all([
         Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } }),
         LiveSession.exists({ astrologer: userId, status: 'live' }),
@@ -253,7 +278,7 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
   // 4) Keep the fast Redis online-set + the public list cache consistent.
   //    'astro' is the namespace astrologerService caches public list/profile
   //    reads under; dropping it forces the next discover fetch to be fresh.
-  await markAstrologerOnline(userId, profile.isOnline);
+  await markAstrologerOnline(ctx, userId, profile.isOnline); // tenant-scoped Redis online-set
   if (changed) {
     try {
       await cacheService.delNamespace('astro');
@@ -271,7 +296,7 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
       let liveExtra = {};
       if (profile.currentCallStatus === 'busy') {
         try {
-          const LiveSession = require('../models/LiveSession');
+          const LiveSession = ctx.model('LiveSession');
           const ls = await LiveSession.findOne({ astrologer: userId, status: 'live' }).select('_id').lean();
           if (ls) liveExtra = { live: true, liveSessionId: String(ls._id) };
         } catch (_) { /* best-effort */ }
@@ -301,7 +326,7 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
   //    and tell their app to clear the "you'll be notified" state. Fire-and-
   //    forget so a slow notify never blocks the presence update.
   if (!wasOnline && profile.isOnline && profile.currentCallStatus === 'available') {
-    fulfillNotifyRequests(profile).catch((e) => logger.warn('fulfillNotifyRequests failed', e.message));
+    fulfillNotifyRequests(ctx, profile).catch((e) => logger.warn('fulfillNotifyRequests failed', e.message));
   }
 
   return { isOnline: profile.isOnline, currentCallStatus: profile.currentCallStatus };
@@ -315,12 +340,14 @@ async function recomputeAstrologerPresence(userId, { preference, connected } = {
  * Returns { ok, breakUntil } (breakUntil ISO string or null). Recomputes +
  * broadcasts presence so users see busy/available immediately.
  */
-async function setAstrologerBreak(userId, minutes) {
+async function setAstrologerBreak(ctx, userId, minutes) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profile = await AstrologerProfile.findOne({ user: userId });
   if (!profile) return { ok: false, reason: 'not_found' };
 
   if (minutes && minutes > 0) {
-    const Session = require('../models/Session');
+    const Session = ctx.model('Session');
     const hasLiveSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
     if (hasLiveSession) return { ok: false, reason: 'in_consultation' };
     profile.breakUntil = new Date(Date.now() + Math.min(minutes, 180) * 60 * 1000);
@@ -331,7 +358,7 @@ async function setAstrologerBreak(userId, minutes) {
 
   // Re-derive + broadcast (break now factors into busy). A live socket is the
   // common case here (the astro app just called this), so assert connected.
-  const result = await recomputeAstrologerPresence(userId, { connected: true });
+  const result = await recomputeAstrologerPresence(ctx, userId, { connected: true });
   return { ok: true, breakUntil: profile.breakUntil ? profile.breakUntil.toISOString() : null, ...result };
 }
 
@@ -343,9 +370,10 @@ async function setAstrologerBreak(userId, minutes) {
  * One FCM + in-app push per user (deduped across both groups). All taps deep-
  * link to the astrologer's detail page.
  */
-async function fulfillNotifyRequests(profile) {
-  const NotifyRequest = require('../models/NotifyRequest');
-  const Follow = require('../models/Follow');
+async function fulfillNotifyRequests(ctx, profile) {
+  ctx = ctx || defaultContext();
+  const NotifyRequest = ctx.model('NotifyRequest');
+  const Follow = ctx.model('Follow');
   const notificationService = require('./notificationService');
   const emit = require('../websockets/emit');
 
@@ -365,7 +393,7 @@ async function fulfillNotifyRequests(profile) {
   const data = { type: 'astrologer_available', profileId: String(profile._id), kind: 'astrologer_available' };
   const sendOnce = async (uid) => {
     await notificationService
-      .notify(uid, {
+      .notify(ctx, uid, {
         type: 'astrologer_available',
         title: `${name} is online`,
         // `type` is duplicated INTO data so the FCM push tap (which only sees the
@@ -409,9 +437,11 @@ async function fulfillNotifyRequests(profile) {
  *
  * @param {string} astrologerUserId  the astrologer's owning user id
  */
-async function nudgeAstrologerWaiting(astrologerUserId) {
+async function nudgeAstrologerWaiting(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
   try {
-    const NotifyRequest = require('../models/NotifyRequest');
+    const AstrologerProfile = ctx.model('AstrologerProfile');
+    const NotifyRequest = ctx.model('NotifyRequest');
     const notificationService = require('./notificationService');
 
     const throttleMs = env.notifyMe.astroNudgeThrottleMs;
@@ -439,7 +469,7 @@ async function nudgeAstrologerWaiting(astrologerUserId) {
       ? 'A user is waiting for you. Go online to connect with them now.'
       : `${count} people are waiting for you. Go online to connect with them now.`;
 
-    await notificationService.notify(astrologerUserId, {
+    await notificationService.notify(ctx, astrologerUserId, {
       type: 'users_waiting',
       title: count === 1 ? 'Someone is waiting for you' : `${count} people are waiting`,
       body,
@@ -455,7 +485,10 @@ async function nudgeAstrologerWaiting(astrologerUserId) {
 }
 
 /** Reconcile ghost-online entries (instance crashed without disconnect). */
-async function reconcile() {
+async function reconcile(ctx) {
+  ctx = ctx || defaultContext();
+  const Presence = ctx.model('Presence');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const cutoff = new Date(Date.now() - 90 * 1000);
   const stale = await Presence.find({ online: true, lastSeen: { $lt: cutoff } });
   for (const p of stale) {
@@ -464,7 +497,7 @@ async function reconcile() {
     // Recompute through the single path so the apps get a proper broadcast,
     // not just a silent DB write. No live socket → still recomputes; derived
     // online now depends on reachability, handled by the sweep below.
-    await recomputeAstrologerPresence(p.user, { connected: false }).catch(() => {});
+    await recomputeAstrologerPresence(ctx, p.user, { connected: false }).catch(() => {});
   }
 
   // Reachability sweep: any astrologer currently SHOWN online whose device has
@@ -477,7 +510,7 @@ async function reconcile() {
     $or: [{ lastReachableAt: { $lt: reachCutoff } }, { lastReachableAt: { $exists: false } }, { lastReachableAt: null }],
   }).select('user').lean();
   for (const a of unreachable) {
-    await recomputeAstrologerPresence(a.user, { connected: false }).catch(() => {});
+    await recomputeAstrologerPresence(ctx, a.user, { connected: false }).catch(() => {});
   }
 
   const flipped = stale.length + unreachable.length;

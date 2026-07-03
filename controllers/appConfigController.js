@@ -1,9 +1,6 @@
 const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
-const Banner = require('../models/Banner');
-const Video = require('../models/Video');
-const AppConfig = require('../models/AppConfig');
 const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 /**
@@ -27,12 +24,14 @@ function thumbFor(id) {
 
 // ─────────────────────────── Banners ───────────────────────────
 exports.listBanners = asyncHandler(async (req, res) => {
+  const Banner = req.model('Banner');
   const q = req.query.placement ? { placement: req.query.placement } : {};
   const items = await Banner.find(q).sort({ placement: 1, sortOrder: 1, createdAt: -1 });
   res.json({ success: true, data: items });
 });
 
 exports.createBanner = asyncHandler(async (req, res) => {
+  const Banner = req.model('Banner');
   const { image } = req.body;
   if (!image) throw new AppError('A cropped banner image is required', 400);
   const item = await Banner.create(req.body);
@@ -40,12 +39,14 @@ exports.createBanner = asyncHandler(async (req, res) => {
 });
 
 exports.updateBanner = asyncHandler(async (req, res) => {
+  const Banner = req.model('Banner');
   const item = await Banner.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!item) throw new AppError('Banner not found', 404);
   res.json({ success: true, data: item });
 });
 
 exports.deleteBanner = asyncHandler(async (req, res) => {
+  const Banner = req.model('Banner');
   await Banner.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
@@ -55,6 +56,7 @@ exports.deleteBanner = asyncHandler(async (req, res) => {
 // order is distinct and deterministic (no more same-sortOrder ties). The app
 // reads `sortOrder` ascending, so this is exactly the carousel order.
 exports.reorderBanners = asyncHandler(async (req, res) => {
+  const Banner = req.model('Banner');
   const { ids } = req.body;
   if (!Array.isArray(ids) || !ids.length) throw new AppError('ids[] (ordered) is required', 400);
   const ops = ids
@@ -67,12 +69,14 @@ exports.reorderBanners = asyncHandler(async (req, res) => {
 
 // ─────────────────────────── Videos / Lessons ───────────────────────────
 exports.listVideos = asyncHandler(async (req, res) => {
+  const Video = req.model('Video');
   const q = req.query.kind ? { kind: req.query.kind } : {};
   const items = await Video.find(q).sort({ kind: 1, sortOrder: 1, createdAt: -1 });
   res.json({ success: true, data: items });
 });
 
 exports.createVideo = asyncHandler(async (req, res) => {
+  const Video = req.model('Video');
   const id = youtubeId(req.body.youtubeUrl);
   if (!id) throw new AppError('Enter a valid YouTube URL', 400);
   const item = await Video.create({
@@ -88,6 +92,7 @@ exports.createVideo = asyncHandler(async (req, res) => {
 });
 
 exports.updateVideo = asyncHandler(async (req, res) => {
+  const Video = req.model('Video');
   const patch = { ...req.body };
   if (req.body.youtubeUrl) {
     const id = youtubeId(req.body.youtubeUrl);
@@ -101,17 +106,20 @@ exports.updateVideo = asyncHandler(async (req, res) => {
 });
 
 exports.deleteVideo = asyncHandler(async (req, res) => {
+  const Video = req.model('Video');
   await Video.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
 
 // ─────────────────────────── Section toggles ───────────────────────────
 exports.getConfig = asyncHandler(async (req, res) => {
+  const AppConfig = req.model('AppConfig');
   const cfg = await AppConfig.get();
   res.json({ success: true, data: cfg });
 });
 
 exports.updateConfig = asyncHandler(async (req, res) => {
+  const AppConfig = req.model('AppConfig');
   const cfg = await AppConfig.get();
   if (req.body.sections) {
     cfg.sections = { ...cfg.sections.toObject(), ...req.body.sections };
@@ -135,6 +143,9 @@ exports.updateConfig = asyncHandler(async (req, res) => {
 // One call the app makes on launch: active banners + visible videos/lessons +
 // the section toggles, all respecting visibility and scheduling.
 exports.publicConfig = asyncHandler(async (req, res) => {
+  const AppConfig = req.model('AppConfig');
+  const Banner = req.model('Banner');
+  const Video = req.model('Video');
   const now = new Date();
   const cfg = await AppConfig.get();
   const sec = cfg.sections || {};
@@ -175,7 +186,7 @@ exports.publicConfig = asyncHandler(async (req, res) => {
     localizeEach(lessons, lang, ['title']),
   ]);
 
-  res.json({ success: true, data: { sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
+  res.json({ success: true, data: { appName: cfg.appName || '', sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
 });
 
 // Drop null/empty/undefined values so the app only overrides what's actually set.

@@ -1,8 +1,6 @@
-const ChatMessage = require('../models/ChatMessage');
-const Session = require('../models/Session');
-const Product = require('../models/Product');
 const AppError = require('../utils/AppError');
 const { filterMessage } = require('../utils/chatFilter');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Resolve a product the ASTROLOGER is sharing into the chat, returning the
@@ -10,7 +8,9 @@ const { filterMessage } = require('../utils/chatFilter');
  * approved storefront OR the global RudraMaal (admin) catalogue — the same set
  * the AI recap suggests from. Throws if the product isn't shareable.
  */
-async function resolveSharedProduct(productId, senderId, session) {
+async function resolveSharedProduct(ctx, productId, senderId, session) {
+  ctx = ctx || defaultContext();
+  const Product = ctx.model('Product');
   if (String(session.astrologer) !== String(senderId)) {
     throw new AppError('Only the astrologer can share a product', 403);
   }
@@ -31,7 +31,10 @@ async function resolveSharedProduct(productId, senderId, session) {
  *  phone numbers (10+ digits) and links are masked before storing/delivering.
  *  Birth dates/times/places are NOT restricted. An optional `productId` lets the
  *  astrologer share a storefront / RudraMaal product as a tappable card. */
-async function persist({ sessionId, senderId, message, mediaUrl, mediaType, productId }) {
+async function persist(ctx, { sessionId, senderId, message, mediaUrl, mediaType, productId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const ChatMessage = ctx.model('ChatMessage');
   const session = await Session.findOne({ sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (String(session.user) !== String(senderId) && String(session.astrologer) !== String(senderId)) {
@@ -44,7 +47,7 @@ async function persist({ sessionId, senderId, message, mediaUrl, mediaType, prod
   // Moderate text content (mask phones/links). Images + product cards pass through.
   const { clean, masked, reasons } = filterMessage(message);
 
-  const product = productId ? await resolveSharedProduct(productId, senderId, session) : undefined;
+  const product = productId ? await resolveSharedProduct(ctx, productId, senderId, session) : undefined;
 
   const doc = await ChatMessage.create({
     sessionId,
@@ -60,13 +63,18 @@ async function persist({ sessionId, senderId, message, mediaUrl, mediaType, prod
 
 /** Persist a system/context message for a session (no human sender). Returns
  *  the created doc; the caller decides which side(s) to emit it to. */
-async function postSystemMessage({ sessionId, message, audience = 'both' }) {
+async function postSystemMessage(ctx, { sessionId, message, audience = 'both' }) {
+  ctx = ctx || defaultContext();
+  const ChatMessage = ctx.model('ChatMessage');
   return ChatMessage.create({ sessionId, kind: 'system', audience, message });
 }
 
 const CHAT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-async function listMessages(sessionId, userId, { page = 1, limit = 50 } = {}) {
+async function listMessages(ctx, sessionId, userId, { page = 1, limit = 50 } = {}) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const ChatMessage = ctx.model('ChatMessage');
   const session = await Session.findOne({ sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (String(session.user) !== String(userId) && String(session.astrologer) !== String(userId)) {
@@ -97,12 +105,16 @@ async function listMessages(sessionId, userId, { page = 1, limit = 50 } = {}) {
   return { items: items.reverse(), page, limit };
 }
 
-async function markRead(sessionId, userId) {
+async function markRead(ctx, sessionId, userId) {
+  ctx = ctx || defaultContext();
+  const ChatMessage = ctx.model('ChatMessage');
   await ChatMessage.updateMany({ sessionId, receiver: userId, status: { $ne: 'read' } }, { $set: { status: 'read' } });
 }
 
 /** Mark a single delivered message; returns the senderId to ack back to. */
-async function markDelivered(messageId, receiverId) {
+async function markDelivered(ctx, messageId, receiverId) {
+  ctx = ctx || defaultContext();
+  const ChatMessage = ctx.model('ChatMessage');
   const msg = await ChatMessage.findOneAndUpdate(
     { _id: messageId, receiver: receiverId, status: 'sent' },
     { $set: { status: 'delivered' } },

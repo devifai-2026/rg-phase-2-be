@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * System notification templates — one per platform event. The super-admin edits
@@ -66,6 +67,6 @@ notificationTemplateSchema.statics.getEnabled = async function (event) {
   return this.findOne({ event, enabled: true });
 };
 
-module.exports = mongoose.model('NotificationTemplate', notificationTemplateSchema);
+module.exports = defineModel('NotificationTemplate', notificationTemplateSchema);
 module.exports.EVENTS = EVENTS;
 module.exports.EVENT_META = EVENT_META;

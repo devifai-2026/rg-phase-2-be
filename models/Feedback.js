@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** User-submitted feedback (from the drawer "Feedback" form). */
 const feedbackSchema = new mongoose.Schema(
@@ -13,4 +14,4 @@ const feedbackSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Feedback', feedbackSchema);
+module.exports = defineModel('Feedback', feedbackSchema);

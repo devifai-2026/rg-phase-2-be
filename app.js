@@ -11,6 +11,7 @@ const routes = require('./routes');
 const apiLogger = require('./middlewares/apiLogger');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 const { apiLimiter } = require('./middlewares/rateLimit');
+const { tenantResolver } = require('./middlewares/tenantResolver');
 const mongoose = require('mongoose');
 const pinoHttp = require('pino-http');
 
@@ -52,6 +53,13 @@ app.use(express.urlencoded({ extended: true }));
 if (env.isDev) app.use(morgan('dev'));
 app.use(apiLogger);
 
+// Per-tenant white-label landing page: when the Host is a tenant subdomain,
+// render that tenant's branded landing at the site root (before static, so it
+// takes precedence over the platform's own index.html). No-op in single-tenant.
+if (env.saas.enabled) {
+  app.use(require('./services/control/landingService').landingMiddleware());
+}
+
 // Marketing landing page + any static assets (served at the web root).
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -65,8 +73,17 @@ app.get('/readyz', (req, res) => {
 // API docs.
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// API.
-app.use('/api', apiLimiter, routes);
+// Platform-owner control-plane API. Mounted OUTSIDE the tenant resolver — these
+// routes operate on the control plane (Tenant/Plan/Subscription/…), never a
+// tenant DB, and use separate owner auth. Only active when SaaS is enabled.
+if (env.saas.enabled) {
+  app.use('/platform', apiLimiter, require('./routes/platformRoutes'));
+}
+
+// API. tenantResolver runs first so req.tenant / req.db / req.model(name) are
+// available to every route. In single-tenant mode (SAAS_ENABLED unset) it is a
+// no-op that attaches the default connection, so behavior is unchanged.
+app.use('/api', apiLimiter, tenantResolver, routes);
 
 app.use(notFound);
 app.use(errorHandler);

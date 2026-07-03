@@ -1,8 +1,8 @@
 const axios = require('axios');
-const Session = require('../models/Session');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 const { decrypt } = require('../utils/secretCrypto');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Agora Cloud Recording (acquire -> start -> stop) over REST with HTTP Basic
@@ -21,12 +21,13 @@ const { decrypt } = require('../utils/secretCrypto');
 
 const GCS_VENDOR = 6; // Agora storageConfig vendor code for Google Cloud Storage
 
-async function getCreds() {
+async function getCreds(ctx) {
+  ctx = ctx || defaultContext();
   let appId = env.agora.appId || '';
   let customerId = env.agora.customerId || '';
   let customerSecret = env.agora.customerSecret || '';
   try {
-    const AgoraConfig = require('../models/AgoraConfig');
+    const AgoraConfig = ctx.model('AgoraConfig');
     const cfg = await AgoraConfig.get();
     if (cfg.appId) appId = cfg.appId;
     if (cfg.restKey) customerId = cfg.restKey;
@@ -43,8 +44,9 @@ async function getCreds() {
   return { appId, customerId, customerSecret, bucket, accessKey, secretKey };
 }
 
-async function isConfigured() {
-  const c = await getCreds();
+async function isConfigured(ctx) {
+  ctx = ctx || defaultContext();
+  const c = await getCreds(ctx);
   return !!(c.appId && c.customerId && c.customerSecret && c.bucket && c.accessKey && c.secretKey);
 }
 
@@ -59,11 +61,13 @@ const base = (appId) => `https://api.agora.io/v1/apps/${appId}/cloud_recording`;
 // stop — a mismatched uid on stop is a common cause of a 400.
 const RECORDER_UID = 999999;
 
-async function start({ sessionId }) {
+async function start(ctx, { sessionId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOne({ sessionId });
   if (!session) return;
-  const c = await getCreds();
-  if (!(await isConfigured())) {
+  const c = await getCreds(ctx);
+  if (!(await isConfigured(ctx))) {
     logger.info('[Recording MOCK] start (Agora REST/GCS creds not fully configured)', { sessionId });
     await Session.updateOne({ sessionId }, { $set: { 'recording.status': 'mock' } });
     return { mock: true };
@@ -78,7 +82,7 @@ async function start({ sessionId }) {
   let recToken = '';
   try {
     const agoraService = require('./agoraService');
-    const tk = await agoraService.tokenForChannel(channel, RECORDER_UID);
+    const tk = await agoraService.tokenForChannel(ctx, channel, RECORDER_UID);
     recToken = tk || '';
   } catch (_) {/* App-ID-only mode → empty token */}
 
@@ -109,11 +113,13 @@ async function start({ sessionId }) {
   return { resourceId, sid: startRes.data.sid };
 }
 
-async function stop({ sessionId }) {
+async function stop(ctx, { sessionId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOne({ sessionId });
   if (!session || !session.recording) return;
-  const c = await getCreds();
-  if (!(await isConfigured()) || session.recording.status === 'mock') {
+  const c = await getCreds(ctx);
+  if (!(await isConfigured(ctx)) || session.recording.status === 'mock') {
     logger.info('[Recording MOCK] stop', { sessionId });
     return { mock: true };
   }
@@ -174,11 +180,13 @@ async function stop({ sessionId }) {
  * Returns a plain object; never throws into the request (errors are captured so
  * the admin sees the Agora response/status that explains a misconfig).
  */
-async function channelDiagnostics(sessionId) {
+async function channelDiagnostics(ctx, sessionId) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
   const session = await Session.findOne({ sessionId });
   if (!session) return { ok: false, error: 'Session not found' };
 
-  const c = await getCreds();
+  const c = await getCreds(ctx);
   const expected = {
     callerUid: session.agora && session.agora.callerUid,
     receiverUid: session.agora && session.agora.receiverUid,

@@ -1,7 +1,4 @@
 const asyncHandler = require('../utils/asyncHandler');
-const SiteContent = require('../models/SiteContent');
-const Video = require('../models/Video');
-const AppConfig = require('../models/AppConfig');
 const AppError = require('../utils/AppError');
 const { reqLang, localizeEach } = require('../utils/i18nReq');
 
@@ -9,6 +6,8 @@ const { reqLang, localizeEach } = require('../utils/i18nReq');
 // Same active/sort rules as the Home rail (GET /app-config), but paged + search.
 // Respects the section visibility toggle: a disabled section returns nothing.
 exports.listVideosPublic = asyncHandler(async (req, res) => {
+  const AppConfig = req.model('AppConfig');
+  const Video = req.model('Video');
   const kind = req.query.kind === 'lesson' ? 'lesson' : 'video';
   const page = Math.max(parseInt(req.query.page || '1', 10), 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10), 1), 30);
@@ -33,18 +32,21 @@ exports.listVideosPublic = asyncHandler(async (req, res) => {
 
 // ── Public: fetch CMS content the app displays (Contact Us, About, Terms...) ──
 exports.get = asyncHandler(async (req, res) => {
+  const SiteContent = req.model('SiteContent');
   const content = await SiteContent.findOne({ key: req.params.key, isPublished: true });
   if (!content) throw new AppError('Content not found', 404);
   res.json({ success: true, data: content });
 });
 
 exports.list = asyncHandler(async (req, res) => {
+  const SiteContent = req.model('SiteContent');
   const items = await SiteContent.find({ isPublished: true }).select('key title updatedAt');
   res.json({ success: true, data: items });
 });
 
 // ── Admin: upsert content by key ──
 exports.upsert = asyncHandler(async (req, res) => {
+  const SiteContent = req.model('SiteContent');
   const { key } = req.params;
   const content = await SiteContent.findOneAndUpdate(
     { key },
@@ -55,6 +57,7 @@ exports.upsert = asyncHandler(async (req, res) => {
 });
 
 exports.adminList = asyncHandler(async (req, res) => {
+  const SiteContent = req.model('SiteContent');
   const items = await SiteContent.find().sort({ key: 1 });
   res.json({ success: true, data: items });
 });

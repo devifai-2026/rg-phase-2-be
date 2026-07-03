@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** In-app rating + review for Rudraganga (drawer "Rate Rudraganga"). */
 const appRatingSchema = new mongoose.Schema(
@@ -13,4 +14,4 @@ const appRatingSchema = new mongoose.Schema(
 // One rating per user (latest upserts).
 appRatingSchema.index({ user: 1 }, { unique: true, partialFilterExpression: { user: { $exists: true } } });
 
-module.exports = mongoose.model('AppRating', appRatingSchema);
+module.exports = defineModel('AppRating', appRatingSchema);

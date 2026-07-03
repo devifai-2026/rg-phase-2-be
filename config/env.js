@@ -226,6 +226,57 @@ const env = {
     credentialsJson: process.env.GA4_CREDENTIALS_JSON || process.env.GCS_CREDENTIALS_JSON || '',
   },
 
+  // ── SaaS control-plane (multi-tenant) ──────────────────────────────────────
+  // The platform is multi-tenant with DB-per-tenant isolation. This block holds
+  // ONLY platform-global infra; per-tenant secrets (Agora/PayU/WABridge/LLM)
+  // live encrypted in the `saas_control` DB, NOT here. Firebase + GCS are shared
+  // across all tenants (see notes in fcmService / uploadService).
+  saas: {
+    // Multi-tenant is OFF by default so the app still boots single-tenant during
+    // the migration. When false, tenantResolver injects a single implicit tenant
+    // ("default") backed by the legacy mongoUri, so existing behavior is intact.
+    enabled: process.env.SAAS_ENABLED === 'true',
+
+    // Control-plane database — the only truly-global collections (Tenant, Plan,
+    // Subscription, TenantSecret, OwnerUser, BuildJob). Its own connection,
+    // always-on. Defaults to a `saas_control` db on the same Mongo host.
+    controlDbUri:
+      process.env.SAAS_CONTROL_DB_URI ||
+      process.env.CONTROL_MONGO_URI ||
+      'mongodb://127.0.0.1:27017/saas_control',
+
+    // Root domain that per-tenant subdomains hang off of (admin + landing).
+    // e.g. rootDomain=example.com → <slug>.example.com landing,
+    // <slug>.admin.example.com tenant admin, owner.example.com owner console.
+    rootDomain: process.env.SAAS_ROOT_DOMAIN || '',
+
+    // Max live per-tenant mongoose connections kept warm (LRU-evicted).
+    maxTenantConnections: parseInt(process.env.SAAS_MAX_TENANT_CONNECTIONS || '50', 10),
+
+    // Free-trial length applied to newly provisioned tenants.
+    trialDays: parseInt(process.env.SAAS_TRIAL_DAYS || '14', 10),
+    // Grace window after trial/period end before a tenant is hard-suspended.
+    graceDays: parseInt(process.env.SAAS_GRACE_DAYS || '3', 10),
+
+    // Separate JWT secret for platform-owner (OwnerUser) tokens so a leaked
+    // tenant JWT secret can never mint an owner token. Falls back to jwt.secret.
+    ownerJwtSecret: process.env.OWNER_JWT_SECRET || process.env.JWT_SECRET || 'dev_owner_secret_change_me',
+  },
+
+  // MongoDB Atlas Admin API — used by the provisioning service to auto-create a
+  // database user (and thus an isolated database) per tenant on the shared
+  // cluster. Programmatic API key (public+private) with Project Owner on the
+  // Atlas project. When creds are absent, provisioning falls back to "same
+  // cluster, new db name, no Atlas call" (dev-safe).
+  atlas: {
+    publicKey: process.env.ATLAS_PUBLIC_KEY || '',
+    privateKey: process.env.ATLAS_PRIVATE_KEY || '',
+    projectId: process.env.ATLAS_PROJECT_ID || '', // the Atlas Project (group) id
+    // The SRV host tenants connect through, e.g. cluster0.abcde.mongodb.net.
+    clusterHost: process.env.ATLAS_CLUSTER_HOST || '',
+    baseUrl: process.env.ATLAS_BASE_URL || 'https://cloud.mongodb.com/api/atlas/v2',
+  },
+
   // NOTE: admin-tunable values (withdrawal threshold, escalation thresholds,
   // signup bonus, gift token rate, ring timeout, max call minutes) live in the
   // `AdminSettings` collection so admins can change them at runtime via

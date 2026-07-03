@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Shared expertise catalog (astrologer specializations: Vedic, Tarot, …).
@@ -18,4 +19,4 @@ const expertiseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Expertise', expertiseSchema);
+module.exports = defineModel('Expertise', expertiseSchema);

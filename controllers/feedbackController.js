@@ -1,9 +1,8 @@
 const asyncHandler = require('../utils/asyncHandler');
-const Feedback = require('../models/Feedback');
-const AppRating = require('../models/AppRating');
 
 /** Submit feedback (drawer form). */
 exports.submitFeedback = asyncHandler(async (req, res) => {
+  const Feedback = req.model('Feedback');
   const doc = await Feedback.create({
     user: req.user?._id,
     fullName: req.body.fullName,
@@ -16,6 +15,7 @@ exports.submitFeedback = asyncHandler(async (req, res) => {
 
 /** Rate the app (one per user, upserts). */
 exports.rateApp = asyncHandler(async (req, res) => {
+  const AppRating = req.model('AppRating');
   const doc = await AppRating.findOneAndUpdate(
     { user: req.user._id },
     { $set: { rating: req.body.rating, review: req.body.review || '' } },
@@ -26,6 +26,7 @@ exports.rateApp = asyncHandler(async (req, res) => {
 
 // ── Admin: list feedback (filter by status) + app ratings (+ avg) ──
 exports.adminListFeedback = asyncHandler(async (req, res) => {
+  const Feedback = req.model('Feedback');
   const q = req.query.status ? { status: req.query.status } : {};
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 100);
@@ -37,11 +38,13 @@ exports.adminListFeedback = asyncHandler(async (req, res) => {
 });
 
 exports.adminUpdateFeedback = asyncHandler(async (req, res) => {
+  const Feedback = req.model('Feedback');
   const doc = await Feedback.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
   res.json({ success: true, data: doc });
 });
 
 exports.adminListRatings = asyncHandler(async (req, res) => {
+  const AppRating = req.model('AppRating');
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 100);
   const [items, total, agg] = await Promise.all([

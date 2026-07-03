@@ -1,8 +1,5 @@
 const axios = require('axios');
-const Click = require('../models/Click');
-const Visit = require('../models/Visit');
-const SignupEvent = require('../models/SignupEvent');
-const Enquiry = require('../models/Enquiry');
+const { defaultContext } = require('../utils/tenantContext');
 const bqService = require('./bqService');
 const logger = require('../utils/logger');
 
@@ -41,7 +38,9 @@ function windowSince(query = {}) {
 }
 
 // ── ingestion ──
-async function recordClicks({ anonId, clicks, ua }) {
+async function recordClicks(ctx, { anonId, clicks, ua }) {
+  ctx = ctx || defaultContext();
+  const Click = ctx.model('Click');
   const arr = Array.isArray(clicks) ? clicks.slice(0, 100) : [];
   if (!arr.length) return 0;
   const { device } = parseUA(ua);
@@ -79,7 +78,9 @@ function isPrivateIp(ip) {
  * Best-effort, non-blocking geo-IP lookup. Uses ip-api.com (free, no key).
  * Skips private/localhost IPs. Updates the visit doc when it resolves.
  */
-async function geolocate(visitId, ip) {
+async function geolocate(ctx, visitId, ip) {
+  ctx = ctx || defaultContext();
+  const Visit = ctx.model('Visit');
   if (isPrivateIp(ip)) return;
   try {
     const { data } = await axios.get(
@@ -106,7 +107,9 @@ async function geolocate(visitId, ip) {
   }
 }
 
-async function recordVisit({ body, ua, ip }) {
+async function recordVisit(ctx, { body, ua, ip }) {
+  ctx = ctx || defaultContext();
+  const Visit = ctx.model('Visit');
   const { device, os } = parseUA(ua);
   const realIp = normalizeIp(ip);
   const visit = await Visit.create({
@@ -124,7 +127,7 @@ async function recordVisit({ body, ua, ip }) {
     ip: clip(realIp, 64),
   });
   // resolve geo in the background — never blocks the tracking response
-  geolocate(visit._id, realIp);
+  geolocate(ctx, visit._id, realIp);
   // Mirror to BigQuery (analytics live in cheap SQL; no-op when BQ disabled).
   bqService.logAnalytics({
     type: 'visit',
@@ -137,7 +140,9 @@ async function recordVisit({ body, ua, ip }) {
   return visit._id;
 }
 
-async function recordDuration({ anonId, durationSec }) {
+async function recordDuration(ctx, { anonId, durationSec }) {
+  ctx = ctx || defaultContext();
+  const Visit = ctx.model('Visit');
   const id = clip(anonId, 64);
   if (!id) return;
   // attach to the visitor's most recent visit
@@ -149,7 +154,9 @@ async function recordDuration({ anonId, durationSec }) {
 }
 
 const SIGNUP_STEPS = ['form_view', 'form_start', 'form_submit', 'completed', 'error'];
-async function recordSignupEvent({ anonId, form, step, detail, ip }) {
+async function recordSignupEvent(ctx, { anonId, form, step, detail, ip }) {
+  ctx = ctx || defaultContext();
+  const SignupEvent = ctx.model('SignupEvent');
   if (!SIGNUP_STEPS.includes(step)) return false;
   await SignupEvent.create({
     anonId: clip(anonId, 64),
@@ -167,7 +174,9 @@ async function recordSignupEvent({ anonId, form, step, detail, ip }) {
  * Stitch a conversion onto all of an anonId's visits. Called from signup,
  * astrologer-apply, and enquiry flows. type: 'signup'|'astrologer_apply'|'enquiry'.
  */
-async function attributeConversion(anonId, type, userId = null) {
+async function attributeConversion(ctx, anonId, type, userId = null) {
+  ctx = ctx || defaultContext();
+  const Visit = ctx.model('Visit');
   if (!anonId || !type) return;
   try {
     await Visit.updateMany(
@@ -180,7 +189,9 @@ async function attributeConversion(anonId, type, userId = null) {
 }
 
 // ── analytics (super_admin) ──
-async function heatmap(query = {}) {
+async function heatmap(ctx, query = {}) {
+  ctx = ctx || defaultContext();
+  const Click = ctx.model('Click');
   const { since } = windowSince(query);
   const match = { createdAt: { $gte: since } };
   if (query.device) match.device = query.device;
@@ -214,7 +225,10 @@ async function heatmap(query = {}) {
   };
 }
 
-async function funnel(query = {}) {
+async function funnel(ctx, query = {}) {
+  ctx = ctx || defaultContext();
+  const Visit = ctx.model('Visit');
+  const Enquiry = ctx.model('Enquiry');
   const { since } = windowSince(query);
   const match = { createdAt: { $gte: since } };
 
@@ -318,7 +332,9 @@ async function funnel(query = {}) {
   };
 }
 
-async function signupFunnel(query = {}) {
+async function signupFunnel(ctx, query = {}) {
+  ctx = ctx || defaultContext();
+  const SignupEvent = ctx.model('SignupEvent');
   const { since } = windowSince(query);
   const form = query.form || 'astrologer_apply';
   const agg = await SignupEvent.aggregate([
@@ -344,7 +360,10 @@ async function signupFunnel(query = {}) {
   return { form, steps, errors: counts.error || 0 };
 }
 
-async function visitor(anonId) {
+async function visitor(ctx, anonId) {
+  ctx = ctx || defaultContext();
+  const Visit = ctx.model('Visit');
+  const Click = ctx.model('Click');
   const id = clip(anonId, 64);
   const [visits, clicks] = await Promise.all([
     Visit.find({ anonId: id })

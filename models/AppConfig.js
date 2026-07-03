@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Singleton (key:'global') holding app-wide presentation toggles the super-admin
@@ -44,6 +45,13 @@ const appConfigSchema = new mongoose.Schema(
       featured: { type: Boolean, default: true },     // "Featured Astrologers"
     },
 
+    // Brand identity shown IN the apps (MaterialApp title, headers, "About",
+    // feedback prompts, legal text). This is what makes each tenant's build show
+    // ITS name instead of a hardcoded one — set at provisioning from
+    // Tenant.branding.displayName and editable by the tenant admin. The apps read
+    // it from GET /app-config and substitute it wherever the brand name appears.
+    appName: { type: String, default: '' },
+
     // Brand theme tokens, editable from the admin Theme Studio. `enabled` gates
     // whether the app uses these at all; when false (or empty) the app keeps its
     // compiled tokens. Each set is dark/light; unset tokens fall back per-token.
@@ -75,4 +83,4 @@ appConfigSchema.statics.get = async function () {
   return doc;
 };
 
-module.exports = mongoose.model('AppConfig', appConfigSchema);
+module.exports = defineModel('AppConfig', appConfigSchema);

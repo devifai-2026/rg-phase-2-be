@@ -1,7 +1,4 @@
 const asyncHandler = require('../utils/asyncHandler');
-const PoojaBooking = require('../models/PoojaBooking');
-const PoojaType = require('../models/PoojaType');
-const PoojaCategory = require('../models/PoojaCategory');
 const walletService = require('../services/walletService');
 const invoiceService = require('../services/invoiceService');
 const notificationService = require('../services/notificationService');
@@ -29,6 +26,7 @@ function availableNowMatch() {
 
 /** GET /poojas/categories — active categories for the app's filter chips. */
 exports.listCategories = asyncHandler(async (req, res) => {
+  const PoojaCategory = req.model('PoojaCategory');
   const items = await PoojaCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).select('name').lean();
   await localizeEach(items, reqLang(req), ['name']);
   res.json({ success: true, data: items });
@@ -40,6 +38,7 @@ exports.listCategories = asyncHandler(async (req, res) => {
  * maxPrice. Category is populated so the card can show its label.
  */
 exports.listTypes = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const filter = availableNowMatch();
   if (req.query.category) filter.category = req.query.category;
   if (req.query.q) filter.name = { $regex: String(req.query.q).trim(), $options: 'i' };
@@ -56,6 +55,7 @@ exports.listTypes = asyncHandler(async (req, res) => {
  * filters. Dedicated "All" feed for the app's default tab.
  */
 exports.listAll = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const items = await PoojaType.find(availableNowMatch()).populate('category', 'name').sort({ createdAt: -1 }).lean();
   await localizeEach(items, reqLang(req), POOJA_I18N);
   res.json({ success: true, data: items });
@@ -63,6 +63,7 @@ exports.listAll = asyncHandler(async (req, res) => {
 
 /** GET /poojas/types/:id — single pooja detail. */
 exports.getType = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
   const item = await PoojaType.findById(req.params.id).populate('category', 'name').lean();
   if (!item || !item.isActive) throw new AppError('Pooja not found', 404);
   await localizeFields(item, reqLang(req), POOJA_I18N);
@@ -70,6 +71,8 @@ exports.getType = asyncHandler(async (req, res) => {
 });
 
 exports.create = asyncHandler(async (req, res) => {
+  const PoojaType = req.model('PoojaType');
+  const PoojaBooking = req.model('PoojaBooking');
   // Resolve the pooja (when booked by id) so we can trust its price + maxPersons
   // instead of the client's claim.
   let poojaDoc = null;
@@ -99,7 +102,7 @@ exports.create = asyncHandler(async (req, res) => {
   // wallet). Block early with the current balance so the app can prompt a
   // recharge before we create a dangling booking.
   if (price > 0) {
-    const bal = await walletService.getBalance(req.user._id);
+    const bal = await walletService.getBalance(req.ctx, req.user._id);
     if ((bal.balance || 0) < price) {
       throw new AppError('Insufficient wallet balance', 402, {
         required: price, balance: bal.balance || 0, shortfall: price - (bal.balance || 0),
@@ -127,7 +130,7 @@ exports.create = asyncHandler(async (req, res) => {
   // + idempotent on refId and throws 402 if the balance dropped since the check.
   if (price > 0) {
     try {
-      await walletService.debit({
+      await walletService.debit(req.ctx, {
         userId: req.user._id,
         amount: price,
         source: 'pooja',
@@ -147,28 +150,31 @@ exports.create = asyncHandler(async (req, res) => {
   await booking.save();
 
   // Bump real booked count + auto-credit the astrologer (if astrologer-listed).
-  require('../services/storeEarningsService').bumpPoojaBooked(booking).catch(() => {});
-  require('../services/storeEarningsService').creditAstrologerForBooking(booking).catch(() => {});
+  require('../services/storeEarningsService').bumpPoojaBooked(req.ctx, booking).catch(() => {});
+  require('../services/storeEarningsService').creditAstrologerForBooking(req.ctx, booking).catch(() => {});
 
   // Generate the invoice (PDF rendered async via the invoice_pdf job).
   // Best-effort — never block the booking response on invoicing.
-  invoiceService.createForPooja(booking).catch((e) => logger.warn('pooja invoice failed', e.message));
+  invoiceService.createForPooja(req.ctx, booking).catch((e) => logger.warn('pooja invoice failed', e.message));
 
   res.status(201).json({ success: true, data: { booking } });
 });
 
 exports.listMine = asyncHandler(async (req, res) => {
+  const PoojaBooking = req.model('PoojaBooking');
   const items = await PoojaBooking.find({ user: req.user._id }).sort({ createdAt: -1 });
   res.json({ success: true, data: items });
 });
 
 exports.get = asyncHandler(async (req, res) => {
+  const PoojaBooking = req.model('PoojaBooking');
   const b = await PoojaBooking.findById(req.params.id);
   if (!b) throw new AppError('Booking not found', 404);
   res.json({ success: true, data: b });
 });
 
 exports.updateStatus = asyncHandler(async (req, res) => {
+  const PoojaBooking = req.model('PoojaBooking');
   const b = await PoojaBooking.findById(req.params.id);
   if (!b) throw new AppError('Booking not found', 404);
   // Astrologer assigned to it, or an admin, may update status.
@@ -177,7 +183,7 @@ exports.updateStatus = asyncHandler(async (req, res) => {
   }
   b.status = req.body.status;
   await b.save();
-  await notificationService.notify(b.user, {
+  await notificationService.notify(req.ctx, b.user, {
     type: 'pooja_status',
     title: 'Pooja booking update',
     body: `Your pooja booking is now ${b.status}.`,

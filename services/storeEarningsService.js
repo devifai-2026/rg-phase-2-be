@@ -1,5 +1,4 @@
-const Product = require('../models/Product');
-const PoojaType = require('../models/PoojaType');
+const { defaultContext } = require('../utils/tenantContext');
 const walletService = require('./walletService');
 const emit = require('../websockets/emit');
 const notificationService = require('./notificationService');
@@ -17,7 +16,9 @@ function astrologerShare(amount, commissionPercent) {
  * Call AFTER the order is confirmed/paid. Best-effort: never throws into the
  * order flow (a failed credit is logged, not fatal).
  */
-async function creditAstrologersForOrder(order) {
+async function creditAstrologersForOrder(ctx, order) {
+  ctx = ctx || defaultContext();
+  const Product = ctx.model('Product');
   try {
     for (const item of order.items || []) {
       const product = await Product.findById(item.product).select('astrologer commissionPercent name').lean();
@@ -35,7 +36,7 @@ async function creditAstrologersForOrder(order) {
       });
       if (credited) {
         emit.toUser(product.astrologer, 'wallet-updated', await walletService.getBalance(product.astrologer));
-        notificationService.notify(product.astrologer, {
+        notificationService.notify(ctx, product.astrologer, {
           type: 'store_earning',
           title: 'New store sale! 💰',
           body: `You earned ₹${share} from "${product.name || 'a product'}".`,
@@ -52,7 +53,9 @@ async function creditAstrologersForOrder(order) {
  * Credit the astrologer their share for a paid pooja booking. Idempotent per
  * booking. Best-effort.
  */
-async function creditAstrologerForBooking(booking) {
+async function creditAstrologerForBooking(ctx, booking) {
+  ctx = ctx || defaultContext();
+  const PoojaType = ctx.model('PoojaType');
   try {
     if (!booking.poojaTypeId) return;
     const pooja = await PoojaType.findById(booking.poojaTypeId).select('astrologer commissionPercent name').lean();
@@ -69,7 +72,7 @@ async function creditAstrologerForBooking(booking) {
     });
     if (credited) {
       emit.toUser(pooja.astrologer, 'wallet-updated', await walletService.getBalance(pooja.astrologer));
-      notificationService.notify(pooja.astrologer, {
+      notificationService.notify(ctx, pooja.astrologer, {
         type: 'store_earning',
         title: 'New pooja booking! 💰',
         body: `You earned ₹${share} from "${pooja.name || 'a pooja'}".`,
@@ -82,7 +85,9 @@ async function creditAstrologerForBooking(booking) {
 }
 
 /** Increment a pooja's real booked count on a paid booking (best-effort). */
-async function bumpPoojaBooked(booking) {
+async function bumpPoojaBooked(ctx, booking) {
+  ctx = ctx || defaultContext();
+  const PoojaType = ctx.model('PoojaType');
   try {
     if (booking.poojaTypeId) await PoojaType.updateOne({ _id: booking.poojaTypeId }, { $inc: { bookedCount: 1 } });
   } catch (_) {/* non-fatal */}

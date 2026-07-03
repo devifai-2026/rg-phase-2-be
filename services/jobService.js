@@ -1,4 +1,4 @@
-const Job = require('../models/Job');
+const { defaultContext } = require('../utils/tenantContext');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -7,7 +7,9 @@ const logger = require('../utils/logger');
  * findOneAndUpdate so no two workers ever grab the same job.
  */
 
-async function enqueue({ type, payload = {}, maxAttempts = env.jobs.defaultMaxAttempts, runAt = new Date(), dedupeKey }) {
+async function enqueue(ctx, { type, payload = {}, maxAttempts = env.jobs.defaultMaxAttempts, runAt = new Date(), dedupeKey }) {
+  ctx = ctx || defaultContext();
+  const Job = ctx.model('Job');
   try {
     const job = await Job.create({
       type,
@@ -27,7 +29,9 @@ async function enqueue({ type, payload = {}, maxAttempts = env.jobs.defaultMaxAt
   }
 }
 
-async function claimNext(workerId) {
+async function claimNext(ctx, workerId) {
+  ctx = ctx || defaultContext();
+  const Job = ctx.model('Job');
   return Job.findOneAndUpdate(
     { status: 'pending', nextRunAt: { $lte: new Date() } },
     { $set: { status: 'processing', lockedAt: new Date(), lockedBy: workerId }, $inc: { attempts: 1 } },
@@ -35,7 +39,9 @@ async function claimNext(workerId) {
   );
 }
 
-async function complete(jobId, result) {
+async function complete(ctx, jobId, result) {
+  ctx = ctx || defaultContext();
+  const Job = ctx.model('Job');
   return Job.updateOne({ _id: jobId }, { $set: { status: 'done', result, lastError: null } });
 }
 
@@ -47,7 +53,9 @@ function backoffMs(attempt) {
   return expo + jitter;
 }
 
-async function fail(job, err) {
+async function fail(ctx, job, err) {
+  ctx = ctx || defaultContext();
+  const Job = ctx.model('Job');
   const message = err && err.message ? err.message : String(err);
   if (job.attempts >= job.maxAttempts) {
     await Job.updateOne({ _id: job._id }, { $set: { status: 'failed', lastError: message } });
@@ -60,7 +68,9 @@ async function fail(job, err) {
 }
 
 /** Reset jobs stuck in 'processing' (worker crashed) back to 'pending'. */
-async function recoverStale() {
+async function recoverStale(ctx) {
+  ctx = ctx || defaultContext();
+  const Job = ctx.model('Job');
   const cutoff = new Date(Date.now() - env.jobs.staleMs);
   const res = await Job.updateMany(
     { status: 'processing', lockedAt: { $lt: cutoff } },
@@ -71,7 +81,9 @@ async function recoverStale() {
 }
 
 /** Cancel a pending recurring job (e.g. a session's bill_tick) by dedupeKey. */
-async function cancelByDedupe(dedupeKey) {
+async function cancelByDedupe(ctx, dedupeKey) {
+  ctx = ctx || defaultContext();
+  const Job = ctx.model('Job');
   return Job.deleteMany({ dedupeKey, status: { $in: ['pending', 'processing'] } });
 }
 

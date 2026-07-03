@@ -1,5 +1,6 @@
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Single LLM layer for ALL AI features (astrologer chat, chat recap,
@@ -117,9 +118,10 @@ async function geminiComplete({ system, messages, maxTokens, temperature, schema
  * Persist one LLM call for the admin "LLM Logs" tab. Best-effort: a logging
  * failure must never break the AI feature. `meta` carries feature/astrologer/etc.
  */
-async function logCall({ meta = {}, system, messages, output, usage, ok, error, latencyMs }) {
+async function logCall(ctx, { meta = {}, system, messages, output, usage, ok, error, latencyMs }) {
+  ctx = ctx || defaultContext();
   try {
-    const AiLog = require('../models/AiLog');
+    const AiLog = ctx.model('AiLog');
     const input = (messages || []).map((m) => `[${m.role}] ${m.content}`).join('\n\n');
     await AiLog.create({
       feature: meta.feature, model: env.llm.model,
@@ -146,16 +148,17 @@ async function logCall({ meta = {}, system, messages, output, usage, ok, error, 
  * @param {{system?: string, messages: {role:string, content:string}[], maxTokens?: number, temperature?: number}} opts
  * @returns {Promise<string>}
  */
-async function complete(opts) {
+async function complete(ctx, opts) {
+  ctx = ctx || defaultContext();
   init();
   if (!_provider) throw new Error('llmService: no provider configured');
   const t0 = Date.now();
   try {
     const out = await geminiComplete(opts);
-    logCall({ meta: opts.logMeta, system: opts.system, messages: opts.messages, output: out, usage: geminiComplete._lastUsage, ok: true, latencyMs: Date.now() - t0 });
+    logCall(ctx, { meta: opts.logMeta, system: opts.system, messages: opts.messages, output: out, usage: geminiComplete._lastUsage, ok: true, latencyMs: Date.now() - t0 });
     return out;
   } catch (e) {
-    logCall({ meta: opts.logMeta, system: opts.system, messages: opts.messages, output: '', usage: null, ok: false, error: e.message, latencyMs: Date.now() - t0 });
+    logCall(ctx, { meta: opts.logMeta, system: opts.system, messages: opts.messages, output: '', usage: null, ok: false, error: e.message, latencyMs: Date.now() - t0 });
     throw e;
   }
 }
@@ -166,7 +169,8 @@ async function complete(opts) {
  * @param {{system?: string, messages: {role:string, content:string}[], schema: object, maxTokens?: number}} opts
  * @returns {Promise<object>}
  */
-async function completeJSON(opts) {
+async function completeJSON(ctx, opts) {
+  ctx = ctx || defaultContext();
   init();
   if (!_provider) throw new Error('llmService: no provider configured');
   const t0 = Date.now();
@@ -174,10 +178,10 @@ async function completeJSON(opts) {
   try {
     raw = await geminiComplete({ ...opts, temperature: opts.temperature ?? 0.4 });
     const parsed = parseJSON(raw);
-    logCall({ meta: opts.logMeta, system: opts.system, messages: opts.messages, output: raw, usage: geminiComplete._lastUsage, ok: true, latencyMs: Date.now() - t0 });
+    logCall(ctx, { meta: opts.logMeta, system: opts.system, messages: opts.messages, output: raw, usage: geminiComplete._lastUsage, ok: true, latencyMs: Date.now() - t0 });
     return parsed;
   } catch (e) {
-    logCall({ meta: opts.logMeta, system: opts.system, messages: opts.messages, output: raw, usage: geminiComplete._lastUsage, ok: false, error: e.message, latencyMs: Date.now() - t0 });
+    logCall(ctx, { meta: opts.logMeta, system: opts.system, messages: opts.messages, output: raw, usage: geminiComplete._lastUsage, ok: false, error: e.message, latencyMs: Date.now() - t0 });
     throw e;
   }
 }
@@ -234,7 +238,8 @@ function repairTruncatedJson(s) {
  * account — no new credentials). Returns a Buffer of PNG bytes, or null if image
  * generation isn't available / fails. `opts`: { prompt, aspectRatio, model }.
  */
-async function generateImage(opts = {}) {
+async function generateImage(ctx, opts = {}) {
+  ctx = ctx || defaultContext();
   init();
   if (!_genai) return null;
   const model = opts.model || env.llm.imageModel || 'imagen-4.0-fast-generate-001';
@@ -254,13 +259,13 @@ async function generateImage(opts = {}) {
     const img = res && res.generatedImages && res.generatedImages[0] && res.generatedImages[0].image;
     const b64 = img && (img.imageBytes || img.bytesBase64Encoded);
     if (!b64) {
-      logCall({ meta: { ...(opts.logMeta || {}), kind: 'image' }, system: model, messages: [{ role: 'user', content: opts.prompt }], output: '', ok: false, error: 'no image bytes', latencyMs: Date.now() - t0 });
+      logCall(ctx, { meta: { ...(opts.logMeta || {}), kind: 'image' }, system: model, messages: [{ role: 'user', content: opts.prompt }], output: '', ok: false, error: 'no image bytes', latencyMs: Date.now() - t0 });
       return null;
     }
-    logCall({ meta: { ...(opts.logMeta || {}), kind: 'image' }, system: model, messages: [{ role: 'user', content: opts.prompt }], output: '[image]', ok: true, latencyMs: Date.now() - t0 });
+    logCall(ctx, { meta: { ...(opts.logMeta || {}), kind: 'image' }, system: model, messages: [{ role: 'user', content: opts.prompt }], output: '[image]', ok: true, latencyMs: Date.now() - t0 });
     return Buffer.from(b64, 'base64');
   } catch (e) {
-    logCall({ meta: { ...(opts.logMeta || {}), kind: 'image' }, system: model, messages: [{ role: 'user', content: opts.prompt }], output: '', ok: false, error: e.message, latencyMs: Date.now() - t0 });
+    logCall(ctx, { meta: { ...(opts.logMeta || {}), kind: 'image' }, system: model, messages: [{ role: 'user', content: opts.prompt }], output: '', ok: false, error: e.message, latencyMs: Date.now() - t0 });
     logger.warn('llmService.generateImage failed', e.message);
     return null;
   }

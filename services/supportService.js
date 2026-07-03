@@ -1,10 +1,12 @@
-const SupportTicket = require('../models/SupportTicket');
+const { defaultContext } = require('../utils/tenantContext');
 const notificationService = require('./notificationService');
 const emit = require('../websockets/emit');
 const AppError = require('../utils/AppError');
 
 /** User or astrologer submits a help & support ticket. */
-async function createTicket({ userId, role, category, subject, description, attachments }) {
+async function createTicket(ctx, { userId, role, category, subject, description, attachments }) {
+  ctx = ctx || defaultContext();
+  const SupportTicket = ctx.model('SupportTicket');
   const ticket = await SupportTicket.create({
     user: userId,
     role,
@@ -20,7 +22,9 @@ async function createTicket({ userId, role, category, subject, description, atta
   return ticket;
 }
 
-async function listMine(userId, { page = 1, limit = 20 } = {}) {
+async function listMine(ctx, userId, { page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const SupportTicket = ctx.model('SupportTicket');
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     SupportTicket.find({ user: userId }).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -29,14 +33,18 @@ async function listMine(userId, { page = 1, limit = 20 } = {}) {
   return { items, total, page, limit };
 }
 
-async function getMine(userId, id) {
+async function getMine(ctx, userId, id) {
+  ctx = ctx || defaultContext();
+  const SupportTicket = ctx.model('SupportTicket');
   const t = await SupportTicket.findOne({ _id: id, user: userId });
   if (!t) throw new AppError('Ticket not found', 404);
   return t;
 }
 
 /** Add a reply (by the ticket owner or, with isAdmin, by support staff). */
-async function reply({ ticketId, senderId, fromRole, message, isAdmin = false }) {
+async function reply(ctx, { ticketId, senderId, fromRole, message, isAdmin = false }) {
+  ctx = ctx || defaultContext();
+  const SupportTicket = ctx.model('SupportTicket');
   const t = await SupportTicket.findById(ticketId);
   if (!t) throw new AppError('Ticket not found', 404);
   if (!isAdmin && String(t.user) !== String(senderId)) throw new AppError('Not your ticket', 403);
@@ -47,7 +55,7 @@ async function reply({ ticketId, senderId, fromRole, message, isAdmin = false })
 
   // Notify the other party.
   if (isAdmin) {
-    await notificationService.notify(t.user, {
+    await notificationService.notify(ctx, t.user, {
       type: 'system',
       title: 'Support replied',
       body: `Re: ${t.subject}`,
@@ -60,7 +68,9 @@ async function reply({ ticketId, senderId, fromRole, message, isAdmin = false })
 }
 
 // ── Admin ──
-async function adminList({ status, page = 1, limit = 20 } = {}) {
+async function adminList(ctx, { status, page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const SupportTicket = ctx.model('SupportTicket');
   const q = status ? { status } : {};
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -70,14 +80,16 @@ async function adminList({ status, page = 1, limit = 20 } = {}) {
   return { items, total, page, limit };
 }
 
-async function setStatus({ ticketId, status, adminId }) {
+async function setStatus(ctx, { ticketId, status, adminId }) {
+  ctx = ctx || defaultContext();
+  const SupportTicket = ctx.model('SupportTicket');
   const t = await SupportTicket.findById(ticketId);
   if (!t) throw new AppError('Ticket not found', 404);
   t.status = status;
   if (status === 'resolved' || status === 'closed') t.resolvedAt = new Date();
   t.assignedTo = adminId;
   await t.save();
-  await notificationService.notify(t.user, {
+  await notificationService.notify(ctx, t.user, {
     type: 'system',
     title: 'Support ticket updated',
     body: `Your ticket "${t.subject}" is now ${status}.`,

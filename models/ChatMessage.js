@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const chatMessageSchema = new mongoose.Schema(
   {
@@ -47,4 +48,4 @@ chatMessageSchema.index({ receiver: 1, status: 1 });
 // records (durations/billing) persist; only the message bodies are removed.
 chatMessageSchema.index({ timestamp: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
 
-module.exports = mongoose.model('ChatMessage', chatMessageSchema);
+module.exports = defineModel('ChatMessage', chatMessageSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * AI-generated recap of a finished 1:1 CHAT consultation (Feature 1).
@@ -75,4 +76,4 @@ const sessionRecapSchema = new mongoose.Schema(
 // Astrologer's review queue: their pending recaps, newest first.
 sessionRecapSchema.index({ astrologer: 1, status: 1, createdAt: -1 });
 
-module.exports = mongoose.model('SessionRecap', sessionRecapSchema);
+module.exports = defineModel('SessionRecap', sessionRecapSchema);

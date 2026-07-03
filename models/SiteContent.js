@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-editable CMS content the app fetches and displays: Contact Us, About,
@@ -16,4 +17,4 @@ const siteContentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('SiteContent', siteContentSchema);
+module.exports = defineModel('SiteContent', siteContentSchema);

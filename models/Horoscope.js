@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A GLOBAL, shared daily horoscope for one (calendar day, zodiac sign, language)
@@ -43,4 +44,4 @@ horoscopeSchema.statics.signToNumber = function signToNumber(name) {
   return i < 0 ? 0 : i + 1;
 };
 
-module.exports = mongoose.model('Horoscope', horoscopeSchema);
+module.exports = defineModel('Horoscope', horoscopeSchema);

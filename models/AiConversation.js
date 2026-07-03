@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const aiConversationSchema = new mongoose.Schema(
   {
@@ -11,4 +12,4 @@ const aiConversationSchema = new mongoose.Schema(
 
 aiConversationSchema.index({ user: 1, lastMessageAt: -1 });
 
-module.exports = mongoose.model('AiConversation', aiConversationSchema);
+module.exports = defineModel('AiConversation', aiConversationSchema);

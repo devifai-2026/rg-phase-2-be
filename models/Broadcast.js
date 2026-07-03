@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A logged notification campaign — every bulk/segment/manual send from
@@ -67,5 +68,5 @@ const broadcastSchema = new mongoose.Schema(
 
 broadcastSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.model('Broadcast', broadcastSchema);
+module.exports = defineModel('Broadcast', broadcastSchema);
 module.exports.AUDIENCES = AUDIENCES;

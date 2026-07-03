@@ -1,5 +1,5 @@
 const axios = require('axios');
-const Panchang = require('../models/Panchang');
+const { defaultContext } = require('../utils/tenantContext');
 const vedicAstroService = require('./vedicAstroService');
 const logger = require('../utils/logger');
 
@@ -72,7 +72,9 @@ function localPayload() {
  * Read one (date, location, lang) panchang. DB-first; on a miss, fetch from the
  * provider and upsert. Returns the provider `response` payload object.
  */
-async function getPanchang({ date, lat, lon, lang } = {}) {
+async function getPanchang(ctx, { date, lat, lon, lang } = {}) {
+  ctx = ctx || defaultContext();
+  const Panchang = ctx.model('Panchang');
   const d = date ? ymd(new Date(`${date}T00:00:00`)) : ymd();
   const rlat = roundCoord(lat);
   const rlon = roundCoord(lon);
@@ -84,7 +86,7 @@ async function getPanchang({ date, lat, lon, lang } = {}) {
   if (hit) return hit.payload;
 
   // 2) Miss → real provider call.
-  const { apiKey, baseUrl } = await vedicAstroService.resolveConfig();
+  const { apiKey, baseUrl } = await vedicAstroService.resolveConfig(ctx);
   let payload;
   let source = 'vedicastroapi';
 

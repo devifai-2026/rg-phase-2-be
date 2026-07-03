@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A user following an astrologer. Soft state: `active` flips false on unfollow
@@ -19,4 +20,4 @@ const followSchema = new mongoose.Schema(
 // One follow record per (user, astrologer).
 followSchema.index({ user: 1, astrologer: 1 }, { unique: true });
 
-module.exports = mongoose.model('Follow', followSchema);
+module.exports = defineModel('Follow', followSchema);

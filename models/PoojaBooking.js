@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const poojaBookingSchema = new mongoose.Schema(
   {
@@ -23,4 +24,4 @@ const poojaBookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('PoojaBooking', poojaBookingSchema);
+module.exports = defineModel('PoojaBooking', poojaBookingSchema);

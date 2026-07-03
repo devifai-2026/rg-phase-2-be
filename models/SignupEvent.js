@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Funnel step events for the landing-page forms (contact + astrologer apply).
@@ -25,4 +26,4 @@ const signupEventSchema = new mongoose.Schema(
 
 signupEventSchema.index({ form: 1, step: 1, createdAt: -1 });
 
-module.exports = mongoose.model('SignupEvent', signupEventSchema);
+module.exports = defineModel('SignupEvent', signupEventSchema);

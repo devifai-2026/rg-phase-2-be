@@ -1,7 +1,4 @@
-const LiveSession = require('../models/LiveSession');
-const LivePoll = require('../models/LivePoll');
-const User = require('../models/User');
-const AstrologerProfile = require('../models/AstrologerProfile');
+const { defaultContext } = require('../utils/tenantContext');
 const agoraService = require('./agoraService');
 const broadcastService = require('./broadcastService');
 const emit = require('../websockets/emit');
@@ -20,7 +17,10 @@ const promptService = require('./promptService'); // admin-overridable SYSTEM pr
  * and fans out an "X is live" push to all users (follower copy personalized).
  * Returns { liveSession, token } where token = Agora broadcaster credentials.
  */
-async function goLive({ astrologerUserId, title, topic }) {
+async function goLive(ctx, { astrologerUserId, title, topic }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   // Guard: only one live broadcast per astrologer at a time. Reuse if present.
   const existing = await LiveSession.findOne({ astrologer: astrologerUserId, status: 'live' });
   if (existing) {
@@ -49,26 +49,27 @@ async function goLive({ astrologerUserId, title, topic }) {
   // broadcast carries live:true + the liveSessionId so user-app cards show a
   // distinct "Live" state with a Join button (not just "Busy").
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { currentCallStatus: 'busy' } });
-  require('./astrologerService').broadcastStatusByUser(astrologerUserId, {
+  require('./astrologerService').broadcastStatusByUser(ctx, astrologerUserId, {
     isOnline: true, currentCallStatus: 'busy', live: true, liveSessionId: String(liveSession._id),
   }).catch(() => {});
 
   // Notify users — best-effort, never blocks going live.
-  notifyLive(liveSession, profile).catch((e) => logger.warn('live notify failed', e.message));
+  notifyLive(ctx, liveSession, profile).catch((e) => logger.warn('live notify failed', e.message));
 
   // Start the auto-poll cadence for this broadcast (every 5 min; skips a tick if
   // the astrologer just posted one manually — see startAutoPoll).
-  startAutoPoll(liveSession._id, astrologerUserId);
+  startAutoPoll(ctx, liveSession._id, astrologerUserId);
 
   return { liveSession, token };
 }
 
 /** Fan out the "astrologer is live" push to all users. Follower copy is
  *  personalized. Carries the live session id + title/topic for deep-linking. */
-async function notifyLive(liveSession, profile) {
+async function notifyLive(ctx, liveSession, profile) {
+  ctx = ctx || defaultContext();
   const name = (profile && profile.displayName) || 'An astrologer';
   const titleLine = liveSession.title ? `: ${liveSession.title}` : '';
-  await broadcastService.send({
+  await broadcastService.send(ctx, {
     title: `🔴 ${name} is live now`,
     body: liveSession.topic ? `${liveSession.topic}${titleLine}` : `Tap to join the live session${titleLine}`,
     audience: 'users',
@@ -85,7 +86,11 @@ async function notifyLive(liveSession, profile) {
 
 /** Astrologer ends the broadcast. Closes any open poll, notifies the room, and
  *  returns a small summary (viewers/superchat/comments). */
-async function endLive({ liveSessionId, astrologerUserId, reason = 'manual' }) {
+async function endLive(ctx, { liveSessionId, astrologerUserId, reason = 'manual' }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const LivePoll = ctx.model('LivePoll');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const existing = await LiveSession.findById(liveSessionId);
   if (!existing) throw new AppError('Live session not found', 404);
   // Ownership is enforced for the MANUAL path (an astrologer can only end their
@@ -158,7 +163,9 @@ function markPollPosted(liveSessionId) {
   _lastPollAt.set(String(liveSessionId), Date.now());
 }
 
-function startAutoPoll(liveSessionId, astrologerUserId) {
+function startAutoPoll(ctx, liveSessionId, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   const key = String(liveSessionId);
   if (_autoPollTimers.has(key)) return;
   const timer = setInterval(async () => {
@@ -173,7 +180,7 @@ function startAutoPoll(liveSessionId, astrologerUserId) {
         logger.debug('auto-poll skipped (recent poll)', { liveSessionId: key });
         return;
       }
-      await generatePoll({ liveSessionId, astrologerUserId });
+      await generatePoll(ctx, { liveSessionId, astrologerUserId });
       logger.info('auto-poll generated', { liveSessionId: key });
     } catch (e) {
       logger.debug('auto-poll tick failed', e.message);
@@ -195,18 +202,19 @@ function stopAutoPoll(liveSessionId) {
  * auto-end of any active broadcast after a short grace window. If they reconnect
  * within the window, cancelAutoEnd() clears this so the live continues.
  */
-function scheduleAutoEndOnDisconnect(astrologerUserId) {
+function scheduleAutoEndOnDisconnect(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
   const key = String(astrologerUserId);
   if (_autoEndTimers.has(key)) return; // already scheduled
   const timer = setTimeout(async () => {
     _autoEndTimers.delete(key);
     try {
       // Re-check presence: only end if STILL no live socket (didn't reconnect).
-      const Presence = require('../models/Presence');
+      const Presence = ctx.model('Presence');
       const p = await Presence.findOne({ user: astrologerUserId }).select('online socketCount').lean();
       const stillConnected = !!(p && p.online && p.socketCount > 0);
       if (stillConnected) return; // reconnected during grace → keep broadcasting
-      const ended = await endLiveByAstrologer(astrologerUserId, 'disconnect');
+      const ended = await endLiveByAstrologer(ctx, astrologerUserId, 'disconnect');
       if (ended) logger.info('live auto-ended on disconnect', { astrologerUserId: String(astrologerUserId) });
     } catch (e) {
       logger.warn('auto-end on disconnect failed', e.message);
@@ -226,10 +234,12 @@ function cancelAutoEnd(astrologerUserId) {
 /** End the astrologer's currently-live broadcast (if any) without needing its id
  *  — used by the disconnect auto-end + the app-minimize timeout. Returns the
  *  summary, or null if they had no active live. */
-async function endLiveByAstrologer(astrologerUserId, reason = 'manual') {
+async function endLiveByAstrologer(ctx, astrologerUserId, reason = 'manual') {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   const ls = await LiveSession.findOne({ astrologer: astrologerUserId, status: 'live' }).select('_id').lean();
   if (!ls) return null;
-  return endLive({ liveSessionId: ls._id, astrologerUserId, reason });
+  return endLive(ctx, { liveSessionId: ls._id, astrologerUserId, reason });
 }
 
 // How long a broadcast may go without a heartbeat (and with no live socket)
@@ -244,7 +254,9 @@ const LIVE_STALE_MS = parseInt(process.env.LIVE_STALE_MS || '45000', 10);
  * no-op if they have no active live. This is what keeps a healthy broadcast out
  * of the stale sweep even if the in-memory grace timer was lost (restart/crash).
  */
-async function touchHeartbeat(astrologerUserId) {
+async function touchHeartbeat(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   try {
     await LiveSession.updateOne(
       { astrologer: astrologerUserId, status: 'live' },
@@ -268,8 +280,10 @@ async function touchHeartbeat(astrologerUserId) {
  * every cycle, so a session missed once (astrologer briefly reconnected) is
  * caught the next time it goes stale.
  */
-async function sweepStaleLives() {
-  const Presence = require('../models/Presence');
+async function sweepStaleLives(ctx) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const Presence = ctx.model('Presence');
   const cutoff = new Date(Date.now() - LIVE_STALE_MS);
   // Candidates: live + no recent heartbeat. (A session with a healthy socket is
   // refreshed every ~3s, so it won't match.) Bounded select for safety.
@@ -288,7 +302,7 @@ async function sweepStaleLives() {
       const p = await Presence.findOne({ user: ls.astrologer }).select('online socketCount lastSeen').lean();
       const connected = !!(p && p.online && p.socketCount > 0 && p.lastSeen && p.lastSeen >= cutoff);
       if (connected) continue;
-      const res = await endLive({ liveSessionId: ls._id, astrologerUserId: ls.astrologer, reason: 'stale' });
+      const res = await endLive(ctx, { liveSessionId: ls._id, astrologerUserId: ls.astrologer, reason: 'stale' });
       if (res) {
         ended += 1;
         logger.warn('live force-ended by stale sweep', {
@@ -322,7 +336,10 @@ function summary(ls) {
  * tallies. Powers the shared recap screen shown both at end-of-live and when the
  * astrologer taps a past-live card. Ownership-checked.
  */
-async function liveDetail({ liveSessionId, astrologerUserId }) {
+async function liveDetail(ctx, { liveSessionId, astrologerUserId }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const LivePoll = ctx.model('LivePoll');
   const ls = await LiveSession.findById(liveSessionId).lean();
   if (!ls) throw new AppError('Live session not found', 404);
   if (astrologerUserId && String(ls.astrologer) !== String(astrologerUserId)) {
@@ -386,7 +403,9 @@ async function liveDetail({ liveSessionId, astrologerUserId }) {
 /** Public list of currently-live astrologers (for the user app Live tab).
  *  [lang] localizes the user-visible name/title/topic into the requester's
  *  language (transliterates the astrologer name). */
-async function listLive(lang) {
+async function listLive(ctx, lang) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   const sessions = await LiveSession.find({ status: 'live' })
     .sort({ viewerCount: -1, startedAt: -1 })
     .populate('astrologerProfile', 'displayName avatar rating expertise languages')
@@ -420,7 +439,10 @@ async function listLive(lang) {
 
 /** A user joins a live broadcast as AUDIENCE. Mints a subscriber token,
  *  increments viewer counters, and broadcasts the new count to the room. */
-async function joinLive({ liveSessionId, userId }) {
+async function joinLive(ctx, { liveSessionId, userId }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const LivePoll = ctx.model('LivePoll');
   const ls = await LiveSession.findById(liveSessionId);
   if (!ls) throw new AppError('Live session not found', 404);
   if (ls.status !== 'live') throw new AppError('This broadcast has ended', 410);
@@ -436,7 +458,7 @@ async function joinLive({ liveSessionId, userId }) {
   await ls.save();
 
   // Record the join so re-engagement nudges never ping someone already watching.
-  require('./liveNudgeService').recordJoin(ls._id, userId, ls.astrologer).catch(() => {});
+  require('./liveNudgeService').recordJoin(ctx, ls._id, userId, ls.astrologer).catch(() => {});
 
   const activePoll = await LivePoll.findOne({ liveSession: ls._id, active: true }).sort({ createdAt: -1 }).lean();
   return {
@@ -458,7 +480,9 @@ async function joinLive({ liveSessionId, userId }) {
 /** A viewer's socket joins the room → increment and broadcast the count.
  *  Called from the socket `join-live` handler (the count authority), so the
  *  count rises on first join AND re-rises on a reconnect after a disconnect. */
-async function viewerJoined({ liveSessionId }) {
+async function viewerJoined(ctx, { liveSessionId }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   const ls = await LiveSession.findById(liveSessionId);
   if (!ls || ls.status !== 'live') return;
   ls.viewerCount = (ls.viewerCount || 0) + 1;
@@ -469,7 +493,9 @@ async function viewerJoined({ liveSessionId }) {
 
 /** A viewer's socket leaves (clean leave OR disconnect) → decrement and
  *  broadcast. Best-effort; the caller guarantees one call per counted socket. */
-async function leaveLive({ liveSessionId }) {
+async function leaveLive(ctx, { liveSessionId }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   const ls = await LiveSession.findById(liveSessionId);
   if (!ls || ls.status !== 'live') return;
   ls.viewerCount = Math.max(0, (ls.viewerCount || 0) - 1);
@@ -482,7 +508,10 @@ async function leaveLive({ liveSessionId }) {
  * numbers and links are masked, and a fully-masked/empty result is dropped.
  * Comments are broadcast to the room (not persisted long-term — ephemeral feed).
  */
-async function postComment({ liveSessionId, userId, text }) {
+async function postComment(ctx, { liveSessionId, userId, text }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const User = ctx.model('User');
   const ls = await LiveSession.findById(liveSessionId).select('_id status astrologer');
   if (!ls) throw new AppError('Live session not found', 404);
   if (ls.status !== 'live') throw new AppError('This broadcast has ended', 410);
@@ -535,14 +564,16 @@ async function postComment({ liveSessionId, userId, text }) {
 
   // Tier 2 (Gemini, async): if it flags the comment, retract it from the room.
   // Fire-and-forget — never blocks or delays the feed.
-  moderateAsync(ls._id, commentId, finalText);
+  moderateAsync(ctx, ls._id, commentId, finalText);
 
   return { dropped: false, payload, masked, reasons };
 }
 
 /** Background Tier-2 semantic moderation: retract a shown comment if Gemini
  *  flags it as abuse/hate/spam/self-promo. Best-effort; errors are swallowed. */
-function moderateAsync(liveSessionId, commentId, text) {
+function moderateAsync(ctx, liveSessionId, commentId, text) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   Promise.resolve()
     .then(() => aiInsightsService.moderateLiveComment(text))
     .then((verdict) => {
@@ -564,7 +595,11 @@ function moderateAsync(liveSessionId, commentId, text) {
  * and expertise, and avoids repeating earlier poll questions from this session,
  * so repeated taps produce fresh, on-topic polls (not the same content).
  */
-async function generatePoll({ liveSessionId, astrologerUserId }) {
+async function generatePoll(ctx, { liveSessionId, astrologerUserId }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const LivePoll = ctx.model('LivePoll');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const ls = await LiveSession.findById(liveSessionId);
   if (!ls) throw new AppError('Live session not found', 404);
   if (astrologerUserId && String(ls.astrologer) !== String(astrologerUserId)) {
@@ -606,13 +641,15 @@ async function generatePoll({ liveSessionId, astrologerUserId }) {
 
   // A fresh poll is a strong "come join" hook → nudge non-joiners (followers +
   // a random sample). Fire-and-forget so poll generation never blocks on it.
-  require('./liveNudgeService').nudgeForPoll(ls, generated.question).catch(() => {});
+  require('./liveNudgeService').nudgeForPoll(ctx, ls, generated.question).catch(() => {});
 
   return pub;
 }
 
 /** Audience votes on a poll option (one vote per user). Broadcasts the tally. */
-async function votePoll({ liveSessionId, pollId, optionId, userId }) {
+async function votePoll(ctx, { liveSessionId, pollId, optionId, userId }) {
+  ctx = ctx || defaultContext();
+  const LivePoll = ctx.model('LivePoll');
   const poll = await LivePoll.findOne({ _id: pollId, liveSession: liveSessionId });
   if (!poll) throw new AppError('Poll not found', 404);
   if (!poll.active) throw new AppError('Poll is closed', 410);
@@ -632,7 +669,9 @@ async function votePoll({ liveSessionId, pollId, optionId, userId }) {
 }
 
 /** The astrologer's own past + current broadcasts (for the pre-live history). */
-async function listMine(astrologerUserId) {
+async function listMine(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
   const sessions = await LiveSession.find({ astrologer: astrologerUserId })
     .sort({ startedAt: -1 })
     .limit(50)
@@ -665,7 +704,10 @@ async function listMine(astrologerUserId) {
  * questions CLUSTERED by theme (most-asked first) so the astrologer can answer
  * high-demand questions once.
  */
-async function getOrGenerateSummary({ liveSessionId, requesterId }) {
+async function getOrGenerateSummary(ctx, { liveSessionId, requesterId }) {
+  ctx = ctx || defaultContext();
+  const LiveSession = ctx.model('LiveSession');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const ls = await LiveSession.findById(liveSessionId);
   if (!ls) throw new AppError('Live session not found', 404);
 

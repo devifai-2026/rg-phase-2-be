@@ -1,5 +1,4 @@
-const ReengagementCue = require('../models/ReengagementCue');
-const AstrologerProfile = require('../models/AstrologerProfile');
+const { defaultContext } = require('../utils/tenantContext');
 const llmService = require('./llmService');
 const notificationService = require('./notificationService');
 const logger = require('../utils/logger');
@@ -29,7 +28,9 @@ const MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000;
  *
  * @param {{session: object, followUps: {topic:string, dueDate:string}[]}} param0
  */
-async function recordCues({ session, followUps }) {
+async function recordCues(ctx, { session, followUps }) {
+  ctx = ctx || defaultContext();
+  const ReengagementCue = ctx.model('ReengagementCue');
   if (!Array.isArray(followUps) || followUps.length === 0) return { created: 0 };
   let created = 0;
   for (const f of followUps) {
@@ -64,7 +65,10 @@ async function recordCues({ session, followUps }) {
  * Idempotent per cue (status flips scheduled → sent under a guarded update).
  * @param {{limit?: number}} param0
  */
-async function scanDue({ limit = 200 } = {}) {
+async function scanDue(ctx, { limit = 200 } = {}) {
+  ctx = ctx || defaultContext();
+  const ReengagementCue = ctx.model('ReengagementCue');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const now = Date.now();
   const cues = await ReengagementCue.find({
     status: 'scheduled',
@@ -87,9 +91,9 @@ async function scanDue({ limit = 200 } = {}) {
     // fall back to crafting one only when absent (older cues).
     const body = (cue.notifyText && cue.notifyText.trim())
       ? cue.notifyText.trim()
-      : await craftNudge({ topic: cue.topic, astrologerName: astroName });
+      : await craftNudge(ctx, { topic: cue.topic, astrologerName: astroName });
 
-    await notificationService.notify(cue.user, {
+    await notificationService.notify(ctx, cue.user, {
       type: 'reengage',
       title: 'A good time to reconnect',
       body,
@@ -107,11 +111,12 @@ async function scanDue({ limit = 200 } = {}) {
 }
 
 /** Warm one-line nudge via the LLM, with a plain templated fallback. */
-async function craftNudge({ topic, astrologerName }) {
+async function craftNudge(ctx, { topic, astrologerName }) {
+  ctx = ctx || defaultContext();
   if (llmService.available()) {
     try {
-      const line = await llmService.complete({
-        system: await promptService.getSystem('reengagement'),
+      const line = await llmService.complete(ctx, {
+        system: await promptService.getSystem(ctx, 'reengagement'),
         messages: [{ role: 'user', content: reengagementPrompt.buildUserMessage({ topic, astrologerName }) }],
         maxTokens: 64,
         temperature: 0.8,

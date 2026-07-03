@@ -1,12 +1,8 @@
-const ChatMessage = require('../models/ChatMessage');
-const Session = require('../models/Session');
-const Product = require('../models/Product');
-const SessionRecap = require('../models/SessionRecap');
+const { defaultContext } = require('../utils/tenantContext');
 const llmService = require('./llmService');
 const notificationService = require('./notificationService');
 const logger = require('../utils/logger');
 const AppError = require('../utils/AppError');
-const AstrologerProfile = require('../models/AstrologerProfile');
 const chatRecapPrompt = require('./prompts/chatRecap');
 const optimizerPrompt = require('./prompts/profileOptimizer');
 const liveModerationPrompt = require('./prompts/liveModeration');
@@ -22,7 +18,9 @@ const MAX_CATALOGUE = 40;        // cap products fed to the model (cost/context)
 const MAX_SUGGESTIONS = 3;
 
 /** Astrologer's own approved products first, then the global admin catalogue. */
-async function candidateProducts(astrologerId) {
+async function candidateProducts(ctx, astrologerId) {
+  ctx = ctx || defaultContext();
+  const Product = ctx.model('Product');
   const [own, global] = await Promise.all([
     Product.find({ astrologer: astrologerId, status: 'approved', isActive: true, stock: { $gt: 0 } })
       .select('name price categoryName description astrologer images').limit(MAX_CATALOGUE).lean(),
@@ -52,7 +50,12 @@ async function candidateProducts(astrologerId) {
  * @param {{sessionId: string}} param0
  * @returns {Promise<{recapId?: string, skipped?: string}>}
  */
-async function generateChatRecap({ sessionId }) {
+async function generateChatRecap(ctx, { sessionId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const SessionRecap = ctx.model('SessionRecap');
+  const ChatMessage = ctx.model('ChatMessage');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const session = await Session.findOne({ sessionId });
   if (!session) return { skipped: 'session-not-found' };
   if (session.type !== 'chat') return { skipped: 'not-chat' };
@@ -69,7 +72,7 @@ async function generateChatRecap({ sessionId }) {
     .map((m) => `${String(m.sender) === String(session.astrologer) ? 'Astrologer' : 'Seeker'}: ${m.message}`)
     .join('\n');
 
-  const catalogue = await candidateProducts(session.astrologer);
+  const catalogue = await candidateProducts(ctx, session.astrologer);
   const catForPrompt = catalogue.map((p) => ({
     productId: String(p._id), name: p.name, price: p.price, category: p.categoryName,
     // Tell the model where each product comes from: the astrologer's own
@@ -150,7 +153,7 @@ async function generateChatRecap({ sessionId }) {
   // block recap creation on it.
   try {
     const reengagementService = require('./reengagementService');
-    await reengagementService.recordCues({ session, followUps: ai.followUps || [] });
+    await reengagementService.recordCues(ctx, { session, followUps: ai.followUps || [] });
   } catch (e) {
     logger.debug('reengagement cue recording skipped', e.message);
   }
@@ -186,7 +189,9 @@ function fallbackRecap(userMsgs, session) {
 const PRODUCT_FIELDS = 'name price mrp images categoryName rating reviewCount';
 
 /** Astrologer's recap review queue. `status` defaults to 'pending'. */
-async function listRecapsForAstrologer(astrologerId, { status = 'pending', page = 1, limit = 20 } = {}) {
+async function listRecapsForAstrologer(ctx, astrologerId, { status = 'pending', page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const SessionRecap = ctx.model('SessionRecap');
   const q = { astrologer: astrologerId };
   if (status) q.status = status;
   const skip = (page - 1) * limit;
@@ -199,7 +204,9 @@ async function listRecapsForAstrologer(astrologerId, { status = 'pending', page 
 }
 
 /** A single recap, scoped to the owning astrologer. */
-async function getRecapForAstrologer(astrologerId, recapId) {
+async function getRecapForAstrologer(ctx, astrologerId, recapId) {
+  ctx = ctx || defaultContext();
+  const SessionRecap = ctx.model('SessionRecap');
   const recap = await SessionRecap.findOne({ _id: recapId, astrologer: astrologerId })
     .populate('suggestions.product', PRODUCT_FIELDS).lean();
   if (!recap) throw new AppError('Recap not found', 404);
@@ -213,7 +220,10 @@ async function getRecapForAstrologer(astrologerId, recapId) {
  *
  * @param {object} patch  { summary?, sentiment?, keyTopics?, suggestions?: [{product, title, reason}] }
  */
-async function editRecap(astrologerId, recapId, patch = {}) {
+async function editRecap(ctx, astrologerId, recapId, patch = {}) {
+  ctx = ctx || defaultContext();
+  const SessionRecap = ctx.model('SessionRecap');
+  const Product = ctx.model('Product');
   const recap = await SessionRecap.findOne({ _id: recapId, astrologer: astrologerId });
   if (!recap) throw new AppError('Recap not found', 404);
   if (recap.status !== 'pending') throw new AppError('Recap already reviewed', 409);
@@ -248,7 +258,7 @@ async function editRecap(astrologerId, recapId, patch = {}) {
       }));
   }
   await recap.save();
-  return getRecapForAstrologer(astrologerId, recapId);
+  return getRecapForAstrologer(ctx, astrologerId, recapId);
 }
 
 /**
@@ -256,10 +266,12 @@ async function editRecap(astrologerId, recapId, patch = {}) {
  * flips status to 'sent', and notifies the user. Idempotent: a non-pending recap
  * returns as-is. `keepSuggestionIds` (optional) limits which suggestions go out.
  */
-async function approveRecap(astrologerId, recapId, { keepSuggestionIds } = {}) {
+async function approveRecap(ctx, astrologerId, recapId, { keepSuggestionIds } = {}) {
+  ctx = ctx || defaultContext();
+  const SessionRecap = ctx.model('SessionRecap');
   const recap = await SessionRecap.findOne({ _id: recapId, astrologer: astrologerId });
   if (!recap) throw new AppError('Recap not found', 404);
-  if (recap.status === 'sent') return getRecapForAstrologer(astrologerId, recapId);
+  if (recap.status === 'sent') return getRecapForAstrologer(ctx, astrologerId, recapId);
   if (recap.status === 'rejected') throw new AppError('Recap was rejected', 409);
 
   const keep = Array.isArray(keepSuggestionIds) ? new Set(keepSuggestionIds.map(String)) : null;
@@ -276,7 +288,7 @@ async function approveRecap(astrologerId, recapId, { keepSuggestionIds } = {}) {
   try {
     const reminderService = require('./reminderService');
     const keptReminders = (recap.reminders || []).filter((r) => r.keep !== false);
-    await reminderService.scheduleFromRecap(recap, keptReminders);
+    await reminderService.scheduleFromRecap(ctx, recap, keptReminders);
   } catch (e) {
     logger.warn('scheduling reminders from recap failed', { recapId: String(recap._id), err: e.message });
   }
@@ -292,11 +304,13 @@ async function approveRecap(astrologerId, recapId, { keepSuggestionIds } = {}) {
   }).catch((e) => logger.debug('suggestion notify failed', e.message));
 
   logger.info('recap approved + sent', { recapId: String(recap._id), approvedSuggestions: approvedCount });
-  return getRecapForAstrologer(astrologerId, recapId);
+  return getRecapForAstrologer(ctx, astrologerId, recapId);
 }
 
 /** Reject (discard) a recap so it never reaches the user. */
-async function rejectRecap(astrologerId, recapId) {
+async function rejectRecap(ctx, astrologerId, recapId) {
+  ctx = ctx || defaultContext();
+  const SessionRecap = ctx.model('SessionRecap');
   const recap = await SessionRecap.findOneAndUpdate(
     { _id: recapId, astrologer: astrologerId, status: 'pending' },
     { $set: { status: 'rejected' } },
@@ -311,7 +325,9 @@ async function rejectRecap(astrologerId, recapId) {
  * approved suggestions. Returns null if there's no published recap (the common
  * case — the UI just shows the plain transcript then).
  */
-async function getRecapForUser(userId, sessionId) {
+async function getRecapForUser(ctx, userId, sessionId) {
+  ctx = ctx || defaultContext();
+  const SessionRecap = ctx.model('SessionRecap');
   const recap = await SessionRecap.findOne({ sessionId, user: userId, status: 'sent' })
     .populate('suggestions.product', PRODUCT_FIELDS).lean();
   if (!recap) return null;
@@ -334,8 +350,9 @@ async function getRecapForUser(userId, sessionId) {
 const OPTIMIZER_MONTHLY_LIMIT = 2; // each astrologer may run the optimizer twice per calendar month
 
 /** How many optimizer runs the astrologer has used this calendar month + the cap. */
-async function optimizerUsage(astrologerUserId) {
-  const AiLog = require('../models/AiLog');
+async function optimizerUsage(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const AiLog = ctx.model('AiLog');
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const used = await AiLog.countDocuments({
     feature: 'profileOptimizer', astrologer: astrologerUserId, ok: true, createdAt: { $gte: monthStart },
@@ -343,20 +360,23 @@ async function optimizerUsage(astrologerUserId) {
   return { used, limit: OPTIMIZER_MONTHLY_LIMIT, remaining: Math.max(0, OPTIMIZER_MONTHLY_LIMIT - used) };
 }
 
-async function optimizeProfile(astrologerUserId) {
+async function optimizeProfile(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Session = ctx.model('Session');
   const p = await AstrologerProfile.findOne({ user: astrologerUserId }).lean();
   if (!p) throw new AppError('Profile not found', 404);
 
   // The astrologer's chosen APP language (ISO code) — the optimizer must respond
   // in this language, not English. Stored on the User doc (mirrors device choice).
-  const User = require('../models/User');
+  const User = ctx.model('User');
   const userDoc = await User.findById(astrologerUserId).select('language').lean();
   const lang = (userDoc && userDoc.language) || 'en';
 
   // Monthly quota: a SUCCESSFUL optimizer LLM run is logged to AiLog, so we count
   // those this calendar month and block once the cap is hit. (The deterministic
   // heuristic part is cheap; the cap exists to bound LLM cost per astrologer.)
-  const usage = await optimizerUsage(astrologerUserId);
+  const usage = await optimizerUsage(ctx, astrologerUserId);
   if (usage.remaining <= 0) {
     throw new AppError(`You've used your ${OPTIMIZER_MONTHLY_LIMIT} profile optimisations for this month. It resets next month.`, 429);
   }
@@ -368,9 +388,9 @@ async function optimizeProfile(astrologerUserId) {
   const videoRate = p.rates?.video || { enabled: false, ratePerMin: 0 };
 
   // ── Gather the FULL performance snapshot to feed the LLM ──
-  const Review = require('../models/Review');
-  const Product = require('../models/Product');
-  const PoojaType = require('../models/PoojaType');
+  const Review = ctx.model('Review');
+  const Product = ctx.model('Product');
+  const PoojaType = ctx.model('PoojaType');
   const thirty = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [byType, byStatus, sessionsLast30, recentReviews, products, poojas] = await Promise.all([
     // Completed consultations split by type (chat/call/video).
@@ -504,7 +524,7 @@ async function optimizeProfile(astrologerUserId) {
   let outTips = aiTips;
   if (lang && lang !== 'en') {
     const { localizeText } = require('./translateService');
-    const tr = (t) => (t && String(t).trim() ? localizeText(String(t), lang) : Promise.resolve(t));
+    const tr = (t) => (t && String(t).trim() ? localizeText(ctx, String(t), lang) : Promise.resolve(t));
     outHeadline = await tr(headline);
     if (!usedAi) {
       await Promise.all(finalSuggestions.map(async (s) => {
@@ -532,7 +552,8 @@ async function optimizeProfile(astrologerUserId) {
  * @param {string} text  the already Tier-1-cleaned comment
  * @returns {Promise<{allowed:boolean, category:string, reason:string}>}
  */
-async function moderateLiveComment(text) {
+async function moderateLiveComment(ctx, text) {
+  ctx = ctx || defaultContext();
   const clean = (text || '').trim();
   if (!clean) return { allowed: true, category: 'ok', reason: '' };
   if (!llmService.available()) return { allowed: true, category: 'ok', reason: '' };

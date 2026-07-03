@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const otpRequestSchema = new mongoose.Schema(
   {
@@ -17,4 +18,4 @@ const otpRequestSchema = new mongoose.Schema(
 otpRequestSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 otpRequestSchema.index({ phone: 1, createdAt: -1 });
 
-module.exports = mongoose.model('OtpRequest', otpRequestSchema);
+module.exports = defineModel('OtpRequest', otpRequestSchema);

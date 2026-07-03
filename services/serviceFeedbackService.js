@@ -1,7 +1,4 @@
-const ServiceFeedback = require('../models/ServiceFeedback');
-const Session = require('../models/Session');
-const LiveSession = require('../models/LiveSession');
-const AstrologerProfile = require('../models/AstrologerProfile');
+const { defaultContext } = require('../utils/tenantContext');
 const AppError = require('../utils/AppError');
 
 /**
@@ -21,7 +18,13 @@ function _clampRating(v) {
  * Submit (or overwrite) the astrologer's feedback for a session or live.
  * @param {{ astrologerUserId, kind:'session'|'live', sourceId, ratings, comment }}
  */
-async function submit({ astrologerUserId, kind, sourceId, ratings = {}, comment = '' }) {
+async function submit(ctx, { astrologerUserId, kind, sourceId, ratings = {}, comment = '' }) {
+  ctx = ctx || defaultContext();
+  const ServiceFeedback = ctx.model('ServiceFeedback');
+  const Session = ctx.model('Session');
+  const LiveSession = ctx.model('LiveSession');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+
   if (!['session', 'live'].includes(kind)) throw new AppError('Invalid feedback kind', 400);
   if (!sourceId) throw new AppError('Source id required', 400);
 
@@ -76,7 +79,10 @@ async function submit({ astrologerUserId, kind, sourceId, ratings = {}, comment 
  * dimension + per serviceType counts) for the Admin Feedback tab.
  * @param {{ page, limit, serviceType, kind, astrologerId, minRating, from, to, q }}
  */
-async function adminList({ page = 1, limit = 20, serviceType, kind, astrologerId, minRating, from, to } = {}) {
+async function adminList(ctx, { page = 1, limit = 20, serviceType, kind, astrologerId, minRating, from, to } = {}) {
+  ctx = ctx || defaultContext();
+  const ServiceFeedback = ctx.model('ServiceFeedback');
+
   const q = {};
   if (kind && ['session', 'live'].includes(kind)) q.kind = kind;
   if (serviceType && ['chat', 'call', 'video', 'live'].includes(serviceType)) q.serviceType = serviceType;

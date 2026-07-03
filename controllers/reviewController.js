@@ -1,12 +1,11 @@
 const asyncHandler = require('../utils/asyncHandler');
 const reviewService = require('../services/reviewService');
-const AstrologerProfile = require('../models/AstrologerProfile');
 const AppError = require('../utils/AppError');
 
 /** User reviews an astrologer for a completed session. One review per
  *  (user, astrologer); `callQuality` (1-5) is per-session for audio/video. */
 exports.reviewSession = asyncHandler(async (req, res) => {
-  const data = await reviewService.reviewSession({
+  const data = await reviewService.reviewSession(req.ctx, {
     userId: req.user._id,
     sessionId: req.params.sessionId,
     rating: req.body.rating,
@@ -19,7 +18,7 @@ exports.reviewSession = asyncHandler(async (req, res) => {
 /** What the post-session dialog should show: whether to ask for an astrologer
  *  review (hidden once already reviewed) and/or call quality (audio/video). */
 exports.reviewableState = asyncHandler(async (req, res) => {
-  const data = await reviewService.reviewableState({
+  const data = await reviewService.reviewableState(req.ctx, {
     userId: req.user._id,
     sessionId: req.params.sessionId,
   });
@@ -28,9 +27,10 @@ exports.reviewableState = asyncHandler(async (req, res) => {
 
 /** Public: list reviews for an astrologer profile. */
 exports.listForAstrologer = asyncHandler(async (req, res) => {
+  const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findById(req.params.id);
   if (!profile) throw new AppError('Astrologer not found', 404);
-  const data = await reviewService.listForAstrologer(profile._id, {
+  const data = await reviewService.listForAstrologer(req.ctx, profile._id, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
   });
@@ -39,7 +39,7 @@ exports.listForAstrologer = asyncHandler(async (req, res) => {
 
 // ── Admin: write / remove a review for an astrologer (fake-name testimonials) ──
 exports.adminCreateReview = asyncHandler(async (req, res) => {
-  const data = await reviewService.adminCreateReview({
+  const data = await reviewService.adminCreateReview(req.ctx, {
     astrologerProfileId: req.params.id, // AstrologerProfile id
     rating: req.body.rating,
     comment: req.body.comment,
@@ -51,13 +51,13 @@ exports.adminCreateReview = asyncHandler(async (req, res) => {
 });
 
 exports.adminDeleteReview = asyncHandler(async (req, res) => {
-  const data = await reviewService.adminDeleteReview(req.params.reviewId);
+  const data = await reviewService.adminDeleteReview(req.ctx, req.params.reviewId);
   res.json({ success: true, data });
 });
 
 // ── Platform / app reviews ──
 exports.submitPlatformReview = asyncHandler(async (req, res) => {
-  const data = await reviewService.submitPlatformReview({
+  const data = await reviewService.submitPlatformReview(req.ctx, {
     userId: req.user._id,
     role: req.user.role,
     rating: req.body.rating,
@@ -67,7 +67,7 @@ exports.submitPlatformReview = asyncHandler(async (req, res) => {
 });
 
 exports.listPlatformReviews = asyncHandler(async (req, res) => {
-  const data = await reviewService.listPlatformReviews({
+  const data = await reviewService.listPlatformReviews(req.ctx, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
   });

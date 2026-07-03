@@ -1,16 +1,17 @@
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
-const NotificationTemplate = require('../models/NotificationTemplate');
 const broadcastService = require('../services/broadcastService');
 
 // ── Templates (system event notifications) ──
 
 exports.listTemplates = asyncHandler(async (req, res) => {
+  const NotificationTemplate = req.model('NotificationTemplate');
   const templates = await NotificationTemplate.ensureSeeded();
   res.json({ success: true, data: { templates, meta: NotificationTemplate.EVENT_META } });
 });
 
 exports.updateTemplate = asyncHandler(async (req, res) => {
+  const NotificationTemplate = req.model('NotificationTemplate');
   const { event } = req.params;
   if (!NotificationTemplate.EVENTS.includes(event)) throw new AppError('Unknown event', 400);
   const { enabled, title, body } = req.body;
@@ -27,7 +28,7 @@ exports.updateTemplate = asyncHandler(async (req, res) => {
 /** Estimate audience size for the compose preview (no send). */
 exports.estimate = asyncHandler(async (req, res) => {
   const { audience, targetUser, segment } = req.body;
-  const count = await broadcastService.estimate({ audience, targetUser, segment });
+  const count = await broadcastService.estimate(req.ctx, { audience, targetUser, segment });
   res.json({ success: true, data: { count } });
 });
 
@@ -37,7 +38,7 @@ exports.sendBroadcast = asyncHandler(async (req, res) => {
   if (audience === 'user' && !targetUser) throw new AppError('Select a user to target', 400);
   if (audience === 'segment' && !segment) throw new AppError('Choose a segment', 400);
 
-  const log = await broadcastService.send({
+  const log = await broadcastService.send(req.ctx, {
     title, body, data, audience, targetUser, segment,
     channel: channel === 'push_only' ? 'push_only' : 'inapp_push',
     source: 'manual',
@@ -51,7 +52,7 @@ exports.sendBroadcast = asyncHandler(async (req, res) => {
 });
 
 exports.retryBroadcast = asyncHandler(async (req, res) => {
-  const log = await broadcastService.retry(req.params.id, req.user._id);
+  const log = await broadcastService.retry(req.ctx, req.params.id, req.user._id);
   if (!log) throw new AppError('Broadcast not found', 404);
   res.json({ success: true, data: log });
 });
@@ -60,7 +61,7 @@ exports.retryBroadcast = asyncHandler(async (req, res) => {
 
 exports.listLog = asyncHandler(async (req, res) => {
   const { status, audience, appScope, channel, source, q, from, to } = req.query;
-  const data = await broadcastService.listLog({
+  const data = await broadcastService.listLog(req.ctx, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
     status, audience, appScope, channel, source, q, from, to,
@@ -75,13 +76,13 @@ exports.listLog = asyncHandler(async (req, res) => {
 exports.logStats = asyncHandler(async (req, res) => {
   const days = Math.min(Math.max(parseInt(req.query.days || '14', 10), 1), 365);
   const appScope = ['user', 'astrologer'].includes(req.query.appScope) ? req.query.appScope : undefined;
-  const data = await broadcastService.dashboard({ days, appScope });
+  const data = await broadcastService.dashboard(req.ctx, { days, appScope });
   res.json({ success: true, data });
 });
 
 /** Delete a single broadcast log (+ its click/delivery guard rows). */
 exports.deleteBroadcast = asyncHandler(async (req, res) => {
-  const ok = await broadcastService.remove(req.params.id);
+  const ok = await broadcastService.remove(req.ctx, req.params.id);
   if (!ok) throw new AppError('Broadcast not found', 404);
   res.json({ success: true, data: { deleted: 1 } });
 });
@@ -96,6 +97,6 @@ exports.deleteLog = asyncHandler(async (req, res) => {
   if (!hasFilter && req.query.confirm !== 'all') {
     throw new AppError('Refusing to clear all logs without confirm=all', 400);
   }
-  const deleted = await broadcastService.removeByFilter({ status, audience, appScope, channel, source, q, from, to });
+  const deleted = await broadcastService.removeByFilter(req.ctx, { status, audience, appScope, channel, source, q, from, to });
   res.json({ success: true, data: { deleted } });
 });

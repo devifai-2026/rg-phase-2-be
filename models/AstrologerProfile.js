@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const reviewSchema = new mongoose.Schema(
   {
@@ -196,4 +197,4 @@ astrologerProfileSchema.methods.canReceive = function (serviceType) {
   );
 };
 
-module.exports = mongoose.model('AstrologerProfile', astrologerProfileSchema);
+module.exports = defineModel('AstrologerProfile', astrologerProfileSchema);

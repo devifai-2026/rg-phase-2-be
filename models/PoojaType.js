@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Managed pooja catalog entry (like a product). Amounts are whole rupees. */
 const poojaTypeSchema = new mongoose.Schema(
@@ -67,4 +68,4 @@ poojaTypeSchema.virtual('displayReviewCount').get(function () {
 poojaTypeSchema.set('toJSON', { virtuals: true });
 poojaTypeSchema.set('toObject', { virtuals: true });
 
-module.exports = mongoose.model('PoojaType', poojaTypeSchema);
+module.exports = defineModel('PoojaType', poojaTypeSchema);

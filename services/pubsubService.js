@@ -53,15 +53,18 @@ function getClient() {
  * Falls back to jobService.enqueue(jobType, ...) if Pub/Sub is off or fails, so
  * callers get the same "fire this background task" guarantee either way.
  */
-async function publish(name, payload = {}, { dedupeKey } = {}) {
+async function publish(name, payload = {}, { dedupeKey, tenantSlug } = {}) {
   const jobType = TOPICS[name] || name;
   if (configured()) {
     try {
       const topicName = physicalTopic(name);
-      const data = Buffer.from(JSON.stringify({ jobType, payload, dedupeKey }));
-      // attributes carry the jobType so the subscriber routes without parsing first.
-      const id = await getClient().topic(topicName).publishMessage({ data, attributes: { jobType } });
-      logger.debug('pubsub published', { topic: topicName, jobType, id });
+      // tenantSlug travels with the message so the subscriber can rebuild the
+      // tenant context and route the job to the correct tenant DB.
+      const data = Buffer.from(JSON.stringify({ jobType, payload, dedupeKey, tenantSlug }));
+      const attributes = { jobType };
+      if (tenantSlug) attributes.tenantSlug = tenantSlug;
+      const id = await getClient().topic(topicName).publishMessage({ data, attributes });
+      logger.debug('pubsub published', { topic: topicName, jobType, id, tenantSlug });
       return { via: 'pubsub', id };
     } catch (e) {
       logger.warn(`pubsub publish failed (${name}); falling back to Mongo queue`, e.message);
@@ -69,7 +72,7 @@ async function publish(name, payload = {}, { dedupeKey } = {}) {
   }
   // Fallback: enqueue on the Mongo job queue (lazy require avoids a cycle).
   const jobService = require('./jobService');
-  const job = await jobService.enqueue({ type: jobType, payload, dedupeKey });
+  const job = await jobService.enqueue({ type: jobType, payload, dedupeKey, tenantSlug });
   return { via: 'mongo', id: job && String(job._id) };
 }
 
@@ -106,7 +109,12 @@ function startSubscribers(handlers, names = Object.keys(TOPICS)) {
           return;
         }
         try {
-          await handler(body.payload || {});
+          // Rebuild the tenant context from the message so the handler writes to
+          // the right tenant DB (default context in single-tenant mode).
+          const slug = (msg.attributes && msg.attributes.tenantSlug) || body.tenantSlug || null;
+          const { contextForSlug } = require('../utils/tenantContext');
+          const ctx = await contextForSlug(slug);
+          await handler(ctx, body.payload || {});
           msg.ack();
         } catch (err) {
           logger.warn('pubsub handler failed; nack for retry/DLQ', { type, error: err.message });

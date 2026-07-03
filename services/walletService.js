@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
-const Wallet = require('../models/Wallet');
-const Transaction = require('../models/Transaction');
+const { defaultContext } = require('../utils/tenantContext');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
@@ -20,7 +19,9 @@ const logger = require('../utils/logger');
  *    still intact; the unique refId prevents duplicate ledger rows).
  */
 
-async function getOrCreateWallet(userId) {
+async function getOrCreateWallet(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const Wallet = ctx.model('Wallet');
   let wallet = await Wallet.findOne({ user: userId });
   if (!wallet) {
     try {
@@ -33,8 +34,9 @@ async function getOrCreateWallet(userId) {
   return wallet;
 }
 
-async function getBalance(userId) {
-  const wallet = await getOrCreateWallet(userId);
+async function getBalance(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const wallet = await getOrCreateWallet(ctx, userId);
   return {
     balance: wallet.balance,
     lockedBalance: wallet.lockedBalance,
@@ -43,7 +45,9 @@ async function getBalance(userId) {
 }
 
 /** Idempotent: if a txn with refId exists, return it without re-applying. */
-async function findByRef(refId) {
+async function findByRef(ctx, refId) {
+  ctx = ctx || defaultContext();
+  const Transaction = ctx.model('Transaction');
   return Transaction.findOne({ refId });
 }
 
@@ -66,12 +70,15 @@ async function withTx(fn) {
 }
 
 /** Credit funds into a wallet (recharge / refund / bonus / earnings / gift-receive). */
-async function credit({ userId, amount, source, description, refId, relatedSession, meta }) {
+async function credit(ctx, { userId, amount, source, description, refId, relatedSession, meta }) {
+  ctx = ctx || defaultContext();
+  const Wallet = ctx.model('Wallet');
+  const Transaction = ctx.model('Transaction');
   if (!amount || amount < 1) throw new AppError('Invalid credit amount', 400);
-  const existing = await findByRef(refId);
+  const existing = await findByRef(ctx, refId);
   if (existing) return existing;
 
-  await getOrCreateWallet(userId);
+  await getOrCreateWallet(ctx, userId);
 
   return withTx(async (session) => {
     const opts = session ? { new: true, session } : { new: true };
@@ -96,9 +103,12 @@ async function credit({ userId, amount, source, description, refId, relatedSessi
 }
 
 /** Atomically debit if sufficient balance. Throws 402 if not enough. */
-async function debit({ userId, amount, source, description, refId, relatedSession, meta }) {
+async function debit(ctx, { userId, amount, source, description, refId, relatedSession, meta }) {
+  ctx = ctx || defaultContext();
+  const Wallet = ctx.model('Wallet');
+  const Transaction = ctx.model('Transaction');
   if (!amount || amount < 1) throw new AppError('Invalid debit amount', 400);
-  const existing = await findByRef(refId);
+  const existing = await findByRef(ctx, refId);
   if (existing) return existing;
 
   return withTx(async (session) => {
@@ -120,7 +130,7 @@ async function debit({ userId, amount, source, description, refId, relatedSessio
     } catch (e) {
       if (e.code === 11000) {
         if (!session) await Wallet.updateOne({ user: userId }, { $inc: { balance: amount } });
-        return findByRef(refId);
+        return findByRef(ctx, refId);
       }
       throw e;
     }
@@ -129,7 +139,9 @@ async function debit({ userId, amount, source, description, refId, relatedSessio
 }
 
 /** Reserve funds for an in-progress session / pending withdrawal (no ledger row). */
-async function lock({ userId, amount }) {
+async function lock(ctx, { userId, amount }) {
+  ctx = ctx || defaultContext();
+  const Wallet = ctx.model('Wallet');
   if (!amount || amount < 1) throw new AppError('Invalid lock amount', 400);
   const wallet = await Wallet.findOneAndUpdate(
     { user: userId, $expr: { $gte: [{ $subtract: ['$balance', '$lockedBalance'] }, amount] } },
@@ -141,8 +153,10 @@ async function lock({ userId, amount }) {
 }
 
 /** Release a previously-locked reservation that was not spent. */
-async function releaseLock({ userId, amount }) {
-  if (!amount || amount < 1) return getOrCreateWallet(userId);
+async function releaseLock(ctx, { userId, amount }) {
+  ctx = ctx || defaultContext();
+  const Wallet = ctx.model('Wallet');
+  if (!amount || amount < 1) return getOrCreateWallet(ctx, userId);
   return Wallet.findOneAndUpdate(
     { user: userId },
     [
@@ -160,9 +174,12 @@ async function releaseLock({ userId, amount }) {
  * Settle part of a reservation: deduct from BOTH balance and lockedBalance and
  * write a debit ledger row. Used by the per-minute billing tick.
  */
-async function settleLocked({ userId, amount, source, description, refId, relatedSession, meta }) {
+async function settleLocked(ctx, { userId, amount, source, description, refId, relatedSession, meta }) {
+  ctx = ctx || defaultContext();
+  const Wallet = ctx.model('Wallet');
+  const Transaction = ctx.model('Transaction');
   if (!amount || amount < 1) throw new AppError('Invalid settle amount', 400);
-  const existing = await findByRef(refId);
+  const existing = await findByRef(ctx, refId);
   if (existing) return existing;
 
   return withTx(async (session) => {
@@ -184,7 +201,7 @@ async function settleLocked({ userId, amount, source, description, refId, relate
     } catch (e) {
       if (e.code === 11000) {
         if (!session) await Wallet.updateOne({ user: userId }, { $inc: { balance: amount, lockedBalance: amount } });
-        return findByRef(refId);
+        return findByRef(ctx, refId);
       }
       throw e;
     }
@@ -192,7 +209,9 @@ async function settleLocked({ userId, amount, source, description, refId, relate
   });
 }
 
-async function listTransactions(userId, { page = 1, limit = 20, type, source, days } = {}) {
+async function listTransactions(ctx, userId, { page = 1, limit = 20, type, source, days } = {}) {
+  ctx = ctx || defaultContext();
+  const Transaction = ctx.model('Transaction');
   const q = { user: userId };
   if (type) q.type = type;
   if (source) q.source = source;

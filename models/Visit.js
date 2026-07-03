@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Anonymous landing-page visit — funnel attribution. Flow:
@@ -45,4 +46,4 @@ const visitSchema = new mongoose.Schema(
 visitSchema.index({ utmCampaign: 1, createdAt: -1 });
 visitSchema.index({ createdAt: -1 });
 
-module.exports = mongoose.model('Visit', visitSchema);
+module.exports = defineModel('Visit', visitSchema);

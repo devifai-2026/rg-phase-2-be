@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /** Singleton platform settings. Use AdminSettings.get() to read/create. */
 const adminSettingsSchema = new mongoose.Schema(
@@ -33,4 +34,4 @@ adminSettingsSchema.statics.get = async function () {
   return s;
 };
 
-module.exports = mongoose.model('AdminSettings', adminSettingsSchema);
+module.exports = defineModel('AdminSettings', adminSettingsSchema);

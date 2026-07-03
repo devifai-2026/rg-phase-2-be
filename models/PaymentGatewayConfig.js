@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed payment gateway configuration. ONE document (key:'global').
@@ -45,4 +46,4 @@ gatewaySchema.statics.get = async function () {
   return doc;
 };
 
-module.exports = mongoose.model('PaymentGatewayConfig', gatewaySchema);
+module.exports = defineModel('PaymentGatewayConfig', gatewaySchema);

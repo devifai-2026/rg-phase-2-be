@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const giftSchema = new mongoose.Schema(
   {
@@ -14,4 +15,4 @@ const giftSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Gift', giftSchema);
+module.exports = defineModel('Gift', giftSchema);

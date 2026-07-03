@@ -1,8 +1,10 @@
-const AuditLog = require('../models/AuditLog');
+const { defaultContext } = require('../utils/tenantContext');
 const logger = require('../utils/logger');
 
 /** Fire-and-forget audit record for privileged actions. */
-async function log({ actor, action, targetType, target, summary, meta, ip }) {
+async function log(ctx, { actor, action, targetType, target, summary, meta, ip }) {
+  ctx = ctx || defaultContext();
+  const AuditLog = ctx.model('AuditLog');
   try {
     await AuditLog.create({
       actor: actor._id,
@@ -19,7 +21,9 @@ async function log({ actor, action, targetType, target, summary, meta, ip }) {
   }
 }
 
-async function list({ page = 1, limit = 30, action, scope = 'users' } = {}) {
+async function list(ctx, { page = 1, limit = 30, action, scope = 'users' } = {}) {
+  ctx = ctx || defaultContext();
+  const AuditLog = ctx.model('AuditLog');
   const q = action ? { action } : {};
   // 'users' (default): the audit trail is about APP USERS — drop pure platform/
   // admin-housekeeping rows (creating admins, editing settings, audit of admins)

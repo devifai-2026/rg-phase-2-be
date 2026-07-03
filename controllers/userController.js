@@ -5,7 +5,7 @@ const AppError = require('../utils/AppError');
 // ── Profile photo ──
 exports.uploadAvatar = asyncHandler(async (req, res) => {
   if (!req.file) throw new AppError('Image file required (field: image)', 400);
-  const { url } = await uploadService.uploadImage(req.file.buffer, `avatar-${req.user._id}`);
+  const { url } = await uploadService.uploadImage(req.file.buffer, `avatar-${req.user._id}`, { tenantSlug: req.tenant && req.tenant.slug });
   req.user.avatar = url;
   await req.user.save();
   res.json({ success: true, data: { avatar: url } });
@@ -14,7 +14,7 @@ exports.uploadAvatar = asyncHandler(async (req, res) => {
 /** Generic image upload (returns a hosted URL to attach anywhere). */
 exports.uploadImage = asyncHandler(async (req, res) => {
   if (!req.file) throw new AppError('Image file required (field: image)', 400);
-  const result = await uploadService.uploadImage(req.file.buffer, req.file.originalname);
+  const result = await uploadService.uploadImage(req.file.buffer, req.file.originalname, { tenantSlug: req.tenant && req.tenant.slug });
   res.json({ success: true, data: result });
 });
 

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * One AI-generated marketing/engagement push line (Zomato-style nudge).
@@ -30,4 +31,4 @@ const marketingNotifSchema = new mongoose.Schema(
 
 marketingNotifSchema.index({ status: 1, audience: 1 });
 
-module.exports = mongoose.model('MarketingNotif', marketingNotifSchema);
+module.exports = defineModel('MarketingNotif', marketingNotifSchema);

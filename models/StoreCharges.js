@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 // One charge line: a flat ₹ fee or a % of the item subtotal. `enabled` off →
 // it is neither applied nor shown in the app's bill.
@@ -56,4 +57,4 @@ storeChargesSchema.methods.computeFor = function (subtotal) {
   return { lines, total };
 };
 
-module.exports = mongoose.model('StoreCharges', storeChargesSchema);
+module.exports = defineModel('StoreCharges', storeChargesSchema);

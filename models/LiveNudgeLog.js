@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Rate-limit ledger for live-join nudges. One row per (liveSession, user, kind):
@@ -21,4 +22,4 @@ const liveNudgeLogSchema = new mongoose.Schema(
 
 liveNudgeLogSchema.index({ liveSession: 1, user: 1, kind: 1 }, { unique: true });
 
-module.exports = mongoose.model('LiveNudgeLog', liveNudgeLogSchema);
+module.exports = defineModel('LiveNudgeLog', liveNudgeLogSchema);

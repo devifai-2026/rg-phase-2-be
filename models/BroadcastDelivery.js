@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * One row per (broadcast, user) the FIRST time that user's DEVICE confirms it
@@ -23,4 +24,4 @@ const broadcastDeliverySchema = new mongoose.Schema(
 // One delivery per user per broadcast.
 broadcastDeliverySchema.index({ broadcast: 1, user: 1 }, { unique: true });
 
-module.exports = mongoose.model('BroadcastDelivery', broadcastDeliverySchema);
+module.exports = defineModel('BroadcastDelivery', broadcastDeliverySchema);

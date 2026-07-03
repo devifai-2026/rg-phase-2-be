@@ -1,725 +1,112 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Rudraganga — Talk to a Vedic astrologer</title>
-<meta name="description" content="Consult verified Vedic astrologers by audio call, video call or chat. Free first chat, kundli matching, daily horoscope, pooja & an AI astrologer — download the Rudraganga app." />
-
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
-
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ApnaAstro — Launch your own white-label astrology app</title>
+<meta name="description" content="ApnaAstro is a white-label platform to launch your own branded astrology apps, admin panel and landing page — with your name, your brand, your Play Store account. Go live in days, not months." />
 <style>
-/* ============================================================
-   RUDRAGANGA — dark cosmic · crimson + gold on near-black
-   palette from the logo (crimson #C0392B + black)
-   ============================================================ */
-:root{
-  --cream:#0B0B0C; --cream-2:#121012;
-  --card:rgba(255,255,255,.045); --card-2:rgba(255,255,255,.07);
-  --red:#E0584A; --red-d:#C0392B; --red-soft:rgba(224,88,74,.16);
-  --ink:#FBF6EF; --muted:rgba(244,239,230,.62); --gold:#D9A441;
-  --line:rgba(255,255,255,.10); --shadow:0 30px 70px -30px rgba(0,0,0,.75);
-  --cosmic: radial-gradient(90% 70% at 14% 30%, rgba(192,57,43,.16), transparent 55%),
-            radial-gradient(80% 80% at 88% 90%, rgba(58,92,55,.22), transparent 60%),
-            radial-gradient(60% 50% at 70% 0%, rgba(120,95,30,.14), transparent 55%);
-  --serif:"Fraunces",Georgia,serif; --sans:"Plus Jakarta Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
-  --pad:clamp(1.15rem,5vw,6rem); --maxw:1240px;
-}
-*{ box-sizing:border-box; }
-html{ scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
-body{ margin:0; background:var(--cosmic), var(--cream); background-attachment:fixed; color:var(--ink);
-  font-family:var(--sans); font-size:clamp(15px,1.04vw,17px); line-height:1.62; overflow-x:hidden;
-  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
-img{ max-width:100%; display:block; }
-a{ color:inherit; text-decoration:none; }
-h1,h2,h3,h4{ font-family:var(--serif); font-weight:600; line-height:1.05; margin:0; letter-spacing:-.012em; }
-p{ margin:0; }
-::selection{ background:var(--red); color:#fff; }
-.wrap{ max-width:var(--maxw); margin:0 auto; padding-inline:var(--pad); }
-.kick{ font-family:var(--mono); font-size:.72rem; letter-spacing:.26em; text-transform:uppercase; color:var(--red);
-  display:inline-flex; align-items:center; gap:.7em; font-weight:500; }
-.kick::before{ content:""; width:22px; height:2px; background:var(--red); border-radius:2px; }
-
-/* buttons */
-.btn{ font-family:var(--sans); font-weight:700; font-size:.95rem; line-height:1; display:inline-flex; align-items:center;
-  gap:.6rem; cursor:pointer; white-space:nowrap; padding:.92rem 1.6rem; border-radius:999px; border:1.5px solid transparent;
-  transition:transform .2s, box-shadow .2s, background .2s, color .2s, border-color .2s; }
-.btn-primary{ background:var(--red); color:#fff; box-shadow:0 10px 24px -10px rgba(192,57,43,.7); }
-.btn-primary:hover{ background:var(--red-d); transform:translateY(-2px); }
-.btn-ghost{ background:rgba(255,255,255,.06); color:var(--ink); border-color:var(--line); }
-.btn-ghost:hover{ border-color:var(--red); color:var(--red); background:rgba(255,255,255,.1); transform:translateY(-2px); }
-.btn-app{ background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.22); }
-.btn-app:hover{ background:rgba(255,255,255,.16); transform:translateY(-2px); }
-.btn svg{ width:18px; height:18px; }
-
-/* nav */
-nav{ position:fixed; inset:0 0 auto 0; z-index:60; display:flex; align-items:center; justify-content:space-between;
-  gap:1rem; padding:.8rem clamp(1rem,4vw,3rem); transition:background .35s, box-shadow .35s; }
-nav.scrolled{ background:rgba(11,11,12,.85); backdrop-filter:blur(12px); box-shadow:0 1px 0 var(--line); }
-.brand{ display:flex; align-items:center; gap:.6rem; font-family:var(--serif); font-weight:700; font-size:1.3rem; flex:none; }
-.brand .mark{ width:40px; height:40px; flex:none; }
-.brand .rg .r{ color:#fff; } .brand .rg .g{ color:var(--red); }
-.navlinks{ display:flex; gap:clamp(1.1rem,1.8vw,2rem); font-size:.93rem; font-weight:500; color:var(--ink); }
-.navlinks a{ opacity:.78; transition:opacity .2s, color .2s; white-space:nowrap; }
-.navlinks a:hover{ opacity:1; color:var(--red); }
-.navcta{ display:flex; align-items:center; gap:.7rem; flex:none; }
-@media (max-width:1100px){ .navlinks{ gap:1.1rem; font-size:.88rem; } }
-@media (max-width:1000px){ .navlinks{ display:none; } }
-@media (max-width:880px){ .navcta .btn-ghost{ display:none; } }
-@media (max-width:560px){ .navcta .btn-primary{ font-size:.85rem; padding:.78rem 1.1rem; } }
-
-/* hero (dark cosmic) */
-header{ position:relative; min-height:100svh; display:flex; align-items:center; padding:7rem var(--pad) 3rem; overflow:hidden; color:#F4EFE6; }
-#stars, #orrery{ position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
-#orrery{ z-index:1; }
-.hero{ max-width:var(--maxw); margin:0 auto; width:100%; display:grid; grid-template-columns:1.02fr .98fr; gap:2rem; align-items:center; position:relative; z-index:3; }
-@media (max-width:960px){ .hero{ grid-template-columns:1fr; gap:2rem; } #orrery{ opacity:.5; } header{ min-height:auto; padding-top:8rem; } }
-.hero .kick{ color:#F0B7AE; } .hero .kick::before{ background:#F0B7AE; }
-.hero h1{ font-size:clamp(3rem,7vw,6rem); color:#FBF6EF; margin-top:1.2rem; letter-spacing:-.02em; line-height:1; }
-.hero h1 .accent{ color:var(--red); }
-.hero .sub{ margin-top:1.5rem; font-size:1.12rem; color:rgba(244,239,230,.72); max-width:46ch; }
-.hero .sub b{ color:#fff; font-weight:700; }
-.hero .actions{ margin-top:2.2rem; display:flex; gap:1rem; flex-wrap:wrap; }
-.hero .actions .btn{ padding:1.05rem 1.9rem; font-size:1rem; border-radius:16px; }
-.trustrow{ margin-top:2.4rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
-.faces{ display:flex; }
-.faces img{ width:42px; height:42px; border-radius:50%; object-fit:cover; border:2.5px solid #1a1614; margin-left:-12px; box-shadow:0 2px 10px rgba(0,0,0,.5); }
-.faces img:first-child{ margin-left:0; }
-.trustrow .t{ font-size:.92rem; color:rgba(244,239,230,.6); }
-.trustrow .t .hi{ color:#fff; font-weight:700; }
-.stars-rate{ color:var(--gold); letter-spacing:1px; }
-nav .navlinks{ color:#F4EFE6; }
-nav:not(.scrolled) .btn-ghost{ background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.22); }
-
-/* proof strip */
-.proof{ background:rgba(0,0,0,.35); border-block:1px solid var(--line); color:var(--ink); }
-.proof .row{ display:flex; align-items:center; justify-content:space-between; gap:2rem; flex-wrap:wrap; padding:1.7rem var(--pad); max-width:var(--maxw); margin:0 auto; }
-.proof .stat{ text-align:center; }
-.proof .stat .n{ font-family:var(--serif); font-size:1.95rem; font-weight:700; color:var(--red); }
-.proof .stat .l{ font-family:var(--mono); font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:rgba(251,246,239,.6); }
-.proof .div{ width:1px; height:34px; background:rgba(255,255,255,.15); }
-@media (max-width:720px){ .proof .div{ display:none; } .proof .row{ justify-content:space-around; } }
-
-/* sections */
-section{ padding-block:clamp(4rem,8vw,7rem); position:relative; }
-.shead{ max-width:60ch; }
-.shead.center{ margin:0 auto; text-align:center; }
-.shead h2{ font-size:clamp(2rem,4.4vw,3.4rem); margin-top:.9rem; }
-.shead p{ margin-top:1rem; color:var(--muted); font-size:1.06rem; }
-.reveal{ opacity:1; transform:none; }
-html.js-anim .reveal{ opacity:0; transform:translateY(26px); }
-html.js-anim .reveal.in{ opacity:1; transform:none; transition:opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
-
-/* horoscope wheel */
-.horo .wrap{ display:grid; grid-template-columns:1fr 1fr; gap:clamp(2rem,5vw,4.5rem); align-items:center; }
-@media (max-width:900px){ .horo .wrap{ grid-template-columns:1fr; gap:3rem; } }
-.wheel{ position:relative; width:min(46vw,460px); aspect-ratio:1/1; margin:0 auto; }
-@media (max-width:900px){ .wheel{ width:min(86vw,420px); } }
-.wheel .ring{ position:absolute; inset:8%; border:1px dashed rgba(255,255,255,.14); border-radius:50%; }
-.wheel .ring.inner{ inset:26%; }
-.wheel .center{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:30%; aspect-ratio:1/1; border-radius:22px;
-  display:grid; place-items:center; background:linear-gradient(150deg,var(--red),var(--red-d)); color:#fff;
-  font-family:var(--serif); font-size:clamp(2rem,4vw,3rem); box-shadow:0 0 50px -6px rgba(224,88,74,.6); }
-.sign{ position:absolute; top:50%; left:50%; width:54px; height:54px; margin:-27px; border-radius:14px; display:grid; place-items:center;
-  cursor:pointer; color:#fff; background:rgba(224,88,74,.18); border:1px solid rgba(224,88,74,.35); font-size:1.4rem;
-  transition:transform .25s, background .25s, box-shadow .25s; transform:translate(var(--tx),var(--ty)); }
-.sign:hover{ transform:translate(var(--tx),var(--ty)) scale(1.12); background:rgba(224,88,74,.32); }
-.sign.active{ background:linear-gradient(150deg,var(--red),var(--red-d)); box-shadow:0 0 28px 2px rgba(224,88,74,.7); transform:translate(var(--tx),var(--ty)) scale(1.18); }
-.horo-card .eyebrow{ font-family:var(--mono); font-size:.74rem; letter-spacing:.22em; text-transform:uppercase; color:var(--red); }
-.horo-card h2{ font-size:clamp(2.4rem,5vw,4rem); margin:.5rem 0 .1rem; }
-.horo-card .when{ color:var(--muted); }
-.horo-stats{ display:flex; gap:.8rem; flex-wrap:wrap; margin:1.6rem 0; }
-.hstat{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.8rem 1rem; min-width:120px; }
-.hstat .k{ font-family:var(--mono); font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
-.hstat .v{ font-weight:700; margin-top:.25rem; } .hstat .v .on{ color:var(--gold); } .hstat .v .off{ color:rgba(255,255,255,.2); }
-.horo-card .quote-line{ font-family:var(--serif); font-size:1.2rem; color:var(--ink); max-width:42ch; }
-.horo-luck{ margin-top:1rem; color:var(--muted); font-size:.95rem; display:flex; gap:1.4rem; align-items:center; flex-wrap:wrap; }
-.horo-luck b{ color:var(--ink); }
-.horo-luck .dot{ width:14px; height:14px; border-radius:50%; display:inline-block; vertical-align:-2px; margin-left:.4rem; }
-.horo-card .acts{ margin-top:1.8rem; display:flex; gap:.9rem; flex-wrap:wrap; }
-
-/* sticky-scroll modes showcase */
-.showcase{ background:transparent; }
-.showcase .shead{ text-align:center; margin:0 auto clamp(2rem,4vw,3.5rem); }
-.sc-stage{ display:grid; grid-template-columns:1fr 1fr; gap:clamp(2rem,5vw,5rem); align-items:start; max-width:var(--maxw); margin:0 auto; padding-inline:var(--pad); }
-@media (max-width:900px){ .sc-stage{ grid-template-columns:1fr; } }
-.sc-phone{ position:sticky; top:18vh; align-self:start; display:flex; justify-content:center; height:fit-content; }
-@media (max-width:900px){ .sc-phone{ position:relative; top:0; margin-bottom:2rem; } }
-.phone{ position:relative; width:300px; max-width:78vw; aspect-ratio:300/620; background:#15110f; border-radius:42px; padding:11px; box-shadow:var(--shadow), 0 0 0 2px #2c211c; }
-.phone .notch{ position:absolute; top:11px; left:50%; transform:translateX(-50%); width:120px; height:24px; background:#15110f; border-radius:0 0 16px 16px; z-index:5; }
-.phone .screen{ width:100%; height:100%; border-radius:32px; overflow:hidden; position:relative; background:#fff; display:flex; flex-direction:column; }
-.sc-screen{ position:absolute; inset:0; opacity:0; transition:opacity .5s ease; display:flex; flex-direction:column; pointer-events:none; }
-.sc-screen.active{ opacity:1; pointer-events:auto; }
-.sc-screen .top{ flex:none; padding:1.4rem 1.1rem; color:#fff; }
-.sc-screen .top .mode-ic{ width:46px; height:46px; border-radius:13px; background:rgba(255,255,255,.2); display:grid; place-items:center; margin-bottom:.8rem; }
-.sc-screen .top h4{ color:#fff; font-size:1.3rem; }
-.sc-screen .top .meter{ font-family:var(--mono); font-size:.72rem; opacity:.92; margin-top:.3rem; }
-.sc-screen .body{ flex:1; background:#fff; padding:1rem; display:flex; flex-direction:column; gap:.7rem; }
-.scr-audio .top{ background:linear-gradient(150deg,var(--red),var(--red-d)); }
-.wave{ display:flex; align-items:center; justify-content:center; gap:4px; height:80px; margin-top:.6rem; }
-.wave i{ width:5px; border-radius:3px; background:var(--red); opacity:.85; height:20%; }
-.callface{ display:flex; flex-direction:column; align-items:center; gap:.5rem; padding:.8rem 0; }
-.callface img{ width:74px; height:74px; border-radius:50%; object-fit:cover; }
-.callface .nm{ font-family:var(--serif); font-weight:600; font-size:1.05rem; color:#1A1A1A; }
-.callface .st{ font-size:.7rem; color:#6E635B; }
-.callbtns{ display:flex; gap:.8rem; justify-content:center; margin-top:auto; }
-.callbtns .cb{ width:48px; height:48px; border-radius:50%; display:grid; place-items:center; color:#fff; }
-.cb.end{ background:var(--red); } .cb.mute,.cb.spk{ background:#33302e; }
-.scr-video .top{ background:linear-gradient(150deg,#1f1b18,#33302e); }
-.vid-frame{ position:relative; flex:1; border-radius:14px; overflow:hidden; margin-top:.2rem; }
-.vid-frame img{ width:100%; height:100%; object-fit:cover; }
-.vid-self{ position:absolute; bottom:10px; right:10px; width:54px; height:74px; border-radius:9px; object-fit:cover; border:2px solid #fff; }
-.vid-name{ position:absolute; left:10px; bottom:10px; color:#fff; font-size:.66rem; font-weight:700; background:rgba(0,0,0,.45); padding:.25rem .5rem; border-radius:7px; }
-.scr-chat .top{ background:linear-gradient(150deg,var(--gold),#9a7521); }
-.bubble{ max-width:80%; padding:.55rem .7rem; border-radius:13px; font-size:.66rem; line-height:1.35; }
-.bubble.them{ background:#F1EBE2; color:#1A1A1A; border-bottom-left-radius:4px; }
-.bubble.me{ background:var(--red); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
-.chat-input{ margin-top:auto; display:flex; align-items:center; gap:.4rem; border:1px solid #E6DACB; border-radius:999px; padding:.4rem .4rem .4rem .8rem; }
-.chat-input .ph{ font-size:.62rem; color:#6E635B; } .chat-input .snd{ margin-left:auto; width:28px; height:28px; border-radius:50%; background:var(--red); display:grid; place-items:center; }
-.sc-steps{ display:flex; flex-direction:column; gap:clamp(2rem,12vh,8rem); padding-block:6vh 12vh; }
-.sc-step{ opacity:.4; transition:opacity .4s; }
-.sc-step.active{ opacity:1; }
-.sc-step .tag{ font-family:var(--mono); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:var(--red); display:flex; align-items:center; gap:.6rem; }
-.sc-step .tag .no{ font-family:var(--serif); font-size:1rem; color:var(--ink); font-style:italic; }
-.sc-step h3{ font-size:clamp(1.9rem,3.4vw,2.8rem); margin:.6rem 0 .2rem; }
-.sc-step .rate{ font-family:var(--mono); font-size:.92rem; color:var(--red); font-weight:500; }
-.sc-step p{ color:var(--muted); margin-top:.9rem; font-size:1.04rem; max-width:42ch; }
-.sc-step ul{ list-style:none; padding:0; margin:1.1rem 0 0; display:grid; gap:.55rem; }
-.sc-step li{ display:flex; gap:.6rem; align-items:center; font-size:.95rem; }
-.sc-step li svg{ width:18px; height:18px; color:var(--red); flex:none; }
-.sc-step .go{ margin-top:1.4rem; }
-
-/* astrologers */
-.astro-band{ background:rgba(0,0,0,.22); }
-.astro-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:1.2rem; margin-top:3rem; }
-@media (max-width:900px){ .astro-grid{ grid-template-columns:repeat(2,1fr); } }
-@media (max-width:520px){ .astro-grid{ grid-template-columns:1fr; } }
-.acard{ background:var(--card); border:1px solid var(--line); border-radius:18px; overflow:hidden; transition:transform .3s, box-shadow .3s; }
-.acard:hover{ transform:translateY(-5px); box-shadow:var(--shadow); }
-.acard .pic{ position:relative; aspect-ratio:1/1; }
-.acard .pic img{ width:100%; height:100%; object-fit:cover; }
-.acard .badge{ position:absolute; top:.7rem; left:.7rem; font-family:var(--mono); font-size:.6rem; letter-spacing:.08em;
-  background:rgba(255,255,255,.92); color:#1f7a3d; font-weight:700; padding:.28rem .55rem; border-radius:999px; display:flex; align-items:center; gap:.35rem; }
-.acard .badge .d{ width:6px; height:6px; border-radius:50%; background:#2a9d52; }
-.acard .info{ padding:1rem 1.1rem 1.2rem; }
-.acard .nm{ font-family:var(--serif); font-weight:600; font-size:1.15rem; }
-.acard .sk{ font-size:.82rem; color:var(--muted); margin-top:.15rem; }
-.acard .meta{ display:flex; align-items:center; justify-content:space-between; margin-top:.8rem; }
-.acard .rt{ font-size:.82rem; font-weight:700; } .acard .rt .s{ color:var(--gold); }
-.acard .pr{ font-family:var(--mono); font-size:.78rem; color:var(--ink); }
-.acard .cbtn{ margin-top:.9rem; width:100%; justify-content:center; padding:.7rem; font-size:.88rem; }
-
-/* services grid */
-.serv{ display:grid; grid-template-columns:repeat(12,1fr); gap:1.2rem; margin-top:3rem; }
-.scard{ border-radius:18px; overflow:hidden; position:relative; min-height:230px; border:1px solid var(--line); }
-.scard img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform 5s ease; }
-.scard:hover img{ transform:scale(1.07); }
-.scard::after{ content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,11,12,.1) 0%, rgba(11,11,12,.9) 90%); }
-.scard .b{ position:absolute; inset:auto 0 0 0; z-index:2; padding:1.4rem; color:#fff; }
-.scard .b .kk{ font-family:var(--mono); font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:#F4A89F; }
-.scard .b h3{ color:#fff; font-size:1.4rem; margin:.35rem 0 .3rem; }
-.scard .b p{ color:rgba(255,255,255,.85); font-size:.88rem; }
-.s7{ grid-column:span 7; } .s5{ grid-column:span 5; } .s4{ grid-column:span 4; }
-@media (max-width:860px){ .serv > *{ grid-column:1/-1 !important; } }
-
-/* why cards */
-.why{ display:grid; grid-template-columns:repeat(3,1fr); gap:1.2rem; margin-top:3rem; }
-@media (max-width:900px){ .why{ grid-template-columns:repeat(2,1fr); } }
-@media (max-width:560px){ .why{ grid-template-columns:1fr; } }
-.wcard{ position:relative; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:1.9rem 1.7rem; overflow:hidden; transition:transform .3s, box-shadow .3s, border-color .3s; }
-.wcard:hover{ transform:translateY(-6px); box-shadow:var(--shadow); border-color:var(--red-soft); }
-.wcard .ic{ width:54px; height:54px; border-radius:15px; display:grid; place-items:center; margin-bottom:1.2rem; background:var(--red-soft); color:var(--red); }
-.wcard .ic svg{ width:26px; height:26px; }
-.wcard h3{ font-size:1.3rem; }
-.wcard p{ color:var(--muted); margin-top:.6rem; font-size:.95rem; }
-.wcard .chip{ display:inline-flex; align-items:center; gap:.4rem; margin-top:1rem; font-family:var(--mono); font-size:.66rem; letter-spacing:.06em; text-transform:uppercase; color:var(--red); background:var(--red-soft); padding:.32rem .6rem; border-radius:999px; font-weight:500; }
-
-/* how it works */
-.steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:1.6rem; margin-top:3rem; }
-@media (max-width:860px){ .steps{ grid-template-columns:1fr 1fr; } }
-@media (max-width:480px){ .steps{ grid-template-columns:1fr; } }
-.step .num{ width:48px; height:48px; border-radius:50%; display:grid; place-items:center; font-family:var(--serif); font-weight:700; font-size:1.25rem; color:#fff; background:var(--red); margin-bottom:1rem; box-shadow:0 8px 18px -8px rgba(192,57,43,.7); }
-.step h3{ font-size:1.3rem; margin-bottom:.4rem; } .step p{ color:var(--muted); font-size:.93rem; }
-
-/* earn band */
-.earn{ background:linear-gradient(135deg, rgba(192,57,43,.14), rgba(255,255,255,.04)); border:1px solid var(--line); color:var(--ink); border-radius:26px; display:grid; grid-template-columns:1fr 1fr; overflow:hidden; }
-@media (max-width:900px){ .earn{ grid-template-columns:1fr; } }
-.earn .copy{ padding:clamp(2.2rem,4vw,3.6rem); }
-.earn .copy h2{ color:#fff; font-size:clamp(2rem,3.6vw,3rem); margin:1rem 0; }
-.earn .copy p{ color:rgba(251,246,239,.8); max-width:46ch; }
-.earn ul{ list-style:none; padding:0; margin:1.6rem 0 2rem; display:grid; gap:.8rem; }
-.earn li{ display:flex; gap:.7rem; align-items:center; font-size:.96rem; }
-.earn li svg{ width:20px; height:20px; color:#F4A89F; flex:none; }
-.earn .pic{ position:relative; min-height:340px; }
-.earn .pic img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-.earn .pic::after{ content:""; position:absolute; inset:0; background:linear-gradient(90deg,#0B0B0C,transparent 30%); }
-
-/* CTA banners */
-.cta-banner{ position:relative; overflow:hidden; border-radius:26px; background:linear-gradient(120deg,var(--red) 0%, var(--red-d) 100%); color:#fff;
-  padding:clamp(2.4rem,5vw,4rem); display:grid; grid-template-columns:1.4fr 1fr; gap:2rem; align-items:center; box-shadow:var(--shadow); }
-@media (max-width:820px){ .cta-banner{ grid-template-columns:1fr; text-align:center; } }
-.cta-banner::before{ content:""; position:absolute; inset:0; opacity:.5; pointer-events:none; background:radial-gradient(circle at 88% 10%, rgba(255,255,255,.3), transparent 40%), radial-gradient(circle at 12% 110%, rgba(0,0,0,.3), transparent 45%); }
-.cta-banner .c, .cta-banner .acts{ position:relative; z-index:2; }
-.cta-banner h2{ color:#fff; font-size:clamp(1.9rem,3.6vw,3rem); }
-.cta-banner p{ color:rgba(255,255,255,.92); margin-top:.8rem; font-size:1.05rem; max-width:44ch; }
-@media (max-width:820px){ .cta-banner p{ margin-inline:auto; } }
-.cta-banner .acts{ display:flex; gap:.9rem; flex-wrap:wrap; justify-content:flex-end; }
-@media (max-width:820px){ .cta-banner .acts{ justify-content:center; } }
-.cta-banner .btn-light{ background:#fff; color:var(--red-d); }
-.cta-banner .btn-light:hover{ transform:translateY(-2px); }
-.cta-banner .btn-clear{ background:rgba(255,255,255,.12); color:#fff; border-color:rgba(255,255,255,.55); }
-.cta-note{ position:relative; z-index:2; margin-top:1rem; font-size:.82rem; color:rgba(255,255,255,.85); display:flex; gap:.5rem; align-items:center; }
-@media (max-width:820px){ .cta-note{ justify-content:center; } }
-
-/* testimonials (dark dual-row marquee) */
-.tsection{ background:rgba(0,0,0,.25); border-block:1px solid var(--line); color:var(--ink); overflow:hidden; }
-.tsection .shead h2{ color:var(--ink); }
-.tsection .shead .kick{ color:#F4A89F; } .tsection .shead .kick::before{ background:#F4A89F; }
-.tsection .shead p{ color:rgba(251,246,239,.65); }
-.tmarquee{ display:flex; flex-direction:column; gap:1.2rem; margin-top:3rem; overflow:hidden;
-  -webkit-mask-image:linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); mask-image:linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
-.trow{ display:flex; flex-wrap:nowrap; gap:1.2rem; width:max-content; will-change:transform; }
-.trow.r1{ animation:tscroll 46s linear infinite; }
-.trow.r2{ animation:tscroll 56s linear infinite reverse; }
-html.js-marquee .trow{ animation:none; }
-.tsection:hover .trow{ animation-play-state:paused; }
-@keyframes tscroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
-.tcard{ width:340px; flex:0 0 340px; background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.1); border-radius:18px; padding:1.5rem 1.6rem; backdrop-filter:blur(4px); }
-.tcard .who{ display:flex; align-items:center; gap:.7rem; }
-.tcard .who img{ width:42px; height:42px; border-radius:50%; object-fit:cover; }
-.tcard .nm{ font-weight:700; font-size:.95rem; color:#fff; }
-.tcard .ct{ font-size:.76rem; color:rgba(251,246,239,.55); display:flex; align-items:center; gap:.5rem; }
-.tcard .ct .s{ color:var(--gold); letter-spacing:.5px; }
-.tcard p{ color:rgba(251,246,239,.82); font-size:.92rem; line-height:1.5; margin-top:1rem; }
-@media (prefers-reduced-motion:reduce){ .tmarquee{ overflow-x:auto; } .trow{ animation:none !important; } }
-
-/* lead forms */
-.leadforms{ display:grid; grid-template-columns:1fr 1fr; gap:1.4rem; margin-top:3rem; }
-@media (max-width:900px){ .leadforms{ grid-template-columns:1fr; } }
-.lform{ background:var(--card); border:1px solid var(--line); border-radius:22px; padding:clamp(1.6rem,3vw,2.4rem); position:relative; overflow:hidden; }
-.lform.astro{ background:linear-gradient(160deg, rgba(192,57,43,.14), rgba(255,255,255,.035)); }
-.lform .ftag{ font-family:var(--mono); font-size:.7rem; letter-spacing:.2em; text-transform:uppercase; color:var(--red); }
-.lform h3{ font-size:clamp(1.5rem,2.6vw,2rem); margin:.6rem 0 .3rem; }
-.lform .fsub{ color:var(--muted); font-size:.96rem; max-width:42ch; }
-.lform form{ margin-top:1.5rem; display:grid; gap:.85rem; }
-.frow{ display:grid; grid-template-columns:1fr 1fr; gap:.85rem; }
-@media (max-width:520px){ .frow{ grid-template-columns:1fr; } }
-.field{ display:flex; flex-direction:column; gap:.35rem; }
-.field label{ font-size:.78rem; color:var(--muted); font-weight:600; }
-.field input, .field textarea{ width:100%; font-family:var(--sans); font-size:.95rem; color:var(--ink); background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:12px; padding:.8rem .95rem; transition:border-color .2s, background .2s; }
-.field textarea{ resize:vertical; min-height:96px; }
-.field input::placeholder, .field textarea::placeholder{ color:rgba(244,239,230,.35); }
-.field input:focus, .field textarea:focus{ outline:none; border-color:var(--red); background:rgba(255,255,255,.08); }
-.lform .submit{ margin-top:.4rem; width:100%; justify-content:center; }
-.lform .fmsg{ font-size:.88rem; margin-top:.3rem; min-height:1.2em; }
-.lform .fmsg.ok{ color:#5fd68a; } .lform .fmsg.err{ color:#ff8a7a; }
-.lform .submit[disabled]{ opacity:.6; cursor:not-allowed; }
-
-/* final CTA */
-.final{ text-align:center; background:radial-gradient(100% 120% at 50% 0%, rgba(192,57,43,.18), transparent 60%); }
-.final h2{ font-size:clamp(2.3rem,5.5vw,4.4rem); max-width:18ch; margin:0 auto 1rem; }
-.final h2 .it{ font-style:italic; color:var(--red); font-weight:400; }
-.final p{ color:var(--muted); max-width:42ch; margin:0 auto 2rem; font-size:1.08rem; }
-.storebtns{ display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; }
-.store{ display:inline-flex; align-items:center; gap:.7rem; background:rgba(255,255,255,.08); border:1px solid var(--line); color:#fff; padding:.8rem 1.4rem; border-radius:14px; transition:transform .2s, background .2s; }
-.store:hover{ transform:translateY(-3px); background:rgba(255,255,255,.14); } .store svg{ width:26px; height:26px; }
-.store .sm{ font-size:.62rem; opacity:.8; line-height:1; } .store .lg{ font-size:1rem; font-weight:700; font-family:var(--serif); }
-
-/* footer */
-footer{ background:rgba(0,0,0,.4); border-top:1px solid var(--line); color:var(--ink); padding-block:3rem 2.5rem; }
-.fcols{ display:flex; justify-content:space-between; gap:2.5rem; flex-wrap:wrap; }
-.fcols .lead{ max-width:30ch; } .fcols .lead p{ color:rgba(251,246,239,.6); font-size:.9rem; margin-top:.9rem; }
-.fcols .brand .rg .r{ color:#fff; }
-.fcol h5{ font-family:var(--mono); font-size:.66rem; letter-spacing:.18em; text-transform:uppercase; color:#F4A89F; margin:0 0 1rem; font-weight:500; }
-.fcol a{ display:block; color:rgba(251,246,239,.65); font-size:.9rem; margin-bottom:.55rem; } .fcol a:hover{ color:#fff; }
-.fbot{ max-width:var(--maxw); margin:2.6rem auto 0; padding-top:1.4rem; border-top:1px solid rgba(255,255,255,.12); display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; font-size:.8rem; color:rgba(251,246,239,.5); }
-
-/* mobile CTA bar */
-.mobar{ position:fixed; left:0; right:0; bottom:0; z-index:70; display:none; gap:.7rem; padding:.7rem .9rem calc(.7rem + env(safe-area-inset-bottom)); background:rgba(11,11,12,.92); backdrop-filter:blur(10px); box-shadow:0 -1px 0 var(--line), 0 -10px 30px -18px rgba(0,0,0,.6); }
-.mobar .btn{ flex:1; justify-content:center; padding:.85rem; font-size:.92rem; }
-@media (max-width:880px){ .mobar{ display:flex; } body{ padding-bottom:74px; } }
-
-/* cursor glow */
-#cursor-glow{ position:fixed; top:0; left:0; width:520px; height:520px; border-radius:50%; z-index:0; pointer-events:none; transform:translate(-50%,-50%); opacity:0; transition:opacity .4s;
-  background:radial-gradient(circle, rgba(224,88,74,.16), rgba(224,88,74,.06) 35%, transparent 70%); mix-blend-mode:screen; will-change:transform; }
-@media (hover:hover){ body:hover #cursor-glow{ opacity:1; } }
-@media (max-width:880px){ #cursor-glow{ display:none; } }
-
-@media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } .reveal{ opacity:1; transform:none; } #cursor-glow{ display:none; } }
-:focus-visible{ outline:3px solid var(--red); outline-offset:2px; border-radius:6px; }
+  :root{
+    --p:#7c4dff; --a:#ffb300; --ink:#12101f; --muted:#6b6880;
+    --bg:#ffffff; --card:#f7f6fb; --line:#ece9f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --ink:#f3f1fb; --muted:#a7a3bd; --bg:#0d0b16; --card:#161327; --line:#241f3a; }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+  a{color:inherit}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+  header{display:flex;align-items:center;gap:10px;padding:22px 0}
+  .logo{font-weight:800;font-size:1.35rem;letter-spacing:-.02em}
+  .logo .dot{background:linear-gradient(90deg,var(--p),var(--a));-webkit-background-clip:text;background-clip:text;color:transparent}
+  nav{margin-left:auto;display:flex;gap:22px;align-items:center}
+  nav a{text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem}
+  nav a:hover{color:var(--ink)}
+  .btn{display:inline-block;padding:12px 22px;border-radius:999px;background:var(--p);color:#fff;text-decoration:none;font-weight:700;border:none;cursor:pointer;font-size:.95rem}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .hero{padding:64px 0 48px;text-align:center}
+  .hero h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.1;margin:0 0 18px;letter-spacing:-.03em}
+  .grad{background:linear-gradient(90deg,var(--p),var(--a));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{font-size:1.2rem;color:var(--muted);max-width:640px;margin:0 auto 30px}
+  .cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .pill{display:inline-block;padding:6px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--muted);font-size:.8rem;font-weight:600;margin-bottom:22px}
+  section{padding:52px 0}
+  h2{font-size:clamp(1.5rem,3.5vw,2.1rem);letter-spacing:-.02em;margin:0 0 8px;text-align:center}
+  .sub{color:var(--muted);text-align:center;max-width:560px;margin:0 auto 36px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px}
+  .feat .ic{font-size:1.6rem}
+  .feat h3{margin:12px 0 6px;font-size:1.1rem}
+  .feat p{margin:0;color:var(--muted);font-size:.95rem}
+  .steps{counter-reset:s;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}
+  .step{position:relative;padding:24px;background:var(--card);border:1px solid var(--line);border-radius:16px}
+  .step::before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--p),var(--a));color:#fff;font-weight:800;margin-bottom:12px}
+  .step h3{margin:0 0 6px;font-size:1.05rem}
+  .step p{margin:0;color:var(--muted);font-size:.92rem}
+  .trial{text-align:center;background:linear-gradient(135deg,rgba(124,77,255,.12),rgba(255,179,0,.12));border:1px solid var(--line);border-radius:22px;padding:44px 24px;margin:12px 0}
+  .trial h2{margin-bottom:8px}
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-size:.9rem;text-align:center}
 </style>
 </head>
 <body>
-<div id="cursor-glow" aria-hidden="true"></div>
+<div class="wrap">
+  <header>
+    <span class="logo">Apna<span class="dot">Astro</span></span>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a class="btn ghost" href="mailto:hello@devifai.in">Contact</a>
+    </nav>
+  </header>
 
-<!-- NAV -->
-<nav id="nav">
-  <a class="brand" href="#top">
-    <svg class="mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <circle cx="24" cy="24" r="22" stroke="#C0392B" stroke-width="1.5" opacity=".5"/>
-      <circle cx="24" cy="24" r="17" stroke="#C0392B" stroke-width="1" opacity=".35"/>
-      <path d="M24 13v22" stroke="#FBF6EF" stroke-width="2" stroke-linecap="round"/>
-      <path d="M17 19c0-4 3-6 7-6s7 2 7 6" stroke="#FBF6EF" stroke-width="2" fill="none" stroke-linecap="round"/>
-      <path d="M17 19v-5M31 19v-5M24 11v3" stroke="#FBF6EF" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="24" cy="34" r="3" fill="#C0392B"/>
-    </svg>
-    <span class="rg"><span class="r">Rudra</span><span class="g">ganga</span></span>
-  </a>
-  <div class="navlinks">
-    <a href="#consult">Consult</a>
-    <a href="#astrologers">Astrologers</a>
-    <a href="#services">Services</a>
-    <a href="#how">How it works</a>
-    <a href="#earn">Become an astrologer</a>
-  </div>
-  <div class="navcta">
-    <a class="btn btn-ghost" href="#download">Get the app</a>
-    <a class="btn btn-primary" href="#download">Talk to an astrologer</a>
-  </div>
-</nav>
-
-<!-- HERO -->
-<header id="top">
-  <canvas id="stars" aria-hidden="true"></canvas>
-  <canvas id="orrery" aria-hidden="true"></canvas>
-  <div class="hero">
-    <div class="hero-copy reveal">
-      <span class="kick">India's trusted Vedic astrology app</span>
-      <h1>Talk to<br><span class="accent">astrologers</span><br>right now.</h1>
-      <p class="sub">No appointments, no queues. <b>500+ verified astrologers</b> in 38 languages — instant chat, free kundli, honest answers. Tap a guide who's online and your first reply lands in seconds.</p>
-      <div class="actions">
-        <a class="btn btn-primary" href="#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H8l-4 4V5Z"/></svg> Get free chat</a>
-        <a class="btn btn-app" href="#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Download the app</a>
-      </div>
-      <div class="trustrow">
-        <div class="faces">
-          <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/>
-          <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/>
-          <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/>
-          <img src="https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/>
-        </div>
-        <div class="t"><span class="hi"><span class="stars-rate">★</span> 4.9 · 80,000+ seekers</span><br>2M+ chat &amp; call minutes served</div>
-      </div>
+  <section class="hero">
+    <span class="pill">✨ White-label astrology platform</span>
+    <h1>Launch <span class="grad">your own</span> astrology app —<br/>your brand, not ours.</h1>
+    <p>ApnaAstro gives every client a fully branded astrology app, astrologer app, admin panel and landing page. Your name, your colours, your Play Store. Go live in days, not months.</p>
+    <div class="cta-row">
+      <a class="btn" href="mailto:hello@devifai.in?subject=ApnaAstro%20demo">Book a demo</a>
+      <a class="btn ghost" href="#how">See how it works</a>
     </div>
-    <div class="hero-art" aria-hidden="true"></div>
-  </div>
-</header>
+  </section>
 
-<!-- PROOF -->
-<div class="proof">
-  <div class="row">
-    <div class="stat"><div class="n" data-count="500">0</div><div class="l">Verified astrologers</div></div>
-    <div class="div"></div>
-    <div class="stat"><div class="n" data-count="2" data-suffix="M+">0</div><div class="l">Consultations done</div></div>
-    <div class="div"></div>
-    <div class="stat"><div class="n" data-count="38">0</div><div class="l">Languages</div></div>
-    <div class="div"></div>
-    <div class="stat"><div class="n" data-count="4" data-decimal=".9" data-suffix="★">0</div><div class="l">Average rating</div></div>
-  </div>
+  <section id="features">
+    <h2>Everything a client needs to go live</h2>
+    <p class="sub">One platform provisions the whole stack per client — isolated, branded, and ready for the Play Store.</p>
+    <div class="grid">
+      <div class="feat"><div class="ic">📱</div><h3>Branded user & astrologer apps</h3><p>Two Android apps per client, each with their own name, icon, colours and package — built from one codebase.</p></div>
+      <div class="feat"><div class="ic">🎛️</div><h3>Admin panel</h3><p>Every client gets their own admin to manage astrologers, wallets, content, pujas, live sessions and more.</p></div>
+      <div class="feat"><div class="ic">🔒</div><h3>Isolated data</h3><p>Each client runs on its own database. One client can never see another's users, sessions or payments.</p></div>
+      <div class="feat"><div class="ic">🌐</div><h3>Landing page included</h3><p>A branded marketing page per client at their own web address — no extra work.</p></div>
+      <div class="feat"><div class="ic">💬</div><h3>Chat, call & live</h3><p>Real-time consultations, video/voice calls, live streaming, gifting and AI insights — all built in.</p></div>
+      <div class="feat"><div class="ic">💳</div><h3>Their own payments & keys</h3><p>Each client plugs in their own payment gateway, calling and messaging credentials — billed to them.</p></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <p class="sub">You onboard a client in minutes from the owner console.</p>
+    <div class="steps">
+      <div class="step"><h3>Create the tenant</h3><p>Enter the client's brand, colours and keys. We provision their isolated database automatically.</p></div>
+      <div class="step"><h3>Build the apps</h3><p>Trigger signed Android builds — stamped with the client's brand and identity — right from the console.</p></div>
+      <div class="step"><h3>Go live</h3><p>Publish to the client's Play account. Their landing page and admin are already online.</p></div>
+      <div class="step"><h3>Manage & bill</h3><p>Track every client, plan and subscription in one place. Suspend or upgrade with a click.</p></div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="trial">
+      <h2>Start with a 14-day free trial</h2>
+      <p class="sub">Spin up a fully working branded client on us. Pay only when you go to production.</p>
+      <a class="btn" href="mailto:hello@devifai.in?subject=ApnaAstro%20trial">Start free trial</a>
+    </div>
+  </section>
 </div>
 
-<!-- HOROSCOPE -->
-<section id="horoscope" class="horo">
-  <div class="wrap">
-    <div class="wheel reveal" id="wheel">
-      <div class="ring"></div><div class="ring inner"></div>
-      <div class="center" id="wheelCenter">♉</div>
-      <button class="sign" data-i="0" style="--tx:0px;--ty:-190px" aria-label="Aries">♈</button>
-      <button class="sign" data-i="1" style="--tx:95px;--ty:-165px" aria-label="Taurus">♉</button>
-      <button class="sign" data-i="2" style="--tx:165px;--ty:-95px" aria-label="Gemini">♊</button>
-      <button class="sign" data-i="3" style="--tx:190px;--ty:0px" aria-label="Cancer">♋</button>
-      <button class="sign" data-i="4" style="--tx:165px;--ty:95px" aria-label="Leo">♌</button>
-      <button class="sign" data-i="5" style="--tx:95px;--ty:165px" aria-label="Virgo">♍</button>
-      <button class="sign" data-i="6" style="--tx:0px;--ty:190px" aria-label="Libra">♎</button>
-      <button class="sign" data-i="7" style="--tx:-95px;--ty:165px" aria-label="Scorpio">♏</button>
-      <button class="sign" data-i="8" style="--tx:-165px;--ty:95px" aria-label="Sagittarius">♐</button>
-      <button class="sign" data-i="9" style="--tx:-190px;--ty:0px" aria-label="Capricorn">♑</button>
-      <button class="sign" data-i="10" style="--tx:-165px;--ty:-95px" aria-label="Aquarius">♒</button>
-      <button class="sign" data-i="11" style="--tx:-95px;--ty:-165px" aria-label="Pisces">♓</button>
-    </div>
-    <div class="horo-card reveal" id="horoCard">
-      <div class="eyebrow" id="hEyebrow">Earth · Apr 20 – May 20</div>
-      <h2 id="hName">Taurus</h2>
-      <div class="when">your reading for today</div>
-      <div class="horo-stats">
-        <div class="hstat"><div class="k">Mood</div><div class="v" id="hMood">Grounded</div></div>
-        <div class="hstat"><div class="k">Love</div><div class="v" id="hLove"></div></div>
-        <div class="hstat"><div class="k">Career</div><div class="v" id="hCareer"></div></div>
-        <div class="hstat"><div class="k">Money</div><div class="v" id="hMoney"></div></div>
-      </div>
-      <p class="quote-line" id="hLine">Being your true self today will open a door you've been circling for weeks.</p>
-      <div class="horo-luck">
-        <span>Lucky number <b id="hNum">6</b></span>
-        <span>Lucky colour <span class="dot" id="hColor" style="background:#C0392B"></span></span>
-      </div>
-      <div class="acts">
-        <a class="btn btn-primary" href="#download">Read full forecast</a>
-        <a class="btn btn-ghost" href="#download">Check compatibility →</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- MODES SHOWCASE -->
-<section id="consult" class="showcase">
-  <div class="shead center reveal">
-    <span class="kick" style="justify-content:center">Three ways to consult</span>
-    <h2>Reach a guide, your way.</h2>
-    <p>Audio when you just need to be heard. Video when you want to see your guide. Chat when you'd rather type. Pay only for the minutes you talk.</p>
-  </div>
-  <div class="sc-stage">
-    <div class="sc-phone">
-      <div class="phone">
-        <div class="notch"></div>
-        <div class="screen">
-          <div class="sc-screen scr-audio active" data-mode="0">
-            <div class="top"><div class="mode-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M3 5c0 9 7 16 16 16l2-3-4-2-2 2c-3-1-6-4-7-7l2-2-2-4-3 2Z"/></svg></div><h4>Audio call</h4><div class="meter">00:42 · ₹10/min</div></div>
-            <div class="body">
-              <div class="callface"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=3&w=160&h=160&q=75" alt=""/><div class="nm">Pandit R. Sharma</div><div class="st">Connected · Vedic astrology</div></div>
-              <div class="wave" id="wave"></div>
-              <div class="callbtns"><span class="cb mute"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span class="cb end"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 9c6-4 12-4 18 0l-2 4-4-1v-3c-2-1-4-1-6 0v3l-4 1-2-4Z"/></svg></span><span class="cb spk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M17 9a4 4 0 0 1 0 6"/></svg></span></div>
-            </div>
-          </div>
-          <div class="sc-screen scr-video" data-mode="1">
-            <div class="top"><div class="mode-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg></div><h4>Video session</h4><div class="meter">02:15 · ₹15/min · live</div></div>
-            <div class="body" style="padding:.6rem"><div class="vid-frame"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=facearea&facepad=2.5&w=500&h=700&q=75" alt=""/><span class="vid-name">● Anjali Devi</span><img class="vid-self" src="https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=facearea&facepad=3&w=160&h=220&q=75" alt=""/></div></div>
-          </div>
-          <div class="sc-screen scr-chat" data-mode="2">
-            <div class="top"><div class="mode-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 5h16v11H8l-4 4V5Z"/></svg></div><h4>Live chat</h4><div class="meter">First chat free · then ₹7/min</div></div>
-            <div class="body">
-              <div class="bubble them">🙏 Namaste! Share your date, time &amp; place of birth.</div>
-              <div class="bubble me">14 Aug 1996, 6:40 am, Pune</div>
-              <div class="bubble them">Your Moon is in Taurus — a strong phase for career begins next month. Ask me anything.</div>
-              <div class="bubble me">Should I switch jobs now?</div>
-              <div class="chat-input"><span class="ph">Type a message…</span><span class="snd"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 12l16-8-8 16-2-6-6-2Z"/></svg></span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="sc-steps">
-      <div class="sc-step active" data-mode="0">
-        <div class="tag"><span class="no">01</span> Audio call</div>
-        <h3>Just talk it through.</h3><div class="rate">from ₹10 / min</div>
-        <p>A clear phone line to an astrologer who has already read your chart. No video, no fuss — the fastest way to a focused answer.</p>
-        <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Crystal-clear, private line</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Live meter — end anytime</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Recording saved for you</li></ul>
-        <a class="btn btn-primary go" href="#download">Start an audio call</a>
-      </div>
-      <div class="sc-step" data-mode="1">
-        <div class="tag"><span class="no">02</span> Video call</div>
-        <h3>Face to face, wherever you are.</h3><div class="rate">from ₹15 / min</div>
-        <p>See your astrologer and be seen. Best for a guided pooja, showing your palm or kundli on screen, or the reassurance of a real face.</p>
-        <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> HD video, low-data mode too</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Show documents on camera</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Perfect for live rituals</li></ul>
-        <a class="btn btn-primary go" href="#download">Start a video call</a>
-      </div>
-      <div class="sc-step" data-mode="2">
-        <div class="tag"><span class="no">03</span> Chat</div>
-        <h3>Type, share, keep it forever.</h3><div class="rate">First chat free · then ₹7 / min</div>
-        <p>Prefer to write? Chat privately, send a photo of your palm or birth chart, and keep the whole conversation to read back any time.</p>
-        <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Send photos &amp; documents</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Read the chat again later</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> First chat completely free</li></ul>
-        <a class="btn btn-primary go" href="#download">Start free chat</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- CTA BANNER 1 -->
-<section class="wrap" style="padding-block:clamp(3rem,6vw,5rem) clamp(4rem,8vw,7rem)">
-  <div class="cta-banner reveal">
-    <div class="c">
-      <h2>Your first chat is on us.</h2>
-      <p>New to Rudraganga? Get a free consultation with a verified astrologer — no card needed to start. See for yourself before you spend a rupee.</p>
-      <div class="cta-note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> No appointment · Cancel anytime · 100% private</div>
-    </div>
-    <div class="acts"><a class="btn btn-light" href="#download">Claim free chat</a><a class="btn btn-clear" href="#how">How it works</a></div>
-  </div>
-</section>
-
-<!-- WHY US -->
-<section class="wrap" id="why">
-  <div class="shead center reveal"><span class="kick" style="justify-content:center">Why seekers trust us</span><h2>Honest astrology, built for peace of mind.</h2><p>No hidden charges, no pressure — just verified guides and a wallet you stay in control of.</p></div>
-  <div class="why">
-    <article class="wcard reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4Z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Verified, not random</h3><p>Every astrologer is identity-checked and approved before they take a single call — and rated by real seekers after.</p><span class="chip">KYC verified</span></article>
-    <article class="wcard reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h5"/></svg></div><h3>Pay only per minute</h3><p>Recharge once, then pay for the exact minutes you talk. The live meter is always on screen and stops the moment you do.</p><span class="chip">No hidden fees</span></article>
-    <article class="wcard reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div><h3>Online round the clock</h3><p>Someone is always available — and if every guide is busy, our AI astrologer answers instantly while you wait.</p><span class="chip">24×7 availability</span></article>
-    <article class="wcard reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 2v10l7 3"/></svg></div><h3>Speak your language</h3><p>Hindi, Tamil, Telugu, Bengali, English and 30+ more. Filter for a guide who speaks the way you think.</p><span class="chip">38 languages</span></article>
-    <article class="wcard reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18"/></svg></div><h3>Private by default</h3><p>Your birth details and chats stay encrypted and yours alone. Read the conversation back any time you like.</p><span class="chip">End-to-end private</span></article>
-    <article class="wcard reveal"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 0 1 18 0M3 12a9 9 0 0 0 18 0"/><circle cx="12" cy="12" r="2"/></svg></div><h3>Never miss your turn</h3><p>Favourite guide busy? Join the queue and we'll ping you the second they're free — your place is held.</p><span class="chip">Smart waitlist</span></article>
-  </div>
-</section>
-
-<!-- ASTROLOGERS -->
-<section id="astrologers" class="astro-band">
-  <div class="wrap">
-    <div class="shead reveal"><span class="kick">Meet your guides</span><h2>Verified astrologers, online right now.</h2><p>Every astrologer is identity-verified and reviewed by real seekers before they ever take a call. Browse by skill, language and rating in the app.</p></div>
-    <div class="astro-grid">
-      <article class="acard reveal"><div class="pic"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=3.5&w=500&h=500&q=75" alt="Pandit Sharma"/><span class="badge"><span class="d"></span>Online</span></div><div class="info"><div class="nm">Pandit R. Sharma</div><div class="sk">Vedic · Hindi, English · 14 yrs</div><div class="meta"><div class="rt"><span class="s">★</span> 4.9 <span style="color:var(--muted)">(2.1k)</span></div><div class="pr">₹10/min</div></div><a class="btn btn-primary cbtn" href="#download">Call now</a></div></article>
-      <article class="acard reveal"><div class="pic"><img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=facearea&facepad=3.5&w=500&h=500&q=75" alt="Anjali Devi"/><span class="badge"><span class="d"></span>Online</span></div><div class="info"><div class="nm">Anjali Devi</div><div class="sk">Tarot · Love &amp; relationships · 9 yrs</div><div class="meta"><div class="rt"><span class="s">★</span> 4.8 <span style="color:var(--muted)">(1.6k)</span></div><div class="pr">₹12/min</div></div><a class="btn btn-primary cbtn" href="#download">Chat now</a></div></article>
-      <article class="acard reveal"><div class="pic"><img src="https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?auto=format&fit=facearea&facepad=3.5&w=500&h=500&q=75" alt="Ravi Joshi"/><span class="badge"><span class="d"></span>Online</span></div><div class="info"><div class="nm">Ravi Joshi</div><div class="sk">Numerology · Career &amp; money · 11 yrs</div><div class="meta"><div class="rt"><span class="s">★</span> 4.9 <span style="color:var(--muted)">(3.0k)</span></div><div class="pr">₹15/min</div></div><a class="btn btn-primary cbtn" href="#download">Call now</a></div></article>
-      <article class="acard reveal"><div class="pic"><img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=facearea&facepad=3.5&w=500&h=500&q=75" alt="Meera Nair"/><span class="badge"><span class="d"></span>Online</span></div><div class="info"><div class="nm">Meera Nair</div><div class="sk">Vastu · Tamil, English · 7 yrs</div><div class="meta"><div class="rt"><span class="s">★</span> 4.7 <span style="color:var(--muted)">(980)</span></div><div class="pr">₹9/min</div></div><a class="btn btn-primary cbtn" href="#download">Chat now</a></div></article>
-    </div>
-    <div style="text-align:center; margin-top:2.4rem" class="reveal"><a class="btn btn-ghost" href="#download">Browse all 500+ astrologers in the app →</a></div>
-  </div>
-</section>
-
-<!-- SERVICES -->
-<section id="services" class="wrap">
-  <div class="shead center reveal"><span class="kick" style="justify-content:center">Everything in one app</span><h2>More than a reading.</h2><p>From your daily horoscope to a guided pooja — the whole practice lives in Rudraganga.</p></div>
-  <div class="serv">
-    <article class="scard s7 reveal"><img src="https://images.unsplash.com/photo-1611078489935-0cb964de46d6?auto=format&fit=crop&w=1100&q=80" alt="Rudraksha mala"/><div class="b"><span class="kk">Kundli &amp; matching</span><h3>Your birth chart, decoded.</h3><p>Full Vedic kundli, dashas, and 36-guna match for marriage — in seconds.</p></div></article>
-    <article class="scard s5 reveal"><img src="https://images.unsplash.com/photo-1591115765373-5207764f72e7?auto=format&fit=crop&w=900&q=80" alt="AI astrology"/><div class="b"><span class="kk">AI astrologer</span><h3>Instant answers, 24×7.</h3><p>An AI that knows your chart and replies the moment you ask.</p></div></article>
-    <article class="scard s4 reveal"><img src="https://images.unsplash.com/photo-1604881991720-f91add269bed?auto=format&fit=crop&w=800&q=80" alt="Pooja"/><div class="b"><span class="kk">Pooja booking</span><h3>Guided rituals.</h3><p>Book a pooja and get a remedy for your chart.</p></div></article>
-    <article class="scard s4 reveal"><img src="https://images.unsplash.com/photo-1599643477877-530eb83abc8e?auto=format&fit=crop&w=800&q=80" alt="Gemstones"/><div class="b"><span class="kk">Store</span><h3>Authentic remedies.</h3><p>Certified rudraksha, gemstones &amp; yantras, delivered.</p></div></article>
-    <article class="scard s4 reveal"><img src="https://images.unsplash.com/photo-1606800052052-a08af7148866?auto=format&fit=crop&w=800&q=80" alt="Matrimony"/><div class="b"><span class="kk">Matrimony</span><h3>Matched by the stars.</h3><p>Find a partner and check compatibility first.</p></div></article>
-  </div>
-</section>
-
-<!-- HOW IT WORKS -->
-<section id="how" class="astro-band">
-  <div class="wrap">
-    <div class="shead center reveal"><span class="kick" style="justify-content:center">From question to clarity</span><h2>Start in four simple steps.</h2></div>
-    <div class="steps">
-      <div class="step reveal"><div class="num">1</div><h3>Sign up</h3><p>Verify your number over WhatsApp and add your birth details once.</p></div>
-      <div class="step reveal"><div class="num">2</div><h3>Recharge</h3><p>Top up your wallet by UPI or card. New users get a free first chat.</p></div>
-      <div class="step reveal"><div class="num">3</div><h3>Pick a guide</h3><p>Filter by skill, language and rate. See who is online right now.</p></div>
-      <div class="step reveal"><div class="num">4</div><h3>Connect</h3><p>Audio, video or chat. Pay per minute. End when you have your answer.</p></div>
-    </div>
-    <div style="text-align:center; margin-top:2.6rem" class="reveal"><a class="btn btn-primary" href="#download">Get started — it's free →</a></div>
-  </div>
-</section>
-
-<!-- EARN -->
-<section class="wrap" id="earn">
-  <div class="earn reveal">
-    <div class="copy">
-      <span class="kick" style="color:#F4A89F">Are you an astrologer?</span>
-      <h2>Grow your practice with Rudraganga.</h2>
-      <p>Bring your knowledge — we bring the seekers, the secure billing and the payouts. Set your own per-minute fare and consult from anywhere.</p>
-      <ul>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Set your own rate for audio, video &amp; chat</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Automatic, on-time payouts to your bank</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> One toggle to go online and start earning</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg> Build your reputation with reviews &amp; ratings</li>
-      </ul>
-      <a class="btn btn-primary" href="#contact">Apply to become an astrologer</a>
-    </div>
-    <div class="pic"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=facearea&facepad=3&w=900&h=900&q=80" alt="An astrologer consulting"/></div>
-  </div>
-</section>
-
-<!-- TESTIMONIALS -->
-<section class="tsection">
-  <div class="wrap">
-    <div class="shead center reveal"><span class="kick" style="justify-content:center">What seekers say</span><h2>Stories from the other side of the chat.</h2><p>Over 80,000 people have found clarity on Rudraganga. A few of them, in their own words.</p></div>
-  </div>
-  <div class="tmarquee">
-    <div class="trow r1">
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Arjun Mehta</div><div class="ct">Bengaluru <span class="s">★★★★★</span></div></div></div><p>“Called at midnight, anxious about a job offer. Within a minute Pandit ji walked me through the timing. I took the job — best decision of my year.”</p></figure>
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Priya Karan</div><div class="ct">Pune <span class="s">★★★★★</span></div></div></div><p>“The kundli match for our wedding was so clear. We could ask follow-up questions over chat — no rushing, no surprise fees.”</p></figure>
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Sneha Reddy</div><div class="ct">Delhi <span class="s">★★★★★</span></div></div></div><p>“Booked a pooja through the app and my gemstone arrived the same week. Everything in one place — finally an astrology app I trust.”</p></figure>
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Rahul Verma</div><div class="ct">Mumbai <span class="s">★★★★★</span></div></div></div><p>“Sceptical at first. But the video session felt like sitting across a real pandit. Honest, no upselling, just guidance.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Arjun Mehta</div><div class="ct">Bengaluru <span class="s">★★★★★</span></div></div></div><p>“Called at midnight, anxious about a job offer. Within a minute Pandit ji walked me through the timing. I took the job — best decision of my year.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Priya Karan</div><div class="ct">Pune <span class="s">★★★★★</span></div></div></div><p>“The kundli match for our wedding was so clear. We could ask follow-up questions over chat — no rushing, no surprise fees.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Sneha Reddy</div><div class="ct">Delhi <span class="s">★★★★★</span></div></div></div><p>“Booked a pooja through the app and my gemstone arrived the same week. Everything in one place — finally an astrology app I trust.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Rahul Verma</div><div class="ct">Mumbai <span class="s">★★★★★</span></div></div></div><p>“Sceptical at first. But the video session felt like sitting across a real pandit. Honest, no upselling, just guidance.”</p></figure>
-    </div>
-    <div class="trow r2">
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Karishma Joshi</div><div class="ct">Jaipur <span class="s">★★★★★</span></div></div></div><p>“Recommended by a friend who swore by it. The astrologer was patient and the per-minute price meant I never felt rushed.”</p></figure>
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Vikram Nair</div><div class="ct">Kochi <span class="s">★★★★★</span></div></div></div><p>“Consulted for our child's name based on the nakshatra. Thoughtful, reasonably priced, and they followed up over chat after.”</p></figure>
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Anita Desai</div><div class="ct">Ahmedabad <span class="s">★★★★★</span></div></div></div><p>“The free first chat sold me. No pressure, real answers. I've come back for three more readings since.”</p></figure>
-      <figure class="tcard"><div class="who"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Deepak Rao</div><div class="ct">Hyderabad <span class="s">★★★★★</span></div></div></div><p>“Was nervous about marriage timing. The reading gave me real calm — and the chat stays saved so I can read it again.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Karishma Joshi</div><div class="ct">Jaipur <span class="s">★★★★★</span></div></div></div><p>“Recommended by a friend who swore by it. The astrologer was patient and the per-minute price meant I never felt rushed.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Vikram Nair</div><div class="ct">Kochi <span class="s">★★★★★</span></div></div></div><p>“Consulted for our child's name based on the nakshatra. Thoughtful, reasonably priced, and they followed up over chat after.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Anita Desai</div><div class="ct">Ahmedabad <span class="s">★★★★★</span></div></div></div><p>“The free first chat sold me. No pressure, real answers. I've come back for three more readings since.”</p></figure>
-      <figure class="tcard" aria-hidden="true"><div class="who"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=facearea&facepad=3&w=120&h=120&q=70" alt=""/><div><div class="nm">Deepak Rao</div><div class="ct">Hyderabad <span class="s">★★★★★</span></div></div></div><p>“Was nervous about marriage timing. The reading gave me real calm — and the chat stays saved so I can read it again.”</p></figure>
-    </div>
-  </div>
-</section>
-
-<!-- LEAD FORMS -->
-<section id="contact" class="wrap">
-  <div class="shead center reveal"><span class="kick" style="justify-content:center">Get in touch</span><h2>Questions, or ready to join?</h2><p>Reach our team, or apply to consult on Rudraganga. We reply within one business day.</p></div>
-  <div class="leadforms">
-    <div class="lform reveal">
-      <div class="ftag">Contact us</div>
-      <h3>Send us a message</h3>
-      <p class="fsub">A question about a reading, your wallet, or anything else — we're here.</p>
-      <form id="contactForm" novalidate>
-        <div class="frow">
-          <div class="field"><label for="c-name">Your name</label><input id="c-name" name="name" type="text" maxlength="120" required placeholder="Full name"/></div>
-          <div class="field"><label for="c-phone">Phone</label><input id="c-phone" name="phone" type="tel" maxlength="20" placeholder="10-digit mobile"/></div>
-        </div>
-        <div class="field"><label for="c-email">Email</label><input id="c-email" name="email" type="email" maxlength="160" placeholder="you@example.com"/></div>
-        <div class="field"><label for="c-subject">Subject</label><input id="c-subject" name="subject" type="text" maxlength="200" placeholder="What's this about?"/></div>
-        <div class="field"><label for="c-message">Message</label><textarea id="c-message" name="message" maxlength="5000" required placeholder="How can we help?"></textarea></div>
-        <button class="btn btn-primary submit" type="submit">Send message</button>
-        <div class="fmsg" id="contactMsg" role="status" aria-live="polite"></div>
-      </form>
-    </div>
-    <div class="lform astro reveal">
-      <div class="ftag">Become an astrologer</div>
-      <h3>Apply to consult</h3>
-      <p class="fsub">Set your own per-minute fares and reach seekers across India. Tell us about your practice and we'll get in touch.</p>
-      <form id="astroForm" novalidate>
-        <div class="frow">
-          <div class="field"><label for="a-name">Your name</label><input id="a-name" name="name" type="text" maxlength="100" required placeholder="Full name"/></div>
-          <div class="field"><label for="a-phone">Phone</label><input id="a-phone" name="phone" type="tel" maxlength="10" required placeholder="10-digit mobile"/></div>
-        </div>
-        <div class="frow">
-          <div class="field"><label for="a-email">Email</label><input id="a-email" name="email" type="email" maxlength="160" placeholder="you@example.com"/></div>
-          <div class="field"><label for="a-exp">Experience (years)</label><input id="a-exp" name="experienceYears" type="number" min="0" max="80" placeholder="e.g. 8"/></div>
-        </div>
-        <div class="field"><label for="a-expertise">Expertise</label><input id="a-expertise" name="expertise" type="text" maxlength="200" placeholder="Vedic, Tarot, Numerology, Vastu…"/></div>
-        <div class="field"><label for="a-note">A bit about you</label><textarea id="a-note" name="note" maxlength="1000" placeholder="Your background, languages you speak, and what you specialise in."></textarea></div>
-        <button class="btn btn-primary submit" type="submit">Submit application</button>
-        <div class="fmsg" id="astroMsg" role="status" aria-live="polite"></div>
-      </form>
-    </div>
-  </div>
-</section>
-
-<!-- FINAL CTA -->
-<section id="download" class="final">
-  <div class="wrap reveal">
-    <span class="kick" style="justify-content:center">The stars are listening</span>
-    <h2 style="margin-top:1rem">Ask the question you've been <span class="it">carrying.</span></h2>
-    <p>Download Rudraganga, recharge once, and your first chat is on us.</p>
-    <div class="storebtns">
-      <a class="store" href="#"><svg viewBox="0 0 24 24" fill="#fff"><path d="M16.7 1.3c.1 1-.3 2-.9 2.8-.7.8-1.7 1.4-2.7 1.3-.1-1 .4-2 .9-2.7.6-.8 1.7-1.3 2.7-1.4ZM20 17c-.5 1.2-.8 1.7-1.5 2.7-1 1.4-2.3 3.1-4 3.1-1.5 0-1.9-1-3.9-1-2 0-2.4 1-3.9 1-1.6 0-2.9-1.6-3.9-3C0 16.9-.3 12.4 1.4 9.9c1-1.5 2.7-2.5 4.3-2.5 1.6 0 2.6 1 3.9 1 1.3 0 2-1 3.9-1 1.4 0 2.9.8 4 2.1-3.5 1.9-2.9 6.9.5 8.5Z"/></svg><span><span class="sm">Download on the</span><br><span class="lg">App Store</span></span></a>
-      <a class="store" href="#"><svg viewBox="0 0 24 24"><path fill="#EA4335" d="M3 2.5 13 12 3 21.5c-.3-.2-.5-.6-.5-1V3.5c0-.4.2-.8.5-1Z"/><path fill="#FBBC04" d="m13 12 3.5-3.4 4 2.3c.7.4.7 1.8 0 2.2l-4 2.3L13 12Z"/><path fill="#34A853" d="m3 2.5 10 9.5 3.5-3.4L5.4 1.7c-.9-.5-1.9-.3-2.4.8Z"/><path fill="#4285F4" d="M3 21.5 13 12l3.5 3.4L5.4 22.3c-.9.5-1.9.3-2.4-.8Z"/></svg><span><span class="sm">Get it on</span><br><span class="lg">Google Play</span></span></a>
-    </div>
-  </div>
-</section>
-
-<!-- FOOTER -->
 <footer>
-  <div class="wrap">
-    <div class="fcols">
-      <div class="lead">
-        <a class="brand" href="#top"><span class="rg"><span class="r">Rudra</span><span class="g">ganga</span></span></a>
-        <p>Vedic guidance, on call. Verified astrologers, honest per-minute pricing, and a wallet you control.</p>
-      </div>
-      <div class="fcol"><h5>Consult</h5><a href="#consult">Audio call</a><a href="#consult">Video call</a><a href="#consult">Chat</a><a href="#services">AI astrologer</a></div>
-      <div class="fcol"><h5>Services</h5><a href="#services">Kundli &amp; matching</a><a href="#services">Pooja booking</a><a href="#services">Store</a><a href="#services">Matrimony</a></div>
-      <div class="fcol"><h5>Astrologers</h5><a href="#earn">Become an astrologer</a><a href="#earn">Fares &amp; payouts</a></div>
-      <div class="fcol"><h5>Company</h5><a href="#contact">Contact</a><a href="#earn">Careers</a></div>
-      <div class="fcol"><h5>Legal</h5>
-        <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>
-        <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>
-        <a href="/refund.html" target="_blank" rel="noopener">Refund Policy</a>
-      </div>
-    </div>
-    <div class="fbot"><span>© 2026 Rudraganga. All rights reserved.</span><span>18+ · For guidance and wellbeing — not a substitute for professional advice.</span></div>
-  </div>
+  <div class="wrap">© ApnaAstro · a DevifAI product · <a href="mailto:hello@devifai.in">hello@devifai.in</a></div>
 </footer>
-
-<!-- MOBILE CTA BAR -->
-<div class="mobar"><a class="btn btn-ghost" href="#download">Get the app</a><a class="btn btn-primary" href="#download">Talk to an astrologer</a></div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-<script src="/js/app.js" defer></script>
 </body>
 </html>

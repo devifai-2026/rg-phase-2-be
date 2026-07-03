@@ -1,13 +1,13 @@
-const Invoice = require('../models/Invoice');
-const InvoiceTemplate = require('../models/InvoiceTemplate');
-const Counter = require('../models/Counter');
+const { defaultContext } = require('../utils/tenantContext');
 const invoicePdfService = require('./invoicePdfService');
 const uploadService = require('./uploadService');
 const jobService = require('./jobService');
 const logger = require('../utils/logger');
 
 /** Sequential invoice number: RG-INV-<year>-<6-digit seq>. */
-async function nextInvoiceNo() {
+async function nextInvoiceNo(ctx) {
+  ctx = ctx || defaultContext();
+  const Counter = ctx.model('Counter');
   const year = new Date().getFullYear();
   const key = `invoice-${year}`;
   const c = await Counter.findOneAndUpdate(
@@ -22,7 +22,9 @@ async function nextInvoiceNo() {
  * Create an invoice for a paid order (idempotent — one per order).
  * Called from the PayU callback when an order flips to paid.
  */
-async function createForOrder(order) {
+async function createForOrder(ctx, order) {
+  ctx = ctx || defaultContext();
+  const Invoice = ctx.model('Invoice');
   const existing = await Invoice.findOne({ order: order._id });
   if (existing) return existing;
 
@@ -37,11 +39,11 @@ async function createForOrder(order) {
 
   // Stamp the template the invoice was generated with (the admin's default),
   // so it stays stable even if the default changes later.
-  const tpl = await defaultTemplate();
+  const tpl = await defaultTemplate(ctx);
 
   try {
     const invoice = await Invoice.create({
-      invoiceNo: await nextInvoiceNo(),
+      invoiceNo: await nextInvoiceNo(ctx),
       order: order._id,
       refType: 'order',
       refId: order._id,
@@ -57,7 +59,7 @@ async function createForOrder(order) {
       pdfStatus: 'pending',
     });
     logger.info('Invoice generated', { invoiceNo: invoice.invoiceNo, order: String(order._id) });
-    enqueuePdf(invoice._id);
+    enqueuePdf(ctx, invoice._id);
     return invoice;
   } catch (e) {
     if (e.code === 11000) return Invoice.findOne({ order: order._id }); // race: another worker made it
@@ -69,7 +71,9 @@ async function createForOrder(order) {
  * Create an invoice for a paid pooja booking (idempotent per booking).
  * Called after the wallet debit confirms the booking.
  */
-async function createForPooja(booking) {
+async function createForPooja(ctx, booking) {
+  ctx = ctx || defaultContext();
+  const Invoice = ctx.model('Invoice');
   const existing = await Invoice.findOne({ refType: 'pooja', refId: booking._id });
   if (existing) return existing;
 
@@ -80,10 +84,10 @@ async function createForPooja(booking) {
     unitPrice: booking.price,
     lineTotal: booking.price,
   }];
-  const tpl = await defaultTemplate();
+  const tpl = await defaultTemplate(ctx);
   try {
     const invoice = await Invoice.create({
-      invoiceNo: await nextInvoiceNo(),
+      invoiceNo: await nextInvoiceNo(ctx),
       refType: 'pooja',
       refId: booking._id,
       user: booking.user,
@@ -97,7 +101,7 @@ async function createForPooja(booking) {
       pdfStatus: 'pending',
     });
     logger.info('Invoice generated (pooja)', { invoiceNo: invoice.invoiceNo, booking: String(booking._id) });
-    enqueuePdf(invoice._id);
+    enqueuePdf(ctx, invoice._id);
     return invoice;
   } catch (e) {
     if (e.code === 11000) return Invoice.findOne({ refType: 'pooja', refId: booking._id });
@@ -106,15 +110,18 @@ async function createForPooja(booking) {
 }
 
 /** The active/default invoice template (or a sane built-in fallback). */
-async function defaultTemplate() {
+async function defaultTemplate(ctx) {
+  ctx = ctx || defaultContext();
+  const InvoiceTemplate = ctx.model('InvoiceTemplate');
   return (await InvoiceTemplate.findOne({ isDefault: true, isActive: true }))
       || (await InvoiceTemplate.findOne({ isActive: true }).sort({ createdAt: 1 }))
       || { design: 1, businessName: 'Rudraganga', footerNote: 'Thank you for choosing Rudraganga 🙏' };
 }
 
 /** Enqueue async PDF generation (best-effort; never throws into the caller). */
-function enqueuePdf(invoiceId) {
-  jobService.enqueue({
+function enqueuePdf(ctx, invoiceId) {
+  ctx = ctx || defaultContext();
+  jobService.enqueue(ctx, {
     type: 'invoice_pdf',
     payload: { invoiceId: String(invoiceId) },
     dedupeKey: `invoice-pdf:${invoiceId}`,
@@ -125,13 +132,15 @@ function enqueuePdf(invoiceId) {
  * Job handler: render the invoice PDF with the active template, upload to GCS,
  * and save the URL. Idempotent — re-running just re-renders + overwrites the URL.
  */
-async function generatePdf({ invoiceId }) {
+async function generatePdf(ctx, { invoiceId }) {
+  ctx = ctx || defaultContext();
+  const Invoice = ctx.model('Invoice');
   const invoice = await Invoice.findById(invoiceId).populate('template');
   if (!invoice) return;
   try {
-    const tpl = invoice.template || (await defaultTemplate());
+    const tpl = invoice.template || (await defaultTemplate(ctx));
     const buffer = await invoicePdfService.render(invoice, tpl);
-    const { url } = await uploadService.uploadToGcs(buffer, `invoice-${invoice.invoiceNo}.pdf`);
+    const { url } = await uploadService.uploadToGcs(buffer, `invoice-${invoice.invoiceNo}.pdf`, { tenantSlug: ctx && ctx.tenant && ctx.tenant.slug });
     invoice.pdfUrl = url;
     invoice.pdfStatus = 'ready';
     if (tpl && tpl._id) invoice.template = tpl._id;
@@ -144,7 +153,9 @@ async function generatePdf({ invoiceId }) {
   }
 }
 
-async function getByOrder(orderId) {
+async function getByOrder(ctx, orderId) {
+  ctx = ctx || defaultContext();
+  const Invoice = ctx.model('Invoice');
   return Invoice.findOne({ order: orderId });
 }
 

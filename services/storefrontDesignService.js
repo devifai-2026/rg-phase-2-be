@@ -1,12 +1,9 @@
-const StorefrontLayout = require('../models/StorefrontLayout');
-const AstrologerProfile = require('../models/AstrologerProfile');
-const Product = require('../models/Product');
-const PoojaType = require('../models/PoojaType');
 const llmService = require('./llmService');
 const promptService = require('./promptService');
 const storefrontDesignPrompt = require('./prompts/storefrontDesign');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * "Let the Stars design your storefront" — AI-generated storefront theme specs.
@@ -19,7 +16,9 @@ const logger = require('../utils/logger');
 const LIFETIME_LIMIT = parseInt(process.env.STOREFRONT_DESIGN_LIMIT || '3', 10);
 
 /** Lifetime usage = number of saved layouts (credits are spent only on success). */
-async function usage(astrologerUserId) {
+async function usage(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const StorefrontLayout = ctx.model('StorefrontLayout');
   const used = await StorefrontLayout.countDocuments({ astrologer: astrologerUserId });
   return { used, limit: LIFETIME_LIMIT, remaining: Math.max(0, LIFETIME_LIMIT - used) };
 }
@@ -88,8 +87,13 @@ function normalizeSpec(ai) {
 
 /** Generate ONE new storefront layout (enforces the lifetime cap, saves it,
  *  and makes it the active layout). */
-async function generate(astrologerUserId) {
-  const u = await usage(astrologerUserId);
+async function generate(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const StorefrontLayout = ctx.model('StorefrontLayout');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Product = ctx.model('Product');
+  const PoojaType = ctx.model('PoojaType');
+  const u = await usage(ctx, astrologerUserId);
   if (u.remaining <= 0) {
     throw new AppError(`You've used all ${LIFETIME_LIMIT} storefront designs from the Stars. No more generations available.`, 429);
   }
@@ -127,8 +131,8 @@ async function generate(astrologerUserId) {
   let spec;
   let generatedByMock = false;
   try {
-    const ai = await llmService.completeJSON({
-      system: await promptService.getSystem('storefrontDesign'),
+    const ai = await llmService.completeJSON(ctx, {
+      system: await promptService.getSystem(ctx, 'storefrontDesign'),
       messages: [{ role: 'user', content: storefrontDesignPrompt.buildUserMessage({
         astrologerName: p.displayName,
         bio: p.bio,
@@ -177,9 +181,9 @@ async function generate(astrologerUserId) {
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { activeStorefrontLayout: layout._id } });
 
   // Fire-and-forget the hero-image generation + upload, then patch the layout.
-  _generateHeroAsync(layout._id, spec, p.expertise, astrologerUserId);
+  _generateHeroAsync(ctx, layout._id, spec, p.expertise, astrologerUserId);
 
-  const after = await usage(astrologerUserId);
+  const after = await usage(ctx, astrologerUserId);
   return { layout: publicLayout(layout, true), usage: after };
 }
 
@@ -189,21 +193,23 @@ async function generate(astrologerUserId) {
  * HTTP request) so a slow image model never times the client out. Best-effort:
  * on any failure the layout simply keeps rendering from its gradient.
  */
-async function _generateHeroAsync(layoutId, spec, expertise, astrologerUserId) {
+async function _generateHeroAsync(ctx, layoutId, spec, expertise, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const StorefrontLayout = ctx.model('StorefrontLayout');
   try {
     const uploadService = require('./uploadService');
     if (!uploadService.isConfigured()) {
       await StorefrontLayout.updateOne({ _id: layoutId }, { $set: { 'spec.heroPending': false } });
       return;
     }
-    const png = await llmService.generateImage({
+    const png = await llmService.generateImage(ctx, {
       prompt: storefrontDesignPrompt.buildImagePrompt({ spec, expertise }),
       aspectRatio: '9:16',
       logMeta: { feature: 'storefrontDesign', astrologer: astrologerUserId },
     });
     const patch = { 'spec.heroPending': false };
     if (png && png.length) {
-      const { url } = await uploadService.uploadImage(png, `storefront-hero-${Date.now()}.png`);
+      const { url } = await uploadService.uploadImage(png, `storefront-hero-${Date.now()}.png`, { tenantSlug: ctx && ctx.tenant && ctx.tenant.slug });
       if (url) patch['spec.heroImage'] = url;
     }
     await StorefrontLayout.updateOne({ _id: layoutId }, { $set: patch });
@@ -244,7 +250,10 @@ function publicLayout(l, active) {
 }
 
 /** All of an astrologer's generated layouts (newest first), flagging the active. */
-async function list(astrologerUserId) {
+async function list(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const StorefrontLayout = ctx.model('StorefrontLayout');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const prof = await AstrologerProfile.findOne({ user: astrologerUserId }).select('activeStorefrontLayout').lean();
   const activeId = prof && prof.activeStorefrontLayout ? String(prof.activeStorefrontLayout) : null;
   const rows = await StorefrontLayout.find({ astrologer: astrologerUserId }).sort({ createdAt: -1 }).lean();
@@ -252,7 +261,10 @@ async function list(astrologerUserId) {
 }
 
 /** Make one of the astrologer's layouts active (used by astrologer + admin). */
-async function setActive(astrologerUserId, layoutId) {
+async function setActive(ctx, astrologerUserId, layoutId) {
+  ctx = ctx || defaultContext();
+  const StorefrontLayout = ctx.model('StorefrontLayout');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const layout = await StorefrontLayout.findOne({ _id: layoutId, astrologer: astrologerUserId }).select('_id').lean();
   if (!layout) throw new AppError('Layout not found for this astrologer', 404);
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { activeStorefrontLayout: layout._id } });
@@ -260,7 +272,10 @@ async function setActive(astrologerUserId, layoutId) {
 }
 
 /** The active layout spec for the public storefront (null → fall back to storeTheme). */
-async function activeSpec(astrologerUserId) {
+async function activeSpec(ctx, astrologerUserId) {
+  ctx = ctx || defaultContext();
+  const StorefrontLayout = ctx.model('StorefrontLayout');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const prof = await AstrologerProfile.findOne({ user: astrologerUserId }).select('activeStorefrontLayout').lean();
   if (!prof || !prof.activeStorefrontLayout) return null;
   const l = await StorefrontLayout.findById(prof.activeStorefrontLayout).lean();

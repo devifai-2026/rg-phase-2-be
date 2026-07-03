@@ -1,13 +1,5 @@
 const mongoose = require('mongoose');
-const User = require('../models/User');
-const Wallet = require('../models/Wallet');
-const Transaction = require('../models/Transaction');
-const Broadcast = require('../models/Broadcast');
-const BroadcastClick = require('../models/BroadcastClick');
-const BroadcastDelivery = require('../models/BroadcastDelivery');
-const DeletedBroadcast = require('../models/DeletedBroadcast');
-const Notification = require('../models/Notification');
-const NotificationTemplate = require('../models/NotificationTemplate');
+const { defaultContext } = require('../utils/tenantContext');
 const fcmService = require('./fcmService');
 const bqService = require('./bqService');
 const jobService = require('./jobService');
@@ -41,7 +33,10 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  *   segment: { kind:'topic', topic } | { kind:'activity', filter } when audience==='segment'
  * Returns an array of user _id strings.
  */
-async function resolveRecipients({ audience, targetUser, segment }) {
+async function resolveRecipients(ctx, { audience, targetUser, segment }) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+
   // Single user.
   if (audience === 'user') {
     if (!targetUser) return [];
@@ -59,7 +54,7 @@ async function resolveRecipients({ audience, targetUser, segment }) {
     if (segment.kind === 'topic' && segment.topic) {
       return idsOf(await User.find({ 'notificationSettings.topics': segment.topic }).select('_id'));
     }
-    if (segment.kind === 'activity') return resolveActivitySegment(segment.filter);
+    if (segment.kind === 'activity') return resolveActivitySegment(ctx, segment.filter);
   }
 
   return [];
@@ -89,7 +84,10 @@ const FREQ_DAILY_CAP = { once_a_day: 1, twice_a_day: 2 };
  *
  * Called ONLY when log.respectUserPrefs is true. Returns the kept user-id list.
  */
-async function applyUserPrefs(recipients) {
+async function applyUserPrefs(ctx, recipients) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+
   const users = await User.find({ _id: { $in: recipients } })
     .select('_id notificationSettings.frequency')
     .lean();
@@ -107,7 +105,7 @@ async function applyUserPrefs(recipients) {
   if (!capped.length) return keep;
 
   // Count today's admin-manual broadcast notifications for the capped users.
-  const counts = await manualNotifsTodayByUser(capped.map((c) => c.id));
+  const counts = await manualNotifsTodayByUser(ctx, capped.map((c) => c.id));
   for (const c of capped) {
     if ((counts[c.id] || 0) < c.cap) keep.push(c.id);
   }
@@ -119,7 +117,11 @@ async function applyUserPrefs(recipients) {
  * since local midnight today, for the given users. Counts Notification docs
  * whose data.broadcastId points at one of today's respectUserPrefs broadcasts.
  */
-async function manualNotifsTodayByUser(userIds) {
+async function manualNotifsTodayByUser(ctx, userIds) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+  const Notification = ctx.model('Notification');
+
   const start = new Date();
   start.setHours(0, 0, 0, 0); // local midnight
 
@@ -150,7 +152,12 @@ async function manualNotifsTodayByUser(userIds) {
 }
 
 /** Activity/recharge-based segments. */
-async function resolveActivitySegment(filter) {
+async function resolveActivitySegment(ctx, filter) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const Wallet = ctx.model('Wallet');
+  const Transaction = ctx.model('Transaction');
+
   if (filter === 'new_this_week') {
     const since = new Date(Date.now() - WEEK_MS);
     return idsOf(await User.find({ role: 'user', createdAt: { $gte: since } }).select('_id'));
@@ -177,7 +184,10 @@ async function resolveActivitySegment(filter) {
  * channel: 'inapp_push' (default) persists an in-app record + push;
  *          'push_only' sends only a push (no bell record).
  */
-async function send({ title, body, data = {}, audience = 'all', targetUser, segment, channel = 'inapp_push', source = 'manual', templateEvent, createdBy, respectUserPrefs = false }) {
+async function send(ctx, { title, body, data = {}, audience = 'all', targetUser, segment, channel = 'inapp_push', source = 'manual', templateEvent, createdBy, respectUserPrefs = false }) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+
   const log = await Broadcast.create({
     title, body, data,
     audience, targetUser: audience === 'user' ? targetUser : undefined, segment,
@@ -185,7 +195,7 @@ async function send({ title, body, data = {}, audience = 'all', targetUser, segm
     respectUserPrefs: !!respectUserPrefs,
     status: 'queued',
   });
-  return runFanout(log);
+  return runFanout(ctx, log);
 }
 
 /**
@@ -193,8 +203,11 @@ async function send({ title, body, data = {}, audience = 'all', targetUser, segm
  * counters back onto the SAME log document. Used by both send() and retry() so
  * a retry overwrites the original row instead of creating a new one.
  */
-async function runFanout(log) {
-  let recipients = await resolveRecipients({ audience: log.audience, targetUser: log.targetUser, segment: log.segment });
+async function runFanout(ctx, log) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
+
+  let recipients = await resolveRecipients(ctx, { audience: log.audience, targetUser: log.targetUser, segment: log.segment });
 
   // Admin manual broadcasts ONLY: honor each user's notificationSettings before
   // fanning out (skip frequency:'never'; enforce the once/twice-a-day caps).
@@ -202,7 +215,7 @@ async function runFanout(log) {
   let suppressed = 0;
   if (log.respectUserPrefs && recipients.length) {
     const before = recipients.length;
-    recipients = await applyUserPrefs(recipients);
+    recipients = await applyUserPrefs(ctx, recipients);
     suppressed = before - recipients.length;
     if (suppressed) logger.info('broadcast suppressed by user prefs', { broadcastId: String(log._id), suppressed, remaining: recipients.length });
   }
@@ -215,7 +228,7 @@ async function runFanout(log) {
   await log.save();
 
   if (!recipients.length) {
-    bqService.logBroadcast(broadcastStatRow(log, { sent: 0, delivered: 0, failed: 0, failures: {} }));
+    bqService.logBroadcast(ctx, broadcastStatRow(log, { sent: 0, delivered: 0, failed: 0, failures: {} }));
     return log;
   }
 
@@ -230,7 +243,7 @@ async function runFanout(log) {
     try {
       // Localize to THIS recipient's app language (falls back to the original
       // text). Each user in the audience gets the message in their own language.
-      const { title: lt, body: lb } = await localizeForUser(userId, title, body);
+      const { title: lt, body: lb } = await localizeForUser(ctx, userId, title, body);
       // Persist the in-app record (unless push-only) + best-effort live socket.
       // We tag it with broadcastId so a tap can be attributed back to this log.
       if (!pushOnly) {
@@ -242,7 +255,7 @@ async function runFanout(log) {
         } catch (_) {/* socket optional */}
       }
       // viaBroadcast=true → tally per-user outcomes instead of throwing.
-      const r = await fcmService.sendToUserTokens({ userId, title: lt, body: lb, data: payload, viaBroadcast: true });
+      const r = await fcmService.sendToUserTokens(ctx, { userId, title: lt, body: lb, data: payload, viaBroadcast: true });
       totals.sent += 1;
       totals.delivered += r.delivered || 0;
       totals.failed += r.failed || 0;
@@ -259,7 +272,7 @@ async function runFanout(log) {
   });
 
   // Delivery analytics → BigQuery (NOT Mongo).
-  bqService.logBroadcast(broadcastStatRow(log, totals));
+  bqService.logBroadcast(ctx, broadcastStatRow(log, totals));
 
   // Schedule an auto-retry ONLY if there were retryable failures and we're under
   // the cap. nextRetryAt drives the admin "Next retry scheduled at" badge.
@@ -270,7 +283,7 @@ async function runFanout(log) {
     log.status = 'retrying';
     log.nextRetryAt = runAt;
     await log.save();
-    await jobService.enqueue({
+    await jobService.enqueue(ctx, {
       type: 'broadcast_retry',
       payload: { broadcastId: String(log._id) },
       dedupeKey: `bcast-retry:${log._id}:${(log.retryCount || 0) + 1}`,
@@ -303,13 +316,16 @@ function broadcastStatRow(log, totals) {
 }
 
 /** Auto-retry handler (wired into the job worker as `broadcast_retry`). */
-async function runScheduledRetry({ broadcastId }) {
+async function runScheduledRetry(ctx, { broadcastId }) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+
   const log = await Broadcast.findById(broadcastId);
   if (!log) return;
   log.retryCount = (log.retryCount || 0) + 1;
   log.nextRetryAt = undefined;
   await log.save();
-  await runFanout(log);
+  await runFanout(ctx, log);
 }
 
 /**
@@ -317,13 +333,16 @@ async function runScheduledRetry({ broadcastId }) {
  * same log row (no new row). Tracks how many times it has been retried and
  * resets the clicked counter so taps are attributed to the latest send.
  */
-async function retry(broadcastId, createdBy) {
+async function retry(ctx, broadcastId, createdBy) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+
   const log = await Broadcast.findById(broadcastId);
   if (!log) return null;
   log.retryCount = (log.retryCount || 0) + 1;
   if (createdBy) log.createdBy = createdBy;
   await log.save();
-  return runFanout(log);
+  return runFanout(ctx, log);
 }
 
 /**
@@ -332,11 +351,15 @@ async function retry(broadcastId, createdBy) {
  * user taps both. Only the first tap logs a click to BigQuery (analytics);
  * MongoDB just holds the idempotency guard, not the count.
  */
-async function recordClick(broadcastId, userId) {
+async function recordClick(ctx, broadcastId, userId) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+  const BroadcastClick = ctx.model('BroadcastClick');
+
   if (!mongoose.isValidObjectId(broadcastId)) return;
   // Without a user we can't de-dupe; fall back to logging once (best-effort).
   if (!userId) {
-    bqService.logNotification({ event: 'click', channel: 'push', ref_id: String(broadcastId) });
+    bqService.logNotification(ctx, { event: 'click', channel: 'push', ref_id: String(broadcastId) });
     return;
   }
   try {
@@ -348,7 +371,7 @@ async function recordClick(broadcastId, userId) {
     );
     const firstClick = res.upsertedCount === 1 || !!res.upsertedId;
     if (firstClick) {
-      bqService.logNotification({ event: 'click', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
+      bqService.logNotification(ctx, { event: 'click', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
       // Mirror to Mongo so the admin Logs tab shows clicks without BigQuery.
       await Broadcast.updateOne({ _id: broadcastId }, { $inc: { clickedCount: 1 } }).catch(() => {});
     }
@@ -370,7 +393,11 @@ async function recordClick(broadcastId, userId) {
  * eventually-consistent — it stays 0 right after send and climbs as devices
  * come online and confirm receipt.
  */
-async function recordDelivered(broadcastId, userId) {
+async function recordDelivered(ctx, broadcastId, userId) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+  const BroadcastDelivery = ctx.model('BroadcastDelivery');
+
   if (!mongoose.isValidObjectId(broadcastId) || !userId) return;
   try {
     // Atomic "insert if absent": upsert returns upsertedCount=1 only on first ACK.
@@ -381,7 +408,7 @@ async function recordDelivered(broadcastId, userId) {
     );
     const firstAck = res.upsertedCount === 1 || !!res.upsertedId;
     if (firstAck) {
-      bqService.logNotification({ event: 'delivered', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
+      bqService.logNotification(ctx, { event: 'delivered', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
       // Mirror to Mongo so the admin Logs tab shows deliveries without BigQuery.
       await Broadcast.updateOne({ _id: broadcastId }, { $inc: { deliveredCount: 1 } }).catch(() => {});
     }
@@ -400,7 +427,10 @@ async function recordDelivered(broadcastId, userId) {
  * by which app the recipient uses), channel, source, q (title contains),
  * from/to dates.
  */
-async function buildLogFilter({ status, audience, appScope, channel, source, q, from, to } = {}) {
+async function buildLogFilter(ctx, { status, audience, appScope, channel, source, q, from, to } = {}) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+
   const filter = {};
   if (status) filter.status = status;
   if (audience) filter.audience = audience;
@@ -436,8 +466,11 @@ async function buildLogFilter({ status, audience, appScope, channel, source, q, 
  * campaign rows (what/who/status/retry); delivery counts are merged in from
  * BigQuery (broadcast_stats) so analytics stay out of Mongo.
  */
-async function listLog({ page = 1, limit = 20, ...filters } = {}) {
-  const filter = await buildLogFilter(filters);
+async function listLog(ctx, { page = 1, limit = 20, ...filters } = {}) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+
+  const filter = await buildLogFilter(ctx, filters);
 
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -449,7 +482,7 @@ async function listLog({ page = 1, limit = 20, ...filters } = {}) {
   // Merge BigQuery delivery counts onto each row. `statsRecorded` is false when
   // there's no BQ row for this broadcast (sent before BQ was enabled, or BQ off)
   // so the UI can show "—" instead of a misleading 0.
-  const counts = await bqService.broadcastCounts(items.map((i) => String(i._id)));
+  const counts = await bqService.broadcastCounts(ctx, items.map((i) => String(i._id)));
   const merged = items.map((i) => {
     const c = counts[String(i._id)];
     // Prefer BigQuery analytics when present; otherwise fall back to the Mongo
@@ -479,7 +512,13 @@ async function listLog({ page = 1, limit = 20, ...filters } = {}) {
  * tab only surfaces a campaign when its Mongo Broadcast exists, so removing the
  * Mongo row removes it from the UI. The orphaned BQ rows are harmless.
  */
-async function remove(id) {
+async function remove(ctx, id) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+  const BroadcastClick = ctx.model('BroadcastClick');
+  const BroadcastDelivery = ctx.model('BroadcastDelivery');
+  const DeletedBroadcast = ctx.model('DeletedBroadcast');
+
   if (!mongoose.isValidObjectId(id)) return false;
   const res = await Broadcast.deleteOne({ _id: id });
   if (!res.deletedCount) return false;
@@ -492,7 +531,7 @@ async function remove(id) {
   // touch rows still in the streaming buffer), then best-effort hard-delete the
   // BQ rows for eventual cleanup.
   await DeletedBroadcast.tombstone([String(id)]).catch((e) => logger.debug('tombstone failed', e.message));
-  await bqService.deleteBroadcastStats([String(id)]).catch((e) => logger.debug('BQ delete failed', e.message));
+  await bqService.deleteBroadcastStats(ctx, [String(id)]).catch((e) => logger.debug('BQ delete failed', e.message));
   return true;
 }
 
@@ -501,8 +540,14 @@ async function remove(id) {
  * as the Logs list). With no filters this clears ALL logs. Returns the count
  * deleted. Also clears the click/delivery guards for the removed campaigns.
  */
-async function removeByFilter(filters = {}) {
-  const filter = await buildLogFilter(filters);
+async function removeByFilter(ctx, filters = {}) {
+  ctx = ctx || defaultContext();
+  const Broadcast = ctx.model('Broadcast');
+  const BroadcastClick = ctx.model('BroadcastClick');
+  const BroadcastDelivery = ctx.model('BroadcastDelivery');
+  const DeletedBroadcast = ctx.model('DeletedBroadcast');
+
+  const filter = await buildLogFilter(ctx, filters);
   // Grab the ids first so we can clean up their guard rows.
   const ids = (await Broadcast.find(filter).select('_id').lean()).map((d) => d._id);
   if (!ids.length) return 0;
@@ -513,7 +558,7 @@ async function removeByFilter(filters = {}) {
   ]).catch((e) => logger.debug('broadcast guard cleanup failed', e.message));
   // Tombstone (so graphs exclude immediately) + best-effort BQ hard-delete.
   await DeletedBroadcast.tombstone(ids.map(String)).catch((e) => logger.debug('tombstone failed', e.message));
-  await bqService.deleteBroadcastStats(ids.map(String)).catch((e) => logger.debug('BQ delete failed', e.message));
+  await bqService.deleteBroadcastStats(ctx, ids.map(String)).catch((e) => logger.debug('BQ delete failed', e.message));
   return res.deletedCount || 0;
 }
 
@@ -533,7 +578,12 @@ const SCOPE_AUDIENCES = {
  * single-user campaign whose recipient has that role. BigQuery only stores the
  * audience (not the recipient's role), so we resolve those single-user campaign
  * ids here in Mongo and pass them as an extra include list. */
-async function dashboard({ days = 14, appScope } = {}) {
+async function dashboard(ctx, { days = 14, appScope } = {}) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const Broadcast = ctx.model('Broadcast');
+  const DeletedBroadcast = ctx.model('DeletedBroadcast');
+
   const excludeIds = await DeletedBroadcast.allIds().catch(() => []);
   let audiences;
   let includeIds;
@@ -547,12 +597,13 @@ async function dashboard({ days = 14, appScope } = {}) {
       includeIds = rows.map((r) => String(r._id));
     }
   }
-  return bqService.notificationDashboard({ days, audiences, includeIds, excludeIds });
+  return bqService.notificationDashboard(ctx, { days, audiences, includeIds, excludeIds });
 }
 
 /** Estimate audience size before sending (for the compose preview). */
-async function estimate({ audience, targetUser, segment }) {
-  const ids = await resolveRecipients({ audience, targetUser, segment });
+async function estimate(ctx, { audience, targetUser, segment }) {
+  ctx = ctx || defaultContext();
+  const ids = await resolveRecipients(ctx, { audience, targetUser, segment });
   return ids.length;
 }
 
@@ -566,7 +617,10 @@ async function estimate({ audience, targetUser, segment }) {
  *   userId target user for user-scoped events
  *   vars   placeholder values, e.g. { name, amount, balance }
  */
-async function fireEvent(event, { userId, vars = {} } = {}) {
+async function fireEvent(ctx, event, { userId, vars = {} } = {}) {
+  ctx = ctx || defaultContext();
+  const NotificationTemplate = ctx.model('NotificationTemplate');
+
   try {
     const tpl = await NotificationTemplate.getEnabled(event);
     if (!tpl) return null; // disabled or not configured
@@ -575,10 +629,10 @@ async function fireEvent(event, { userId, vars = {} } = {}) {
 
     // Broad events broadcast to all users; the rest target one user.
     if (event === 'offer_created' || event === 'product_added') {
-      return send({ title, body, audience: 'users', source: 'template', templateEvent: event });
+      return send(ctx, { title, body, audience: 'users', source: 'template', templateEvent: event });
     }
     if (!userId) return null;
-    return send({ title, body, audience: 'user', targetUser: userId, source: 'template', templateEvent: event });
+    return send(ctx, { title, body, audience: 'user', targetUser: userId, source: 'template', templateEvent: event });
   } catch (e) {
     logger.warn(`fireEvent(${event}) failed`, e.message);
     return null;

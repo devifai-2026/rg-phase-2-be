@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A reminder the astrologer set during a chat consultation, extracted by the AI
@@ -54,4 +55,4 @@ scheduledReminderSchema.index({ status: 1, nextRunAt: 1 });
 scheduledReminderSchema.statics.COURSE_DAYS = COURSE_DAYS;
 scheduledReminderSchema.statics.LEAD_MIN = LEAD_MIN;
 
-module.exports = mongoose.model('ScheduledReminder', scheduledReminderSchema);
+module.exports = defineModel('ScheduledReminder', scheduledReminderSchema);

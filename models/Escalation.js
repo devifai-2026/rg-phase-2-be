@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Raised by the system when an astrologer misses/rejects too many requests
@@ -24,4 +25,4 @@ const escalationSchema = new mongoose.Schema(
 
 escalationSchema.index({ status: 1, createdAt: -1 });
 
-module.exports = mongoose.model('Escalation', escalationSchema);
+module.exports = defineModel('Escalation', escalationSchema);

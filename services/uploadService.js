@@ -44,13 +44,18 @@ function contentTypeFor(ext) {
   }[ext] || 'application/octet-stream';
 }
 
-async function uploadToGcs(buffer, name) {
+async function uploadToGcs(buffer, name, { tenantSlug } = {}) {
   const bucket = getBucket();
   const ext = extFromName(name);
-  // Unique, unguessable object name under the upload prefix.
+  // Unique, unguessable object name under the upload prefix. All tenants share
+  // ONE bucket, so tenant uploads are namespaced under tenants/<slug>/ to keep
+  // them logically isolated + listable/deletable per tenant.
   const rand = crypto.randomBytes(8).toString('hex');
   const safe = (name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40);
-  const objectName = `${env.gcs.uploadPrefix}/${Date.now()}-${rand}-${safe}${safe.endsWith(ext) ? '' : ext}`;
+  const prefix = tenantSlug && tenantSlug !== 'default'
+    ? `tenants/${tenantSlug}/${env.gcs.uploadPrefix}`
+    : env.gcs.uploadPrefix;
+  const objectName = `${prefix}/${Date.now()}-${rand}-${safe}${safe.endsWith(ext) ? '' : ext}`;
 
   const file = bucket.file(objectName);
   await file.save(buffer, {
@@ -71,13 +76,13 @@ function isConfigured() {
 }
 
 /** @param {Buffer} buffer  @param {string} [name] */
-async function uploadImage(buffer, name) {
+async function uploadImage(buffer, name, { tenantSlug } = {}) {
   if (!buffer || !buffer.length) throw new AppError('No image provided', 400);
 
   // 1) Google Cloud Storage (preferred).
   if (gcsConfigured()) {
     try {
-      return await uploadToGcs(buffer, name);
+      return await uploadToGcs(buffer, name, { tenantSlug });
     } catch (e) {
       logger.error('GCS upload failed', e.message);
       throw new AppError('Image upload failed', 502);

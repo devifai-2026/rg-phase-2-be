@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * A predefined recharge pack shown in the app's "Add money" screen.
@@ -26,4 +27,4 @@ rechargeTemplateSchema.virtual('bonus').get(function () {
 });
 rechargeTemplateSchema.set('toJSON', { virtuals: true });
 
-module.exports = mongoose.model('RechargeTemplate', rechargeTemplateSchema);
+module.exports = defineModel('RechargeTemplate', rechargeTemplateSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * One row per (broadcast, user) the first time that user taps the notification.
@@ -18,4 +19,4 @@ const broadcastClickSchema = new mongoose.Schema(
 // One click per user per broadcast.
 broadcastClickSchema.index({ broadcast: 1, user: 1 }, { unique: true });
 
-module.exports = mongoose.model('BroadcastClick', broadcastClickSchema);
+module.exports = defineModel('BroadcastClick', broadcastClickSchema);

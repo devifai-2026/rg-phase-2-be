@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const { verifyAccess } = require('../utils/token');
+const { contextForSlug } = require('../utils/tenantContext');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 const emit = require('./emit');
@@ -65,14 +66,20 @@ function initSocket(httpServer) {
   applyAdapter(io);
   emit.setIo(io);
 
-  // JWT handshake auth.
-  io.use((socket, next) => {
+  // JWT handshake auth. The token carries tenantSlug (multi-tenant); we resolve
+  // the tenant context once per connection and hang it on the socket so every
+  // presence/session call routes to the correct tenant DB.
+  io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth && socket.handshake.auth.token;
       if (!token) return next(new Error('Auth token required'));
       const claims = verifyAccess(token);
       socket.userId = claims.id;
       socket.role = claims.role;
+      // Tenant from the verified token claim; fall back to the handshake auth
+      // field the app sends (ApiConfig.tenant). Token claim is authoritative.
+      socket.tenantSlug = claims.tenantSlug || (socket.handshake.auth && socket.handshake.auth.tenant) || null;
+      socket.ctx = await contextForSlug(socket.tenantSlug);
       next();
     } catch (e) {
       next(new Error('Invalid token'));
@@ -105,13 +112,13 @@ function initSocket(httpServer) {
     socket.join(`user:${userId}`);
     if (socket.role === 'admin' || socket.role === 'super_admin') socket.join('admin-room');
     addLocal(userId, socket.id);
-    await presenceService.userConnected(userId, socket.role);
+    await presenceService.userConnected(socket.ctx, userId, socket.role);
 
     // Connecting does NOT force an astrologer online — it RESTORES their saved
     // availability preference. Effective online = preference AND this live
     // socket. So an astrologer who toggled offline stays offline on reconnect.
     if (socket.role === 'astrologer') {
-      await presenceService.recomputeAstrologerPresence(userId, { connected: true });
+      await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: true });
       // Reconnected within the grace window → cancel any pending live auto-end
       // so a brief network blip doesn't kill an ongoing broadcast.
       try { require('../services/liveService').cancelAutoEnd(userId); } catch (_) { /* best-effort */ }
@@ -127,14 +134,14 @@ function initSocket(httpServer) {
       // Block going offline mid-consultation (seeker connected + billing). The
       // HTTP path enforces the same rule; ack so the app can revert the toggle.
       if (!online) {
-        const Session = require('../models/Session');
+        const Session = socket.ctx.model('Session');
         const inSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
         if (inSession) {
           if (typeof cb === 'function') cb({ ok: false, reason: 'in_consultation' });
           return;
         }
       }
-      await presenceService.recomputeAstrologerPresence(userId, { preference: !!online, connected: true });
+      await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { preference: !!online, connected: true });
       if (typeof cb === 'function') cb({ ok: true });
     });
 
@@ -143,14 +150,14 @@ function initSocket(httpServer) {
     // result so the app can show the countdown / a "can't break now" message.
     socket.on('set-break', async ({ minutes } = {}, cb) => {
       if (socket.role !== 'astrologer') { if (typeof cb === 'function') cb({ ok: false }); return; }
-      const r = await presenceService.setAstrologerBreak(userId, Number(minutes) || 0).catch(() => ({ ok: false }));
+      const r = await presenceService.setAstrologerBreak(socket.ctx, userId, Number(minutes) || 0).catch(() => ({ ok: false }));
       if (typeof cb === 'function') cb(r);
     });
 
     // ── Call/chat/video signaling (reuse sessionService) ──
     socket.on('start-session', async ({ astrologerId, type }, cb) => {
       try {
-        const data = await sessionService.requestSession({ userId, astrologerUserId: astrologerId, type });
+        const data = await sessionService.requestSession(socket.ctx, { userId, astrologerUserId: astrologerId, type });
         cb && cb({ success: true, sessionId: data.session.sessionId, token: data.token });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -159,7 +166,7 @@ function initSocket(httpServer) {
 
     socket.on('accept-session', async ({ sessionId }, cb) => {
       try {
-        const data = await sessionService.acceptSession({ sessionId, astrologerUserId: userId });
+        const data = await sessionService.acceptSession(socket.ctx, { sessionId, astrologerUserId: userId });
         socket.join(`session:${sessionId}`);
         cb && cb({ success: true, token: data.token });
       } catch (e) {
@@ -169,7 +176,7 @@ function initSocket(httpServer) {
 
     socket.on('reject-session', async ({ sessionId }, cb) => {
       try {
-        await sessionService.rejectSession({ sessionId, astrologerUserId: userId });
+        await sessionService.rejectSession(socket.ctx, { sessionId, astrologerUserId: userId });
         cb && cb({ success: true });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -179,7 +186,7 @@ function initSocket(httpServer) {
     // User cancels their own still-ringing request.
     socket.on('cancel-session', async ({ sessionId }, cb) => {
       try {
-        await sessionService.cancelSession({ sessionId, userId });
+        await sessionService.cancelSession(socket.ctx, { sessionId, userId });
         cb && cb({ success: true });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -191,7 +198,7 @@ function initSocket(httpServer) {
     socket.on('join-session', async ({ sessionId }, cb) => {
       socket.join(`session:${sessionId}`);
       try {
-        await sessionService.markJoined({ sessionId, byUserId: userId });
+        await sessionService.markJoined(socket.ctx, { sessionId, byUserId: userId });
         cb && cb({ success: true });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -200,7 +207,7 @@ function initSocket(httpServer) {
 
     socket.on('end-session', async ({ sessionId }, cb) => {
       try {
-        await sessionService.endSession({ sessionId, endReason: 'hangup', byUserId: userId });
+        await sessionService.endSession(socket.ctx, { sessionId, endReason: 'hangup', byUserId: userId });
         cb && cb({ success: true });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -210,7 +217,7 @@ function initSocket(httpServer) {
     // ── Chat ──
     socket.on('send-message', async ({ sessionId, message, mediaUrl, mediaType, productId }, cb) => {
       try {
-        const { message: doc, receiverId, masked, reasons } = await chatService.persist({ sessionId, senderId: userId, message, mediaUrl, mediaType, productId });
+        const { message: doc, receiverId, masked, reasons } = await chatService.persist(socket.ctx, { sessionId, senderId: userId, message, mediaUrl, mediaType, productId });
         const payload = {
           id: String(doc._id),
           sessionId,
@@ -230,7 +237,7 @@ function initSocket(httpServer) {
         cb && cb({ success: true, message: payload, masked, reasons });
 
         // Offline push.
-        const online = await presenceService.isOnline(receiverId);
+        const online = await presenceService.isOnline(socket.ctx, receiverId);
         if (!online) {
           const body = doc.product ? `Shared a product: ${doc.product.name}` : (doc.message || 'Sent you an image');
           fcmService.sendToUserTokens({ userId: receiverId, title: 'New message', body, data: { sessionId } }).catch(() => {});
@@ -297,13 +304,13 @@ function initSocket(httpServer) {
 
     // Recipient acks a message -> mark delivered + tell the sender (single tick -> double tick).
     socket.on('message-received', async ({ messageId }) => {
-      const res = await chatService.markDelivered(messageId, userId).catch(() => null);
+      const res = await chatService.markDelivered(socket.ctx, messageId, userId).catch(() => null);
       if (res) emit.toUser(res.senderId, 'message-delivered', { messageId, sessionId: res.sessionId });
     });
 
     // Recipient opens the chat -> mark all read + tell the sender (blue ticks).
     socket.on('mark-read', async ({ sessionId, to }) => {
-      await chatService.markRead(sessionId, userId);
+      await chatService.markRead(socket.ctx, sessionId, userId);
       if (to) emit.toUser(to, 'messages-read', { sessionId, by: String(userId) });
     });
 
@@ -314,13 +321,13 @@ function initSocket(httpServer) {
     // a frequent client heartbeat the keep-alive that prevents the "socket died
     // silently → astrologer shows offline to users" drift.
     socket.on('heartbeat', async (activity, cb) => {
-      await presenceService.heartbeat(userId, activity || {}).catch(() => {});
+      await presenceService.heartbeat(socket.ctx, userId, activity || {}).catch(() => {});
       // For astrologers, reconcile the DERIVED status off this proven-live socket
       // so profile.isOnline can't stay stale-false while they're actively beating.
       // recomputeAstrologerPresence only broadcasts when the value actually
       // changes is not guaranteed — but it's cheap and self-corrects drift.
       if (socket.role === 'astrologer') {
-        presenceService.recomputeAstrologerPresence(userId, { connected: true }).catch(() => {});
+        presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: true }).catch(() => {});
         // Proof-of-life for any active broadcast: keeps a healthy live out of the
         // server stale-sweep even if the in-memory disconnect grace timer was
         // lost (process restart/crash). No-op when they aren't live.
@@ -376,9 +383,9 @@ function initSocket(httpServer) {
         socket._liveRooms.clear();
       }
       const remaining = removeLocal(userId, socket.id);
-      const fullyOffline = await presenceService.userDisconnected(userId);
+      const fullyOffline = await presenceService.userDisconnected(socket.ctx, userId);
       if (fullyOffline && remaining === 0 && socket.role === 'astrologer') {
-        await presenceService.recomputeAstrologerPresence(userId, { connected: false });
+        await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: false });
         // Internet dropped / app killed → auto-end any active broadcast after a
         // short grace window (cancelled if they reconnect in time).
         try { require('../services/liveService').scheduleAutoEndOnDisconnect(userId); } catch (_) { /* best-effort */ }

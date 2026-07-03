@@ -1,7 +1,4 @@
-const Review = require('../models/Review');
-const PlatformReview = require('../models/PlatformReview');
-const Session = require('../models/Session');
-const AstrologerProfile = require('../models/AstrologerProfile');
+const { defaultContext } = require('../utils/tenantContext');
 const AppError = require('../utils/AppError');
 
 /**
@@ -12,7 +9,10 @@ const AppError = require('../utils/AppError');
  *     (chat never asks). Lets a repeat caller still rate each call's quality.
  * Returns nulls-safe flags; the app shows only the parts that are true.
  */
-async function reviewableState({ userId, sessionId }) {
+async function reviewableState(ctx, { userId, sessionId }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const Review = ctx.model('Review');
   const session = await Session.findOne({ sessionId }).select('_id user astrologer type status callQuality');
   if (!session) throw new AppError('Session not found', 404);
   if (String(session.user) !== String(userId)) throw new AppError('Not your session', 403);
@@ -36,7 +36,10 @@ async function reviewableState({ userId, sessionId }) {
  * `rating`/`comment` are optional here: a repeat audio/video session may submit
  * only callQuality (no new astrologer review).
  */
-async function reviewSession({ userId, sessionId, rating, comment, callQuality }) {
+async function reviewSession(ctx, { userId, sessionId, rating, comment, callQuality }) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const Review = ctx.model('Review');
   const session = await Session.findOne({ sessionId });
   if (!session) throw new AppError('Session not found', 404);
   if (String(session.user) !== String(userId)) throw new AppError('You can only review your own sessions', 403);
@@ -68,13 +71,16 @@ async function reviewSession({ userId, sessionId, rating, comment, callQuality }
       rating,
       comment,
     });
-    await recomputeAstrologerRating(session.astrologerProfile);
+    await recomputeAstrologerRating(ctx, session.astrologerProfile);
   }
 
   return review || { skippedReview: true, callQuality: session.callQuality };
 }
 
-async function recomputeAstrologerRating(astrologerProfileId) {
+async function recomputeAstrologerRating(ctx, astrologerProfileId) {
+  ctx = ctx || defaultContext();
+  const Review = ctx.model('Review');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const agg = await Review.aggregate([
     { $match: { astrologerProfile: astrologerProfileId } },
     { $group: { _id: '$astrologerProfile', avg: { $avg: '$rating' }, count: { $sum: 1 } } },
@@ -90,7 +96,10 @@ async function recomputeAstrologerRating(astrologerProfileId) {
  * Admin writes a review for an astrologer under a fake display name. No session
  * and no real user — it's attributed to authorName. Counts toward the aggregate.
  */
-async function adminCreateReview({ astrologerProfileId, rating, comment, authorName, serviceType, adminId }) {
+async function adminCreateReview(ctx, { astrologerProfileId, rating, comment, authorName, serviceType, adminId }) {
+  ctx = ctx || defaultContext();
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const Review = ctx.model('Review');
   const profile = await AstrologerProfile.findById(astrologerProfileId);
   if (!profile) throw new AppError('Astrologer not found', 404);
 
@@ -105,21 +114,25 @@ async function adminCreateReview({ astrologerProfileId, rating, comment, authorN
     createdBy: adminId,
   });
 
-  await recomputeAstrologerRating(profile._id);
+  await recomputeAstrologerRating(ctx, profile._id);
   return review;
 }
 
 /** Admin deletes any review (e.g. to remove a fake one). Recomputes rating. */
-async function adminDeleteReview(reviewId) {
+async function adminDeleteReview(ctx, reviewId) {
+  ctx = ctx || defaultContext();
+  const Review = ctx.model('Review');
   const review = await Review.findById(reviewId);
   if (!review) throw new AppError('Review not found', 404);
   const profileId = review.astrologerProfile;
   await review.deleteOne();
-  if (profileId) await recomputeAstrologerRating(profileId);
+  if (profileId) await recomputeAstrologerRating(ctx, profileId);
   return { deleted: true };
 }
 
-async function listForAstrologer(astrologerProfileId, { page = 1, limit = 20 } = {}) {
+async function listForAstrologer(ctx, astrologerProfileId, { page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const Review = ctx.model('Review');
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     Review.find({ astrologerProfile: astrologerProfileId }).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('user', 'name'),
@@ -129,7 +142,9 @@ async function listForAstrologer(astrologerProfileId, { page = 1, limit = 20 } =
 }
 
 // ── Platform reviews (app rating) ──
-async function submitPlatformReview({ userId, role, rating, comment }) {
+async function submitPlatformReview(ctx, { userId, role, rating, comment }) {
+  ctx = ctx || defaultContext();
+  const PlatformReview = ctx.model('PlatformReview');
   return PlatformReview.findOneAndUpdate(
     { user: userId },
     { $set: { role, rating, comment }, $setOnInsert: { user: userId } },
@@ -137,7 +152,9 @@ async function submitPlatformReview({ userId, role, rating, comment }) {
   );
 }
 
-async function listPlatformReviews({ page = 1, limit = 20 } = {}) {
+async function listPlatformReviews(ctx, { page = 1, limit = 20 } = {}) {
+  ctx = ctx || defaultContext();
+  const PlatformReview = ctx.model('PlatformReview');
   const skip = (page - 1) * limit;
   const [items, total, agg] = await Promise.all([
     PlatformReview.find({ isPublished: true }).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('user', 'name'),

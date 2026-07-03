@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Single-doc (key:'global') config for the AI Marketing Agent — the toggle +
@@ -28,4 +29,4 @@ marketingConfigSchema.statics.get = async function () {
   return doc;
 };
 
-module.exports = mongoose.model('MarketingConfig', marketingConfigSchema);
+module.exports = defineModel('MarketingConfig', marketingConfigSchema);

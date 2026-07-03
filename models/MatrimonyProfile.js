@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const matrimonyProfileSchema = new mongoose.Schema(
   {
@@ -24,4 +25,4 @@ const matrimonyProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('MatrimonyProfile', matrimonyProfileSchema);
+module.exports = defineModel('MatrimonyProfile', matrimonyProfileSchema);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 const apiLogSchema = new mongoose.Schema(
   {
@@ -16,4 +17,4 @@ const apiLogSchema = new mongoose.Schema(
 // Auto-expire audit rows after 30 days.
 apiLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
-module.exports = mongoose.model('ApiLog', apiLogSchema);
+module.exports = defineModel('ApiLog', apiLogSchema);

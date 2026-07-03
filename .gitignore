@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*-key.json
+gcs-key.json
+firebase-service-account.json
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Logs / runtime
+*.log

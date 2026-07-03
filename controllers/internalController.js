@@ -20,7 +20,7 @@ exports.translateBackfill = asyncHandler(async (req, res) => {
   if (!checkSecret(req)) throw new AppError('Forbidden', 403);
   const limit = Math.min(parseInt(req.body?.limit || req.query?.limit || '200', 10), 1000);
   logger.info('translate-backfill triggered', { limit });
-  const result = await translateService.backfillMissing({ limit });
+  const result = await translateService.backfillMissing(req.ctx, { limit });
   res.json({ success: true, data: result });
 });
 
@@ -31,7 +31,7 @@ exports.translateBackfill = asyncHandler(async (req, res) => {
  */
 exports.deactivateExpiredPoojas = asyncHandler(async (req, res) => {
   if (!checkSecret(req)) throw new AppError('Forbidden', 403);
-  const PoojaType = require('../models/PoojaType');
+  const PoojaType = req.model('PoojaType');
   const now = new Date();
   const result = await PoojaType.updateMany(
     { isActive: true, availableTo: { $ne: null, $lt: now } },

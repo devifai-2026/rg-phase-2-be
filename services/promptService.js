@@ -1,4 +1,5 @@
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * Central registry + resolver for the LLM SYSTEM prompts.
@@ -85,12 +86,13 @@ function defaultSystem(key) {
 /** Resolve the guardrails text from the DB (admin-editable), cached like any
  *  prompt; falls back to the code default. Read directly from the row to avoid
  *  recursing through getSystem's append step. */
-async function _guardrailsText() {
+async function _guardrailsText(ctx) {
+  ctx = ctx || defaultContext();
   const def = defaultSystem(GUARDRAILS_KEY);
   const cached = _cache.get(GUARDRAILS_KEY);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.system || def;
   try {
-    const PromptOverride = require('../models/PromptOverride');
+    const PromptOverride = ctx.model('PromptOverride');
     let row = await PromptOverride.findOne({ key: GUARDRAILS_KEY }).select('system').lean();
     if (!row) {
       await PromptOverride.updateOne({ key: GUARDRAILS_KEY }, { $setOnInsert: { key: GUARDRAILS_KEY, system: def } }, { upsert: true }).catch(() => {});
@@ -106,10 +108,11 @@ async function _guardrailsText() {
 
 /** Append the global guardrails once. Idempotent: a prompt already carrying the
  *  sentinel is returned unchanged (so re-reads / re-seeds never stack it). */
-async function withGuardrails(system) {
+async function withGuardrails(ctx, system) {
+  ctx = ctx || defaultContext();
   const s = system || '';
   if (s.includes(GUARDRAILS_SENTINEL)) return s;
-  const g = await _guardrailsText();
+  const g = await _guardrailsText(ctx);
   return `${s}\n\n${g}`;
 }
 
@@ -120,8 +123,9 @@ async function withGuardrails(system) {
  * SOURCE OF TRUTH: code defaults are only the initial seed + a last-resort
  * fallback if a row is ever missing.
  */
-async function seedPrompts() {
-  const PromptOverride = require('../models/PromptOverride');
+async function seedPrompts(ctx) {
+  ctx = ctx || defaultContext();
+  const PromptOverride = ctx.model('PromptOverride');
   let seeded = 0;
   let refreshed = 0;
   for (const [key, e] of Object.entries(REGISTRY)) {
@@ -154,7 +158,8 @@ async function seedPrompts() {
  * DB row is missing (e.g. a brand-new key before the next seed) or on a DB error,
  * so the LLM path never breaks.
  */
-async function getSystem(key) {
+async function getSystem(ctx, key) {
+  ctx = ctx || defaultContext();
   const def = defaultSystem(key);
   let raw;
   const cached = _cache.get(key);
@@ -162,7 +167,7 @@ async function getSystem(key) {
     raw = cached.system || def;
   } else {
     try {
-      const PromptOverride = require('../models/PromptOverride');
+      const PromptOverride = ctx.model('PromptOverride');
       let row = await PromptOverride.findOne({ key }).select('system').lean();
       // Self-heal: if the row doesn't exist yet, create it from the code default
       // so the DB becomes authoritative going forward.
@@ -180,7 +185,7 @@ async function getSystem(key) {
   // Every prompt EXCEPT the guardrails prompt itself gets the global guardrails
   // appended (idempotent; uses the current admin-editable guardrails value).
   if (key === GUARDRAILS_KEY) return raw;
-  return withGuardrails(raw);
+  return withGuardrails(ctx, raw);
 }
 
 /** Drop the cache for one key (or all) — called right after an admin saves. */
@@ -191,8 +196,9 @@ function bustCache(key) {
 
 /** All prompts for the admin tab: the DB value is canonical; we also expose the
  *  code default so the UI can offer "revert to default". */
-async function listForAdmin() {
-  const PromptOverride = require('../models/PromptOverride');
+async function listForAdmin(ctx) {
+  ctx = ctx || defaultContext();
+  const PromptOverride = ctx.model('PromptOverride');
   let rows = [];
   try { rows = await PromptOverride.find({}).lean(); } catch (_) {/* none */}
   const byKey = {};
@@ -215,9 +221,10 @@ async function listForAdmin() {
 
 /** Save the prompt to the DB (the source of truth). A blank value resets the
  *  stored prompt back to the code default (so the row always holds usable text). */
-async function saveOverride(key, system, adminId) {
+async function saveOverride(ctx, key, system, adminId) {
+  ctx = ctx || defaultContext();
   if (!REGISTRY[key]) throw new Error('Unknown prompt key');
-  const PromptOverride = require('../models/PromptOverride');
+  const PromptOverride = ctx.model('PromptOverride');
   const text = (system || '').trim();
   const value = text || defaultSystem(key); // blank → reset to code default
   await PromptOverride.findOneAndUpdate(

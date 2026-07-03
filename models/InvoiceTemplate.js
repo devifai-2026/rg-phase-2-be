@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed invoice template. The admin can create a few (Rudraganga ships
@@ -31,4 +32,4 @@ const invoiceTemplateSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('InvoiceTemplate', invoiceTemplateSchema);
+module.exports = defineModel('InvoiceTemplate', invoiceTemplateSchema);

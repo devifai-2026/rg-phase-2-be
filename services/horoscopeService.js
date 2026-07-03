@@ -1,6 +1,5 @@
 const axios = require('axios');
-const Horoscope = require('../models/Horoscope');
-const HoroscopeConfig = require('../models/HoroscopeConfig');
+const { defaultContext } = require('../utils/tenantContext');
 const vedicAstroService = require('./vedicAstroService');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
@@ -17,7 +16,10 @@ const logger = require('../utils/logger');
  * /lang and no birth data, so it needs its own fetch + its own cache model.
  */
 
-const SIGNS = Horoscope.SIGNS;                       // lowercase, provider order
+// SIGNS (lowercase, provider order) is a schema-level constant on the Horoscope
+// model and is identical across tenant connections, so we source it from the
+// default-bound model at load time. Per-request access still uses ctx.model.
+const SIGNS = defaultContext().model('Horoscope').SIGNS;
 const SUPPORTED_LANGS = ['en', 'hi', 'bn', 'mr', 'pa', 'as']; // the app's languages
 const HOROSCOPE_TTL_DAYS = 45;                                // old rows self-clean
 
@@ -91,7 +93,9 @@ function localPayload(date, zodiac) {
  * Read one (date, zodiac, lang) horoscope. DB-first; on a miss, fetch from the
  * provider and upsert. Returns the provider `response` payload object.
  */
-async function getDaily({ zodiac, date, lang } = {}) {
+async function getDaily(ctx, { zodiac, date, lang } = {}) {
+  ctx = ctx || defaultContext();
+  const Horoscope = ctx.model('Horoscope');
   const z = normSign(zodiac);
   const d = date ? ymd(new Date(`${date}T00:00:00`)) : ymd();
   const l = cacheLang(lang);        // DB row key (bn stays bn; pa/as → en)
@@ -102,7 +106,7 @@ async function getDaily({ zodiac, date, lang } = {}) {
   if (hit) return hit.payload;
 
   // 2) Miss → real provider call.
-  const { apiKey, baseUrl } = await vedicAstroService.resolveConfig();
+  const { apiKey, baseUrl } = await vedicAstroService.resolveConfig(ctx);
   let payload;
   let source = 'vedicastroapi';
 
@@ -162,9 +166,10 @@ async function getDaily({ zodiac, date, lang } = {}) {
 
 /** All 12 signs for one (date, lang), fetched in parallel. Returns
  *  [{ zodiac, payload }] in provider order. */
-async function getAllSigns({ date, lang } = {}) {
+async function getAllSigns(ctx, { date, lang } = {}) {
+  ctx = ctx || defaultContext();
   const results = await Promise.all(
-    SIGNS.map(async (z) => ({ zodiac: z, payload: await getDaily({ zodiac: z, date, lang }) })),
+    SIGNS.map(async (z) => ({ zodiac: z, payload: await getDaily(ctx, { zodiac: z, date, lang }) })),
   );
   return results;
 }
@@ -174,13 +179,15 @@ async function getAllSigns({ date, lang } = {}) {
  * getDaily short-circuits on a hit (no provider call), so re-runs are cheap and
  * idempotent. Returns how many real provider calls were made (0 = fully cached).
  */
-async function prewarm({ date } = {}) {
+async function prewarm(ctx, { date } = {}) {
+  ctx = ctx || defaultContext();
+  const Horoscope = ctx.model('Horoscope');
   const d = date || ymd();
   let realCalls = 0;
   for (const lang of SUPPORTED_LANGS) {
     for (const zodiac of SIGNS) {
       const before = await Horoscope.exists({ date: d, zodiac, lang });
-      await getDaily({ zodiac, date: d, lang }).catch((e) => logger.warn('prewarm getDaily failed', e.message));
+      await getDaily(ctx, { zodiac, date: d, lang }).catch((e) => logger.warn('prewarm getDaily failed', e.message));
       if (!before) realCalls += 1;
     }
   }
@@ -193,7 +200,9 @@ async function prewarm({ date } = {}) {
  * today's pre-warm so exactly one instance runs it per day, then warms today +
  * tomorrow. Multi-instance safe (guarded findOneAndUpdate on lastPrewarmDate).
  */
-async function tick() {
+async function tick(ctx) {
+  ctx = ctx || defaultContext();
+  const HoroscopeConfig = ctx.model('HoroscopeConfig');
   const today = ymd();
   await HoroscopeConfig.get(); // ensure the singleton exists
   const claim = await HoroscopeConfig.findOneAndUpdate(
@@ -204,8 +213,8 @@ async function tick() {
   if (!claim) return { skipped: 'already-prewarmed-today' };
 
   const tomorrow = ymd(new Date(Date.now() + 24 * 60 * 60 * 1000));
-  const a = await prewarm({ date: today });
-  const b = await prewarm({ date: tomorrow });
+  const a = await prewarm(ctx, { date: today });
+  const b = await prewarm(ctx, { date: tomorrow });
   return { prewarmed: [a, b] };
 }
 

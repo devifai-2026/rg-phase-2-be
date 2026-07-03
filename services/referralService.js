@@ -1,5 +1,4 @@
-const User = require('../models/User');
-const AdminSettings = require('../models/AdminSettings');
+const { defaultContext } = require('../utils/tenantContext');
 const walletService = require('./walletService');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
@@ -15,7 +14,9 @@ function randomSuffix(n = 4) {
 }
 
 /** Generate a unique astro-themed referral code. */
-async function generateUniqueCode() {
+async function generateUniqueCode(ctx) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   for (let attempt = 0; attempt < 8; attempt++) {
     const word = ASTRO_WORDS[Math.floor(Math.random() * ASTRO_WORDS.length)];
     const code = `${word}${randomSuffix(4)}`;
@@ -27,18 +28,20 @@ async function generateUniqueCode() {
 }
 
 /** Ensure a user has a referral code (auto-created on signup; idempotent). */
-async function ensureCode(user) {
+async function ensureCode(ctx, user) {
+  ctx = ctx || defaultContext();
   if (user.referralCode) return user.referralCode;
-  const code = await generateUniqueCode();
+  const code = await generateUniqueCode(ctx);
   user.referralCode = code;
   await user.save();
   return code;
 }
 
 /** The reward each side gets, from admin settings (default ₹50). */
-async function rewardAmount() {
+async function rewardAmount(ctx) {
+  ctx = ctx || defaultContext();
   try {
-    const s = await AdminSettings.get();
+    const s = await ctx.model('AdminSettings').get();
     return s.referralReward != null ? Number(s.referralReward) : 50;
   } catch (_) {
     return 50;
@@ -50,7 +53,9 @@ async function rewardAmount() {
  * recharged yet and has no referrer). Stores referredBy; the actual credit
  * happens on the referee's FIRST successful recharge.
  */
-async function applyCode(user, rawCode) {
+async function applyCode(ctx, user, rawCode) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   const code = (rawCode || '').trim().toUpperCase();
   if (!code) throw new AppError('Enter a referral code', 400);
   if (user.referredBy) throw new AppError('A referral code is already applied', 409);
@@ -69,21 +74,23 @@ async function applyCode(user, rawCode) {
  * recharge and they were referred, credit BOTH the referee and the referrer.
  * Idempotent via the `referralRewarded` flag + per-side refIds.
  */
-async function onFirstRecharge(userId) {
+async function onFirstRecharge(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   try {
     const user = await User.findById(userId);
     if (!user || !user.referredBy || user.referralRewarded) return;
 
-    const amount = await rewardAmount();
+    const amount = await rewardAmount(ctx);
     if (amount < 1) { user.referralRewarded = true; await user.save(); return; }
 
     // Credit the referee (the new user who just recharged).
-    await walletService.credit({
+    await walletService.credit(ctx, {
       userId: user._id, amount, source: 'bonus',
       description: 'Referral reward', refId: `ref-referee:${user._id}`,
     });
     // Credit the referrer.
-    await walletService.credit({
+    await walletService.credit(ctx, {
       userId: user.referredBy, amount, source: 'bonus',
       description: "Referral reward — a friend you invited recharged", refId: `ref-referrer:${user._id}`,
     });
@@ -92,7 +99,7 @@ async function onFirstRecharge(userId) {
     user.referralRewarded = true;
     await user.save();
 
-    require('./notificationService').notify(user.referredBy, {
+    require('./notificationService').notify(ctx, user.referredBy, {
       type: 'system', title: 'You earned a referral reward! 🎉',
       body: `A friend you invited made their first recharge. ₹${amount} added to your wallet.`,
     }).catch(() => {});

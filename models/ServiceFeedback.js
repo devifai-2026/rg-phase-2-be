@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * The ASTROLOGER's own feedback after a service they delivered ends — distinct
@@ -47,4 +48,4 @@ serviceFeedbackSchema.index(
   { unique: true, partialFilterExpression: { liveSession: { $exists: true } } }
 );
 
-module.exports = mongoose.model('ServiceFeedback', serviceFeedbackSchema);
+module.exports = defineModel('ServiceFeedback', serviceFeedbackSchema);

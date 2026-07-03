@@ -1,16 +1,15 @@
-const User = require('../models/User');
-const RefreshToken = require('../models/RefreshToken');
-const AstrologerProfile = require('../models/AstrologerProfile');
 const otpService = require('./otpService');
 const walletService = require('./walletService');
-const AdminSettings = require('../models/AdminSettings');
 const { signAccess } = require('../utils/token');
 const { sha256, randomToken } = require('../utils/hash');
 const { normalizePhone } = require('../utils/phone');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
+const { defaultContext } = require('../utils/tenantContext');
 
-async function issueRefresh(user, meta = {}) {
+async function issueRefresh(ctx, user, meta = {}) {
+  ctx = ctx || defaultContext();
+  const RefreshToken = ctx.model('RefreshToken');
   const raw = randomToken(32);
   const tokenHash = sha256(raw);
   const expiresAt = new Date(Date.now() + env.jwt.refreshTtlDays * 24 * 60 * 60 * 1000);
@@ -18,24 +17,29 @@ async function issueRefresh(user, meta = {}) {
   return raw;
 }
 
-async function buildAuthResponse(user, meta) {
-  const accessToken = signAccess(user);
-  const refreshToken = await issueRefresh(user, meta);
+async function buildAuthResponse(ctx, user, meta) {
+  ctx = ctx || defaultContext();
+  const accessToken = signAccess(user, meta && meta.tenantSlug);
+  const refreshToken = await issueRefresh(ctx, user, meta);
   return { accessToken, refreshToken, user: user.toSafeJSON() };
 }
 
-async function requestOtp(phone) {
+async function requestOtp(ctx, phone) {
+  ctx = ctx || defaultContext();
   const normalized = normalizePhone(phone);
   if (!normalized) throw new AppError('Enter a valid 10-digit phone number', 400);
-  return otpService.requestOtp(normalized);
+  return otpService.requestOtp(ctx, normalized);
 }
 
 /** Verify OTP, upsert the user, credit signup bonus on first verify, mint tokens. */
-async function verifyOtp(phone, code, meta = {}) {
+async function verifyOtp(ctx, phone, code, meta = {}) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AdminSettings = ctx.model('AdminSettings');
   const normalized = normalizePhone(phone);
   if (!normalized) throw new AppError('Enter a valid 10-digit phone number', 400);
   phone = normalized;
-  await otpService.verifyOtp(phone, code);
+  await otpService.verifyOtp(ctx, phone, code);
 
   let user = await User.findOne({ phone });
   let isNewUser = false;
@@ -43,11 +47,11 @@ async function verifyOtp(phone, code, meta = {}) {
     user = await User.create({ phone, isPhoneVerified: true });
     isNewUser = true;
     // Auto-create the user's astro-themed referral code on signup.
-    await require('./referralService').ensureCode(user).catch(() => {});
+    await require('./referralService').ensureCode(ctx, user).catch(() => {});
     // New-user perks — admin can enable either, both, or neither.
     const settings = await AdminSettings.get();
     if (settings.signupBonusEnabled && settings.signupBonus > 0) {
-      await walletService.credit({
+      await walletService.credit(ctx, {
         userId: user._id,
         amount: settings.signupBonus,
         source: 'bonus',
@@ -60,7 +64,7 @@ async function verifyOtp(phone, code, meta = {}) {
       await user.save();
     }
     // System template: welcome notification for new users (sent if enabled).
-    require('./broadcastService').fireEvent('user_signup', { userId: user._id, vars: { name: user.name || 'there' } });
+    require('./broadcastService').fireEvent(ctx, 'user_signup', { userId: user._id, vars: { name: user.name || 'there' } });
   } else if (!user.isPhoneVerified) {
     user.isPhoneVerified = true;
     await user.save();
@@ -68,29 +72,34 @@ async function verifyOtp(phone, code, meta = {}) {
 
   if (user.isBlocked) throw new AppError('Your account has been blocked by the admin. Please contact support for assistance.', 403);
 
-  const auth = await buildAuthResponse(user, meta);
+  const auth = await buildAuthResponse(ctx, user, meta);
   return { ...auth, isNewUser };
 }
 
 // ── Admin-driven user onboarding (with OTP verification) ──
 
 /** Admin triggers an OTP to a prospective user's phone (dummy 123456 in dev). */
-async function adminRequestUserOtp(phone) {
+async function adminRequestUserOtp(ctx, phone) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   const normalized = normalizePhone(phone);
   if (!normalized) throw new AppError('Enter a valid 10-digit phone number', 400);
   const existing = await User.findOne({ phone: normalized });
   if (existing) throw new AppError('A user with this phone already exists', 409);
-  return otpService.requestOtp(normalized);
+  return otpService.requestOtp(ctx, normalized);
 }
 
 /**
  * Admin creates a user after verifying the OTP. Applies the same signup perks
  * as a real app signup. Does NOT mint tokens — returns the created user only.
  */
-async function adminCreateUser({ phone, code, name, email }) {
+async function adminCreateUser(ctx, { phone, code, name, email }) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const AdminSettings = ctx.model('AdminSettings');
   const normalized = normalizePhone(phone);
   if (!normalized) throw new AppError('Enter a valid 10-digit phone number', 400);
-  await otpService.verifyOtp(normalized, code);
+  await otpService.verifyOtp(ctx, normalized, code);
 
   let user = await User.findOne({ phone: normalized });
   if (user) throw new AppError('A user with this phone already exists', 409);
@@ -105,7 +114,7 @@ async function adminCreateUser({ phone, code, name, email }) {
   // Same new-user perks as the public flow (admin chose to apply them).
   const settings = await AdminSettings.get();
   if (settings.signupBonusEnabled && settings.signupBonus > 0) {
-    await walletService.credit({
+    await walletService.credit(ctx, {
       userId: user._id,
       amount: settings.signupBonus,
       source: 'bonus',
@@ -122,7 +131,10 @@ async function adminCreateUser({ phone, code, name, email }) {
 }
 
 /** Rotate refresh token; detect reuse and revoke the whole family. */
-async function refresh(rawToken, meta = {}) {
+async function refresh(ctx, rawToken, meta = {}) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
+  const RefreshToken = ctx.model('RefreshToken');
   if (!rawToken) throw new AppError('Refresh token required', 400);
   const tokenHash = sha256(rawToken);
   const record = await RefreshToken.findOne({ tokenHash });
@@ -147,12 +159,16 @@ async function refresh(rawToken, meta = {}) {
   return { accessToken: signAccess(user), refreshToken: newRaw };
 }
 
-async function logout(rawToken) {
+async function logout(ctx, rawToken) {
+  ctx = ctx || defaultContext();
+  const RefreshToken = ctx.model('RefreshToken');
   if (!rawToken) return;
   await RefreshToken.updateOne({ tokenHash: sha256(rawToken) }, { $set: { revokedAt: new Date() } });
 }
 
-async function me(userId) {
+async function me(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   const user = await User.findById(userId).populate('astrologerProfile');
   if (!user) throw new AppError('User not found', 404);
   return user;
@@ -168,7 +184,9 @@ async function me(userId) {
  *
  * @param {object} [device] { deviceId, deviceName, deviceModel, osVersion, appVersion }
  */
-async function registerFcmToken(userId, token, platform = 'android', device = {}) {
+async function registerFcmToken(ctx, userId, token, platform = 'android', device = {}) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   const now = new Date();
   const clip = (s, n) => (s == null ? undefined : String(s).slice(0, n));
   const entry = {
@@ -195,7 +213,9 @@ async function registerFcmToken(userId, token, platform = 'android', device = {}
   await User.updateOne({ _id: userId }, { $push: { fcmTokens: entry } });
 }
 
-async function removeFcmToken(userId, token) {
+async function removeFcmToken(ctx, userId, token) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   await User.updateOne({ _id: userId }, { $pull: { fcmTokens: { token } } });
 }
 

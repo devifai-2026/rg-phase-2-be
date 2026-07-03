@@ -1,6 +1,7 @@
 const path = require('path');
 const env = require('../config/env');
 const logger = require('../utils/logger');
+const { defaultContext } = require('../utils/tenantContext');
 
 /**
  * GCP Cloud Translation wrapper. Used at INSERT time to pre-translate dynamic
@@ -71,13 +72,14 @@ async function localize(text) {
  * @param {Object} opts
  * @param {number} opts.limit   max documents to process this run (default 200)
  */
-async function backfillMissing({ limit = 200 } = {}) {
+async function backfillMissing(ctx, { limit = 200 } = {}) {
+  ctx = ctx || defaultContext();
   const logger = require('../utils/logger');
   if (!configured()) {
     logger.info('translate.backfill skipped — Translate not configured');
     return { scanned: 0, updated: 0, skipped: true };
   }
-  const AstrologerProfile = require('../models/AstrologerProfile');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const targets = LANGUAGES.filter((l) => l !== 'en');
 
   // Candidates: have a bio, but bioI18n is unset or thinner than expected.
@@ -131,10 +133,11 @@ async function backfillMissing({ limit = 200 } = {}) {
  * @param {string} lang   target language code
  * @returns {Promise<string>}
  */
-async function localizeText(text, lang) {
+async function localizeText(ctx, text, lang) {
+  ctx = ctx || defaultContext();
   const src = String(text || '');
   if (!src.trim() || !lang || lang === 'en' || !LANGUAGES.includes(lang)) return src;
-  const TranslationCache = require('../models/TranslationCache');
+  const TranslationCache = ctx.model('TranslationCache');
   const hash = TranslationCache.hashOf(src);
   try {
     const hit = await TranslationCache.findOne({ hash, lang }).select('text').lean();
@@ -151,8 +154,9 @@ async function localizeText(text, lang) {
 }
 
 /** Localize many strings for one language in parallel (uses the cache). */
-async function localizeMany(texts, lang) {
-  return Promise.all((texts || []).map((t) => localizeText(t, lang)));
+async function localizeMany(ctx, texts, lang) {
+  ctx = ctx || defaultContext();
+  return Promise.all((texts || []).map((t) => localizeText(ctx, t, lang)));
 }
 
 /**
@@ -165,7 +169,8 @@ async function localizeMany(texts, lang) {
  * (field, language) translations actually performed, `characters` = total source
  * chars sent to GCP.
  */
-async function runFullTranslation({ limit = 2000 } = {}) {
+async function runFullTranslation(ctx, { limit = 2000 } = {}) {
+  ctx = ctx || defaultContext();
   if (!configured()) return { configured: false, lines: 0, characters: 0, byModel: {}, alreadyDone: 0, unchanged: 0, totalPairs: 0 };
   const targets = LANGUAGES.filter((l) => l !== 'en');
   let lines = 0;          // NEW translations performed this run
@@ -178,7 +183,7 @@ async function runFullTranslation({ limit = 2000 } = {}) {
   const bump = (model, chars) => { byModel[model] = (byModel[model] || 0) + 1; lines += 1; characters += chars; };
 
   // ── 1) Astrologer bios → bioI18n ──
-  const AstrologerProfile = require('../models/AstrologerProfile');
+  const AstrologerProfile = ctx.model('AstrologerProfile');
   const profiles = await AstrologerProfile.find({ bio: { $exists: true, $ne: '' } }).select('bio bioI18n').limit(limit);
   for (const doc of profiles) {
     const cur = doc.bioI18n || new Map();
@@ -202,7 +207,7 @@ async function runFullTranslation({ limit = 2000 } = {}) {
   //        engine (not GCP) and are stored on the profile like bioI18n. Only
   //        fills locales that are missing/stale so an admin-corrected name isn't
   //        clobbered on a re-run. ──
-  const TranslationCache = require('../models/TranslationCache');
+  const TranslationCache = ctx.model('TranslationCache');
   const transliterateService = require('./transliterateService');
   if (transliterateService.available()) {
     const namedProfiles = await AstrologerProfile.find({ displayName: { $exists: true, $ne: '' } })
@@ -228,7 +233,7 @@ async function runFullTranslation({ limit = 2000 } = {}) {
 
   // ── 2) Product name + description → into the shared translate cache so reads
   //       (localizeText) are instant. (Products have no i18n field; we cache.) ──
-  const Product = require('../models/Product');
+  const Product = ctx.model('Product');
   const products = await Product.find({ isActive: true }).select('name description').limit(limit).lean();
   for (const p of products) {
     for (const field of ['name', 'description']) {
@@ -250,7 +255,7 @@ async function runFullTranslation({ limit = 2000 } = {}) {
 
   // ── 3) Pooja types (name + description) → cache ──
   try {
-    const PoojaType = require('../models/PoojaType');
+    const PoojaType = ctx.model('PoojaType');
     const poojas = await PoojaType.find({}).select('name description').limit(limit).lean();
     for (const p of poojas) {
       for (const field of ['name', 'description']) {
@@ -276,7 +281,7 @@ async function runFullTranslation({ limit = 2000 } = {}) {
   //       non-English language (matches the per-endpoint serializers). ──
   const prewarm = async (modelName, fields, label, filter = {}) => {
     try {
-      const Model = require(`../models/${modelName}`);
+      const Model = ctx.model(modelName);
       const rows = await Model.find(filter).select(fields.join(' ')).limit(limit).lean();
       for (const r of rows) {
         for (const field of fields) {
@@ -315,17 +320,18 @@ let _run = { running: false, startedAt: null, finishedAt: null, lastResult: null
 /** Kick off a full translation in the BACKGROUND (no-op if one's already
  *  running). Returns the current state immediately. Poll getRunState() for
  *  progress/result. */
-function startFullTranslation() {
+function startFullTranslation(ctx) {
+  ctx = ctx || defaultContext();
   if (_run.running) return { ..._run, alreadyRunning: true };
   const startedAt = new Date();
   _run = { running: true, startedAt, finishedAt: null, lastResult: null, error: null };
   // Don't await — let it run; the admin polls getRunState().
-  runFullTranslation({ limit: 5000 })
+  runFullTranslation(ctx, { limit: 5000 })
     .then(async (res) => {
       const finishedAt = new Date();
       _run = { running: false, startedAt, finishedAt, lastResult: res, error: null };
       try {
-        const TranslationRun = require('../models/TranslationRun');
+        const TranslationRun = ctx.model('TranslationRun');
         await TranslationRun.create({
           startedAt, finishedAt, durationMs: finishedAt - startedAt, status: 'completed',
           lines: res.lines || 0, characters: res.characters || 0, byModel: res.byModel || {},
@@ -337,7 +343,7 @@ function startFullTranslation() {
       const finishedAt = new Date();
       _run = { running: false, startedAt, finishedAt, lastResult: null, error: e.message };
       try {
-        const TranslationRun = require('../models/TranslationRun');
+        const TranslationRun = ctx.model('TranslationRun');
         await TranslationRun.create({
           startedAt, finishedAt, durationMs: finishedAt - startedAt, status: 'failed', error: e.message,
         });

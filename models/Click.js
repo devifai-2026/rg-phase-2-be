@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * First-party click event for the landing-page heatmap. Coordinates are stored
@@ -24,4 +25,4 @@ const clickSchema = new mongoose.Schema(
 
 clickSchema.index({ path: 1, device: 1, createdAt: -1 });
 
-module.exports = mongoose.model('Click', clickSchema);
+module.exports = defineModel('Click', clickSchema);

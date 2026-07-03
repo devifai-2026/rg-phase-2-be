@@ -1,7 +1,4 @@
 const asyncHandler = require('../utils/asyncHandler');
-const Gift = require('../models/Gift');
-const GiftTransaction = require('../models/GiftTransaction');
-const AdminSettings = require('../models/AdminSettings');
 const walletService = require('../services/walletService');
 const notificationService = require('../services/notificationService');
 const emit = require('../websockets/emit');
@@ -10,6 +7,8 @@ const AppError = require('../utils/AppError');
 const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 exports.list = asyncHandler(async (req, res) => {
+  const Gift = req.model('Gift');
+  const AdminSettings = req.model('AdminSettings');
   const items = await Gift.find(req.query.all === 'true' ? {} : { isActive: true }).sort({ tokenCost: 1 });
   // Attach the resolved ₹ cost (tokenCost × giftTokenRupees) so the app can do a
   // pre-send balance check without knowing the token rate. Non-breaking: just an
@@ -26,6 +25,9 @@ exports.list = asyncHandler(async (req, res) => {
  *  `sessionId`     → 1-on-1 chat/call/video gift (emits to session room).
  *  `liveSessionId` → live-broadcast superchat (emits to the live room + tallies). */
 exports.send = asyncHandler(async (req, res) => {
+  const Gift = req.model('Gift');
+  const AdminSettings = req.model('AdminSettings');
+  const GiftTransaction = req.model('GiftTransaction');
   const { giftId, receiverId, sessionId, liveSessionId } = req.body;
   if (String(receiverId) === String(req.user._id)) throw new AppError('Cannot gift yourself', 400);
 
@@ -37,7 +39,7 @@ exports.send = asyncHandler(async (req, res) => {
   const ref = randomToken(8);
 
   // Debit sender (atomic, never-negative).
-  await walletService.debit({
+  await walletService.debit(req.ctx, {
     userId: req.user._id,
     amount: amountRupees,
     source: 'gift',
@@ -47,7 +49,7 @@ exports.send = asyncHandler(async (req, res) => {
   });
 
   // Credit receiver.
-  await walletService.credit({
+  await walletService.credit(req.ctx, {
     userId: receiverId,
     amount: amountRupees,
     source: 'gift',
@@ -60,7 +62,7 @@ exports.send = asyncHandler(async (req, res) => {
   let relatedSession;
   let sessionAlias;
   if (sessionId) {
-    const Session = require('../models/Session');
+    const Session = req.model('Session');
     const sess = await Session.findOne({ sessionId }).select('_id seekerAlias');
     if (sess) { relatedSession = sess._id; sessionAlias = sess.seekerAlias; }
   }
@@ -75,8 +77,8 @@ exports.send = asyncHandler(async (req, res) => {
   });
 
   // Realtime updates.
-  emit.toUser(req.user._id, 'wallet-updated', await walletService.getBalance(req.user._id));
-  emit.toUser(receiverId, 'wallet-updated', await walletService.getBalance(receiverId));
+  emit.toUser(req.user._id, 'wallet-updated', await walletService.getBalance(req.ctx, req.user._id));
+  emit.toUser(receiverId, 'wallet-updated', await walletService.getBalance(req.ctx, receiverId));
   // In-chat gift → live bubble for both sides. Identity stays the alias so the
   // astrologer never sees the sender's real id/name.
   if (sessionId) {
@@ -91,7 +93,7 @@ exports.send = asyncHandler(async (req, res) => {
   // Live-broadcast superchat → bump the running tally + bubble it to the whole
   // room under the sender's REAL name (a live room is public, not anonymous).
   if (liveSessionId) {
-    const LiveSession = require('../models/LiveSession');
+    const LiveSession = req.model('LiveSession');
     const ls = await LiveSession.findByIdAndUpdate(
       liveSessionId,
       { $inc: { superchatTotal: amountRupees, giftCount: 1 } },
@@ -109,7 +111,7 @@ exports.send = asyncHandler(async (req, res) => {
       });
     }
   }
-  await notificationService.notify(receiverId, {
+  await notificationService.notify(req.ctx, receiverId, {
     type: 'gift_received',
     title: 'You received a gift!',
     body: `${gift.name}`,
@@ -124,7 +126,8 @@ exports.send = asyncHandler(async (req, res) => {
  * :id = AstrologerProfile id. Returns { total, items:[{name,image,emoji,count}] }.
  */
 exports.receivedForAstrologer = asyncHandler(async (req, res) => {
-  const AstrologerProfile = require('../models/AstrologerProfile');
+  const AstrologerProfile = req.model('AstrologerProfile');
+  const GiftTransaction = req.model('GiftTransaction');
   const profile = await AstrologerProfile.findById(req.params.id).select('user');
   if (!profile) throw new AppError('Astrologer not found', 404);
 
@@ -142,15 +145,18 @@ exports.receivedForAstrologer = asyncHandler(async (req, res) => {
 
 // ── Admin CRUD ──
 exports.create = asyncHandler(async (req, res) => {
+  const Gift = req.model('Gift');
   const gift = await Gift.create(req.body);
   res.status(201).json({ success: true, data: gift });
 });
 exports.update = asyncHandler(async (req, res) => {
+  const Gift = req.model('Gift');
   const gift = await Gift.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!gift) throw new AppError('Gift not found', 404);
   res.json({ success: true, data: gift });
 });
 exports.remove = asyncHandler(async (req, res) => {
+  const Gift = req.model('Gift');
   await Gift.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });

@@ -1,7 +1,14 @@
 const asyncHandler = require('../utils/asyncHandler');
 const authService = require('../services/authService');
 
-const meta = (req) => ({ userAgent: req.headers['user-agent'], ip: req.ip });
+// Request context carried into authService. `tenantSlug` is baked into the
+// signed access token so the tenantResolver can identify the tenant from the
+// token alone (multi-tenant mode). undefined in single-tenant mode → omitted.
+const meta = (req) => ({
+  userAgent: req.headers['user-agent'],
+  ip: req.ip,
+  tenantSlug: req.tenant && !req.tenant.isDefault ? req.tenant.slug : undefined,
+});
 
 exports.requestOtp = asyncHandler(async (req, res) => {
   const data = await authService.requestOtp(req.body.phone);

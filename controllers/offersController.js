@@ -1,17 +1,16 @@
 const asyncHandler = require('../utils/asyncHandler');
-const Coupon = require('../models/Coupon');
-const Bundle = require('../models/Bundle');
-const Product = require('../models/Product');
 const offersService = require('../services/offersService');
 const AppError = require('../utils/AppError');
 const { reqLang, localizeEach } = require('../utils/i18nReq');
 
 // ── Coupons (admin CRUD) ──
 exports.listCoupons = asyncHandler(async (req, res) => {
+  const Coupon = req.model('Coupon');
   const items = await Coupon.find().sort({ createdAt: -1 });
   res.json({ success: true, data: items });
 });
 exports.createCoupon = asyncHandler(async (req, res) => {
+  const Coupon = req.model('Coupon');
   const body = { ...req.body, code: String(req.body.code).toUpperCase().trim() };
   const c = await Coupon.create(body);
   // System template: announce the new offer to all users (if enabled).
@@ -22,17 +21,20 @@ exports.createCoupon = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: c });
 });
 exports.updateCoupon = asyncHandler(async (req, res) => {
+  const Coupon = req.model('Coupon');
   const c = await Coupon.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!c) throw new AppError('Coupon not found', 404);
   res.json({ success: true, data: c });
 });
 exports.deleteCoupon = asyncHandler(async (req, res) => {
+  const Coupon = req.model('Coupon');
   await Coupon.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
 
 // ── Public: validate a coupon against a cart ──
 exports.validateCoupon = asyncHandler(async (req, res) => {
+  const Product = req.model('Product');
   const { code, items = [] } = req.body;
   // Build cart from product ids + qty (prices resolved server-side, never trusted from client).
   const ids = items.map((i) => i.productId);
@@ -43,44 +45,49 @@ exports.validateCoupon = asyncHandler(async (req, res) => {
     return p ? { product: p._id, category: p.category, price: p.price, qty: i.qty } : null;
   }).filter(Boolean);
   const subtotal = cartItems.reduce((s, it) => s + it.price * it.qty, 0);
-  const result = await offersService.validateCoupon({ code, userId: req.user?._id, cart: { items: cartItems, subtotal } });
+  const result = await offersService.validateCoupon(req.ctx, { code, userId: req.user?._id, cart: { items: cartItems, subtotal } });
   res.json({ success: true, data: { ...result, subtotal, payable: subtotal - result.discount } });
 });
 
 // ── Bundles (admin CRUD) ──
 exports.listBundles = asyncHandler(async (req, res) => {
+  const Bundle = req.model('Bundle');
   const items = await Bundle.find().sort({ createdAt: -1 }).populate('products', 'name price').populate('anchorProduct', 'name');
   res.json({ success: true, data: items });
 });
 exports.createBundle = asyncHandler(async (req, res) => {
+  const Bundle = req.model('Bundle');
   if (!req.body.products || req.body.products.length < 2) throw new AppError('A bundle needs at least 2 products', 400);
   const bd = await Bundle.create(req.body);
   res.status(201).json({ success: true, data: bd });
 });
 exports.updateBundle = asyncHandler(async (req, res) => {
+  const Bundle = req.model('Bundle');
   const bd = await Bundle.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!bd) throw new AppError('Bundle not found', 404);
   res.json({ success: true, data: bd });
 });
 exports.deleteBundle = asyncHandler(async (req, res) => {
+  const Bundle = req.model('Bundle');
   await Bundle.findByIdAndDelete(req.params.id);
   res.json({ success: true });
 });
 
 // ── Public: priced bundles for a product page ──
 exports.bundlesForProduct = asyncHandler(async (req, res) => {
-  const data = await offersService.bundlesForProduct(req.params.productId);
+  const data = await offersService.bundlesForProduct(req.ctx, req.params.productId);
   res.json({ success: true, data });
 });
 
 // ── Public: all active priced bundles (Bundles section / offers strip) ──
 exports.publicBundles = asyncHandler(async (req, res) => {
-  const data = await offersService.listActiveBundles({ limit: Math.min(parseInt(req.query.limit || '50', 10), 100) });
+  const data = await offersService.listActiveBundles(req.ctx, { limit: Math.min(parseInt(req.query.limit || '50', 10), 100) });
   res.json({ success: true, data });
 });
 
 // ── Public: active coupons (offer strip; public-safe fields only) ──
 exports.publicCoupons = asyncHandler(async (req, res) => {
+  const Coupon = req.model('Coupon');
   const now = new Date();
   const coupons = await Coupon.find({
     isActive: true,

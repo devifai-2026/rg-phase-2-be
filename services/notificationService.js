@@ -1,6 +1,4 @@
-const Notification = require('../models/Notification');
-const Broadcast = require('../models/Broadcast');
-const User = require('../models/User');
+const { defaultContext } = require('../utils/tenantContext');
 const pubsubService = require('./pubsubService');
 const bqService = require('./bqService');
 const translateService = require('./translateService');
@@ -15,7 +13,9 @@ const logger = require('../utils/logger');
  * place every point notification passes through, so localizing here covers the
  * in-app record, the live socket event, AND the FCM push in one shot.
  */
-async function localizeForUser(userId, title, body) {
+async function localizeForUser(ctx, userId, title, body) {
+  ctx = ctx || defaultContext();
+  const User = ctx.model('User');
   try {
     const u = await User.findById(userId).select('language').lean();
     const lang = u && u.language;
@@ -45,11 +45,14 @@ async function localizeForUser(userId, title, body) {
  *   pushOnly  when true, skip the in-app record + socket event and ONLY send a
  *             push (used by bulk broadcasts the admin marks "push-only").
  */
-async function notify(userId, { type = 'system', title, body, data = {}, pushOnly = false } = {}) {
+async function notify(ctx, userId, { type = 'system', title, body, data = {}, pushOnly = false } = {}) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
+  const Broadcast = ctx.model('Broadcast');
   // Localize to the recipient's app language up front (falls back to the given
   // text). The user-facing record/socket/push all use the localized copy; the
   // admin Broadcast LOG keeps the ORIGINAL text so logs stay consistent + searchable.
-  const { title: locTitle, body: locBody } = await localizeForUser(userId, title, body);
+  const { title: locTitle, body: locBody } = await localizeForUser(ctx, userId, title, body);
 
   // Log row first so its id can attribute taps (consistent with broadcasts).
   let broadcastId = null;
@@ -89,7 +92,8 @@ async function notify(userId, { type = 'system', title, body, data = {}, pushOnl
   }
 
   // Queue push (offline delivery) — Pub/Sub fan-out, falls back to Mongo queue.
-  await pubsubService.publish('notifications', { userId: String(userId), title: locTitle, body: locBody, data: payload });
+  // tenantSlug rides along so the fcm_send job resolves the right tenant DB for tokens.
+  await pubsubService.publish('notifications', { userId: String(userId), title: locTitle, body: locBody, data: payload }, { tenantSlug: ctx && ctx.tenant && ctx.tenant.slug });
 
   // Record that a notification was TRIGGERED (BigQuery; no-op when disabled).
   bqService.logNotification({ event: 'triggered', channel: pushOnly ? 'push' : 'inapp', user_id: String(userId), type, title });
@@ -97,7 +101,9 @@ async function notify(userId, { type = 'system', title, body, data = {}, pushOnl
   return notification;
 }
 
-async function list(userId, { page = 1, limit = 20, unreadOnly } = {}) {
+async function list(ctx, userId, { page = 1, limit = 20, unreadOnly } = {}) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
   const q = { user: userId };
   if (unreadOnly) q.isRead = false;
   const skip = (page - 1) * limit;
@@ -109,21 +115,29 @@ async function list(userId, { page = 1, limit = 20, unreadOnly } = {}) {
   return { items, total, unread, page, limit };
 }
 
-async function markRead(userId, id) {
+async function markRead(ctx, userId, id) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
   await Notification.updateOne({ _id: id, user: userId }, { $set: { isRead: true } });
 }
 
-async function markAllRead(userId) {
+async function markAllRead(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
   await Notification.updateMany({ user: userId, isRead: false }, { $set: { isRead: true } });
 }
 
 /** Delete a single notification (scoped to the owning user). */
-async function deleteOne(userId, id) {
+async function deleteOne(ctx, userId, id) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
   await Notification.deleteOne({ _id: id, user: userId });
 }
 
 /** Clear (delete) all of a user's notifications. */
-async function clearAll(userId) {
+async function clearAll(ctx, userId) {
+  ctx = ctx || defaultContext();
+  const Notification = ctx.model('Notification');
   const res = await Notification.deleteMany({ user: userId });
   return res.deletedCount || 0;
 }

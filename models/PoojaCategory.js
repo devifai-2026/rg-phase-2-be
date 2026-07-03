@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defineModel } = require('./registry');
 
 /**
  * Admin-managed pooja category (e.g. Family, Person, Vastu, Health). Each
@@ -17,4 +18,4 @@ const poojaCategorySchema = new mongoose.Schema(
 // Category names are unique (case-insensitive) so the dropdown has no dupes.
 poojaCategorySchema.index({ name: 1 }, { unique: true, collation: { locale: 'en', strength: 2 } });
 
-module.exports = mongoose.model('PoojaCategory', poojaCategorySchema);
+module.exports = defineModel('PoojaCategory', poojaCategorySchema);
