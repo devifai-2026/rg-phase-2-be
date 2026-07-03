@@ -63,6 +63,30 @@ if (env.saas.enabled) {
 // Marketing landing page + any static assets (served at the web root).
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Caddy on-demand TLS authorization. Caddy calls this (?domain=<host>) before
+// issuing a cert for a host, so we only mint certs for the platform host or a
+// KNOWN tenant subdomain (prevents cert-abuse for arbitrary hosts). 200 = allow,
+// 403 = deny. No auth/tenant resolution (Caddy hits it for unknown hosts).
+app.get('/internal/tls-check', async (req, res) => {
+  try {
+    const domain = String(req.query.domain || '').toLowerCase().split(':')[0];
+    if (!domain) return res.sendStatus(403);
+    // Always allow the platform's own root host(s).
+    const root = (env.saas.rootDomain || '').toLowerCase();
+    if (domain === root) return res.sendStatus(200);
+    if (!env.saas.enabled) return res.sendStatus(403);
+    // Allow a tenant subdomain that resolves to an active tenant.
+    const { slugFromHost } = require('./middlewares/tenantResolver');
+    const slug = slugFromHost(domain);
+    if (!slug) return res.sendStatus(403);
+    const { Tenant } = require('./models/control');
+    const exists = await Tenant.exists({ slug, status: 'active' });
+    return res.sendStatus(exists ? 200 : 403);
+  } catch (e) {
+    return res.sendStatus(403);
+  }
+});
+
 // Health probes (no auth, no audit).
 app.get('/healthz', (req, res) => res.json({ status: 'ok', instance: env.instanceId }));
 app.get('/readyz', (req, res) => {
