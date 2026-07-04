@@ -44,14 +44,26 @@ function attachDefault(req) {
 }
 
 // ── Slug extraction ─────────────────────────────────────────────────────────
+// Platform-reserved leftmost labels that are NEVER a tenant slug.
+const RESERVED_LABELS = new Set(['www', 'owner', 'admin', 'api', 'app', 'apnaastro']);
+
 function slugFromHost(host) {
   if (!host) return null;
   const h = host.split(':')[0].toLowerCase(); // strip port
-  const root = (env.saas.rootDomain || '').toLowerCase();
-  if (root && h.endsWith('.' + root)) {
-    // <slug>.<root> or <slug>.admin.<root>
-    const label = h.slice(0, h.length - root.length - 1).split('.')[0];
-    if (label && label !== 'www' && label !== 'owner') return label;
+  // Support multiple roots (e.g. sslip.io + admin.devifai.in + devifai.in). Try
+  // the MOST SPECIFIC (longest) root first so <slug>.admin.devifai.in yields
+  // "<slug>" and not a wrong label when devifai.in is also a root.
+  const roots = (env.saas.rootDomains && env.saas.rootDomains.length
+    ? env.saas.rootDomains
+    : [env.saas.rootDomain].filter(Boolean))
+    .slice()
+    .sort((a, b) => b.length - a.length);
+  for (const root of roots) {
+    if (root && h.endsWith('.' + root)) {
+      const label = h.slice(0, h.length - root.length - 1).split('.')[0];
+      if (label && !RESERVED_LABELS.has(label)) return label;
+      return null; // a reserved label under a root → not a tenant
+    }
   }
   return null;
 }

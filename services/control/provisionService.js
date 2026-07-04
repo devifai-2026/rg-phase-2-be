@@ -109,6 +109,8 @@ async function seedTenantDb(ctx, branding = {}) {
     // Brand name shown inside both apps — the key de-branding lever so a tenant's
     // build never shows another tenant's name.
     if (branding.displayName) cfg.appName = branding.displayName;
+    // Brand logo (apps + tenant admin login); initials fallback when unset.
+    if (branding.logoUrl) cfg.logoUrl = branding.logoUrl;
     if (branding.primaryColor || branding.accentColor) {
       const tokenPatch = {};
       if (branding.primaryColor) tokenPatch.red = branding.primaryColor;   // primary brand accent

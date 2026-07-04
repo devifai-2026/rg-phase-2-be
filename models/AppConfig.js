@@ -52,6 +52,11 @@ const appConfigSchema = new mongoose.Schema(
     // it from GET /app-config and substitute it wherever the brand name appears.
     appName: { type: String, default: '' },
 
+    // Brand logo URL, shown IN the apps + the tenant admin login (with the
+    // tenant's initials as the fallback when unset). Set at provisioning from
+    // Tenant.branding.logoUrl and editable by the tenant admin.
+    logoUrl: { type: String, default: '' },
+
     // Brand theme tokens, editable from the admin Theme Studio. `enabled` gates
     // whether the app uses these at all; when false (or empty) the app keeps its
     // compiled tokens. Each set is dark/light; unset tokens fall back per-token.

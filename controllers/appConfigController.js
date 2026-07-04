@@ -186,7 +186,7 @@ exports.publicConfig = asyncHandler(async (req, res) => {
     localizeEach(lessons, lang, ['title']),
   ]);
 
-  res.json({ success: true, data: { appName: cfg.appName || '', sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
+  res.json({ success: true, data: { appName: cfg.appName || '', logoUrl: cfg.logoUrl || '', sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
 });
 
 // Drop null/empty/undefined values so the app only overrides what's actually set.

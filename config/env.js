@@ -245,10 +245,17 @@ const env = {
       process.env.CONTROL_MONGO_URI ||
       'mongodb://127.0.0.1:27017/saas_control',
 
-    // Root domain that per-tenant subdomains hang off of (admin + landing).
-    // e.g. rootDomain=example.com → <slug>.example.com landing,
-    // <slug>.admin.example.com tenant admin, owner.example.com owner console.
-    rootDomain: process.env.SAAS_ROOT_DOMAIN || '',
+    // Root domain(s) that per-tenant subdomains hang off of (admin + landing).
+    // Comma-separated to support multiple roots at once, e.g.
+    //   SAAS_ROOT_DOMAIN=34-93-133-182.sslip.io,admin.devifai.in,devifai.in
+    // → <slug>.34-93-133-182.sslip.io, <slug>.admin.devifai.in, <slug>.devifai.in
+    // all resolve to the tenant `<slug>`. `rootDomain` keeps the first for
+    // back-compat; `rootDomains` is the full list slugFromHost() tries.
+    rootDomain: (process.env.SAAS_ROOT_DOMAIN || '').split(',')[0].trim(),
+    rootDomains: (process.env.SAAS_ROOT_DOMAIN || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
 
     // Max live per-tenant mongoose connections kept warm (LRU-evicted).
     maxTenantConnections: parseInt(process.env.SAAS_MAX_TENANT_CONNECTIONS || '50', 10),
