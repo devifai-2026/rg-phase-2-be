@@ -305,6 +305,15 @@ const env = {
     callbackBase: process.env.BUILD_CALLBACK_BASE || '',
   },
 
+  // Google Cloud VM metrics (Cloud Monitoring) for the PO console dashboard.
+  // On the VM these read via Application Default Credentials (the default
+  // compute SA has monitoring.viewer) — no key needed. Unconfigured → the
+  // console hides the VM section. projectId defaults to the GCP data project.
+  gcpMonitoring: {
+    projectId: process.env.GCP_MONITORING_PROJECT || process.env.GCS_PROJECT_ID || 'rudraganga',
+    instanceName: process.env.GCP_VM_INSTANCE || 'rg-backend-vm',
+  },
+
   // NOTE: admin-tunable values (withdrawal threshold, escalation thresholds,
   // signup bonus, gift token rate, ring timeout, max call minutes) live in the
   // `AdminSettings` collection so admins can change them at runtime via

@@ -1,7 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
-const { mask } = require('../utils/secretCrypto');
+// (secrets are returned unmasked to the owner console — the PO owns these values)
 const { signOwner } = require('../utils/ownerToken');
 const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob } = require('../models/control');
 const provisionService = require('../services/control/provisionService');
@@ -52,16 +52,20 @@ exports.getTenant = asyncHandler(async (req, res) => {
   const tenant = await Tenant.findOne({ slug: req.params.slug }).lean();
   if (!tenant) throw new AppError('Tenant not found', 404);
   const subscription = await Subscription.findOne({ tenant: tenant._id }).lean();
-  // Control-plane secrets — masked (never expose plaintext).
+  // Control-plane secrets. The PO OWNS these values (they set them), so the
+  // console shows the real decrypted values — not masked — so they can verify
+  // and copy them. This endpoint is owner-only (ownerProtect).
   const secretDoc = await TenantSecret.findOne({ tenant: tenant._id });
-  const maskedSecrets = secretDoc
-    ? Object.fromEntries(Object.entries(secretDoc.decrypted()).map(([k, v]) => [k, v ? mask(v) : '']))
+  const secrets = secretDoc
+    ? Object.fromEntries(Object.entries(secretDoc.decrypted()).map(([k, v]) => [k, v || '']))
     : {};
   // TENANT-DB config (theme, payment gateways, VedicAstro, Agora) — the source of
   // truth the apps read. Surfaced so the console reflects the REAL per-tenant
   // config, not just the control-plane TenantSecret. Best-effort per tenant DB.
   const config = await tenantConfigSummary(tenant);
-  res.json({ success: true, data: { ...tenant, subscription, secrets: maskedSecrets, config, urls: tenantUrls(tenant) } });
+  // The tenant's admin phone(s) — super_admin users in the tenant DB.
+  const adminPhones = await tenantAdminPhones(tenant);
+  res.json({ success: true, data: { ...tenant, subscription, secrets, config, adminPhone: adminPhones[0] || '', adminPhones, urls: tenantUrls(tenant) } });
 });
 
 // Read the tenant DB's config singletons and return a masked summary for the
@@ -83,7 +87,8 @@ async function tenantConfigSummary(tenant) {
     const [app, pg, va, ag] = await Promise.all([
       AppConfig.get(), PaymentGatewayConfig.get(), VedicAstroConfig.get(), AgoraConfig.get(),
     ]);
-    const set = (v) => (v ? mask(String(v)) : '');
+    // Show real values (owner-only endpoint; the PO set these and needs to verify them).
+    const set = (v) => (v ? String(v) : '');
     return {
       theme: { enabled: !!(app.theme && app.theme.enabled), primary: (app.theme && app.theme.dark && app.theme.dark.red) || '', accent: (app.theme && app.theme.dark && app.theme.dark.gold) || '' },
       appName: app.appName || '',
@@ -100,6 +105,26 @@ async function tenantConfigSummary(tenant) {
   } catch (e) {
     require('../utils/logger').warn('tenantConfigSummary failed', e.message);
     return null;
+  }
+}
+
+// The tenant's admin phone(s): super_admin users in the tenant DB. These can
+// OTP-login to <slug>.admin. Best-effort — returns [] if the DB is unreachable.
+async function tenantAdminPhones(tenant) {
+  try {
+    const { getTenantDb, modelFor } = require('../config/tenantConnections');
+    let dbUri;
+    if (!tenant.dbOnDefaultCluster) {
+      const s = await TenantSecret.findOne({ tenant: tenant._id });
+      dbUri = s ? s.decrypted().dbUri : undefined;
+    }
+    const db = getTenantDb(tenant, dbUri);
+    const User = modelFor(db, 'User');
+    const admins = await User.find({ role: 'super_admin' }).select('phone').sort({ createdAt: 1 }).lean();
+    return admins.map((a) => a.phone).filter(Boolean);
+  } catch (e) {
+    require('../utils/logger').warn('tenantAdminPhones failed', e.message);
+    return [];
   }
 }
 
@@ -299,5 +324,13 @@ exports.overview = asyncHandler(async (req, res) => {
 // each tenant's own DB — heavier than /overview, so it's a separate endpoint.
 exports.analytics = asyncHandler(async (req, res) => {
   const data = await require('../services/control/analyticsService').report();
+  res.json({ success: true, data });
+});
+
+// Live Google Cloud VM metrics (CPU / memory / disk / network) from Cloud
+// Monitoring, for the dashboard's infrastructure charts. ?hours=3 (default).
+exports.vmMetrics = asyncHandler(async (req, res) => {
+  const hours = Math.min(Math.max(parseInt(req.query.hours || '3', 10) || 3, 1), 168);
+  const data = await require('../services/control/vmMetricsService').report({ hours });
   res.json({ success: true, data });
 });

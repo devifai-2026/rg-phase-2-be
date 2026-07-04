@@ -22,6 +22,7 @@ router.use(ownerProtect);
 router.get('/me', ctrl.me);
 router.get('/overview', ctrl.overview);
 router.get('/analytics', ctrl.analytics);
+router.get('/vm-metrics', ctrl.vmMetrics);
 
 // Tenants
 router.get('/tenants', ctrl.listTenants);
