@@ -14,6 +14,7 @@ const subscriptionSchema = require('./schemas/subscriptionSchema');
 const tenantSecretSchema = require('./schemas/tenantSecretSchema');
 const ownerUserSchema = require('./schemas/ownerUserSchema');
 const buildJobSchema = require('./schemas/buildJobSchema');
+const leadSchema = require('./schemas/leadSchema');
 
 const conn = getControlConnection();
 
@@ -24,5 +25,6 @@ const Subscription = conn.model('Subscription', subscriptionSchema);
 const TenantSecret = conn.model('TenantSecret', tenantSecretSchema);
 const OwnerUser = conn.model('OwnerUser', ownerUserSchema);
 const BuildJob = conn.model('BuildJob', buildJobSchema);
+const Lead = conn.model('Lead', leadSchema);
 
-module.exports = { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, connection: conn };
+module.exports = { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, connection: conn };

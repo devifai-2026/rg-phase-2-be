@@ -3,7 +3,7 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 // (secrets are returned unmasked to the owner console — the PO owns these values)
 const { signOwner } = require('../utils/ownerToken');
-const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob } = require('../models/control');
+const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead } = require('../models/control');
 const provisionService = require('../services/control/provisionService');
 const subscriptionService = require('../services/control/subscriptionService');
 const { invalidateTenant } = require('../middlewares/tenantResolver');
@@ -333,4 +333,46 @@ exports.vmMetrics = asyncHandler(async (req, res) => {
   const hours = Math.min(Math.max(parseInt(req.query.hours || '3', 10) || 3, 1), 168);
   const data = await require('../services/control/vmMetricsService').report({ hours });
   res.json({ success: true, data });
+});
+
+// ── Leads ───────────────────────────────────────────────────────────────────
+// PUBLIC: the marketing landing page's contact modal posts here (no auth).
+// Minimal validation + defensive length caps; we always 201 so a scraper can't
+// probe. Never returns the stored doc's internals.
+exports.createLead = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim().slice(0, 120);
+  const phoneDigits = String(b.phone || '').replace(/\D/g, '').slice(0, 15);
+  if (!name || phoneDigits.length < 10) {
+    throw new AppError('Name and a valid phone number are required', 400);
+  }
+  await Lead.create({
+    name,
+    cc: String(b.cc || '+91').trim().slice(0, 6),
+    phone: phoneDigits,
+    email: String(b.email || '').trim().slice(0, 160),
+    intent: String(b.intent || 'General').trim().slice(0, 120),
+    source: String(b.source || 'landing').trim().slice(0, 60),
+    referer: String(req.get('referer') || '').slice(0, 300),
+    userAgent: String(req.get('user-agent') || '').slice(0, 300),
+  });
+  res.status(201).json({ success: true, message: 'Thanks — we will reach out shortly.' });
+});
+
+// OWNER: list leads (newest first), optional ?status= filter.
+exports.listLeads = asyncHandler(async (req, res) => {
+  const q = {};
+  if (req.query.status) q.status = req.query.status;
+  const leads = await Lead.find(q).sort({ createdAt: -1 }).limit(500).lean();
+  res.json({ success: true, data: leads });
+});
+
+// OWNER: update a lead's status / notes (follow-up workflow).
+exports.updateLead = asyncHandler(async (req, res) => {
+  const patch = {};
+  if (req.body.status) patch.status = req.body.status;
+  if (req.body.notes != null) patch.notes = String(req.body.notes).slice(0, 2000);
+  const lead = await Lead.findByIdAndUpdate(req.params.id, patch, { new: true }).lean();
+  if (!lead) throw new AppError('Lead not found', 404);
+  res.json({ success: true, data: lead });
 });

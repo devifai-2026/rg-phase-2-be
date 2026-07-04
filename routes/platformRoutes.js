@@ -16,6 +16,9 @@ router.post('/login', ctrl.login);
 // Must be BEFORE ownerProtect since CI has no owner token.
 router.post('/builds/:id/callback', ctrl.buildCallback);
 
+// Public: marketing landing page contact form submits a lead here (no auth).
+router.post('/leads', ctrl.createLead);
+
 // Everything below requires a valid owner token.
 router.use(ownerProtect);
 
@@ -23,6 +26,10 @@ router.get('/me', ctrl.me);
 router.get('/overview', ctrl.overview);
 router.get('/analytics', ctrl.analytics);
 router.get('/vm-metrics', ctrl.vmMetrics);
+
+// Leads (owner views/manages; public submit is above ownerProtect)
+router.get('/leads', ctrl.listLeads);
+router.patch('/leads/:id', ownerRoleOnly, ctrl.updateLead);
 
 // Tenants
 router.get('/tenants', ctrl.listTenants);
