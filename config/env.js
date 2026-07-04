@@ -292,6 +292,19 @@ const env = {
     baseUrl: process.env.ATLAS_BASE_URL || 'https://cloud.mongodb.com/api/atlas/v2',
   },
 
+  // GitHub Actions — used to dispatch tenant Android builds to CI (the app repos
+  // have Flutter + Android SDK; the API VM can't build). Token needs actions:write
+  // on the app repos. Unconfigured → build dispatch is a no-op (jobs stay queued).
+  github: {
+    token: process.env.GITHUB_BUILD_TOKEN || '',
+    userRepo: process.env.GITHUB_USER_REPO || 'devifai-2026/rg-phase-2-user',
+    astroRepo: process.env.GITHUB_ASTRO_REPO || 'devifai-2026/rg-phase-astrologer',
+    buildWorkflow: process.env.GITHUB_BUILD_WORKFLOW || 'tenant-build.yml',
+    ref: process.env.GITHUB_BUILD_REF || 'main',
+    // Where the CI build POSTs its result back (marks the BuildJob done).
+    callbackBase: process.env.BUILD_CALLBACK_BASE || '',
+  },
+
   // NOTE: admin-tunable values (withdrawal threshold, escalation thresholds,
   // signup bonus, gift token rate, ring timeout, max call minutes) live in the
   // `AdminSettings` collection so admins can change them at runtime via

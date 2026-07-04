@@ -3,7 +3,7 @@ const trackService = require('../services/trackService');
 
 // ── public ingestion ──
 exports.recordClicks = asyncHandler(async (req, res) => {
-  const n = await trackService.recordClicks({
+  const n = await trackService.recordClicks(req.ctx, {
     anonId: req.body.anonId,
     clicks: req.body.clicks,
     ua: req.headers['user-agent'] || '',
@@ -12,17 +12,17 @@ exports.recordClicks = asyncHandler(async (req, res) => {
 });
 
 exports.recordVisit = asyncHandler(async (req, res) => {
-  await trackService.recordVisit({ body: req.body || {}, ua: req.headers['user-agent'] || '', ip: req.ip });
+  await trackService.recordVisit(req.ctx, { body: req.body || {}, ua: req.headers['user-agent'] || '', ip: req.ip });
   res.status(201).json({ success: true });
 });
 
 exports.recordDuration = asyncHandler(async (req, res) => {
-  await trackService.recordDuration({ anonId: req.body.anonId, durationSec: req.body.durationSec });
+  await trackService.recordDuration(req.ctx, { anonId: req.body.anonId, durationSec: req.body.durationSec });
   res.status(201).json({ success: true });
 });
 
 exports.recordSignupEvent = asyncHandler(async (req, res) => {
-  const ok = await trackService.recordSignupEvent({
+  const ok = await trackService.recordSignupEvent(req.ctx, {
     anonId: req.body.anonId,
     form: req.body.form,
     step: req.body.step,
@@ -35,17 +35,17 @@ exports.recordSignupEvent = asyncHandler(async (req, res) => {
 
 // ── super_admin analytics ──
 exports.heatmap = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await trackService.heatmap(req.query) });
+  res.json({ success: true, data: await trackService.heatmap(req.ctx, req.query) });
 });
 
 exports.funnel = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await trackService.funnel(req.query) });
+  res.json({ success: true, data: await trackService.funnel(req.ctx, req.query) });
 });
 
 exports.signupFunnel = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await trackService.signupFunnel(req.query) });
+  res.json({ success: true, data: await trackService.signupFunnel(req.ctx, req.query) });
 });
 
 exports.visitor = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await trackService.visitor(req.params.anonId) });
+  res.json({ success: true, data: await trackService.visitor(req.ctx, req.params.anonId) });
 });

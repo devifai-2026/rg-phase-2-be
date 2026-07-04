@@ -3,7 +3,7 @@ const notificationService = require('../services/notificationService');
 const broadcastService = require('../services/broadcastService');
 
 exports.list = asyncHandler(async (req, res) => {
-  const data = await notificationService.list(req.user._id, {
+  const data = await notificationService.list(req.ctx, req.user._id, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
     unreadOnly: req.query.unread === 'true',
@@ -12,24 +12,24 @@ exports.list = asyncHandler(async (req, res) => {
 });
 
 exports.markRead = asyncHandler(async (req, res) => {
-  await notificationService.markRead(req.user._id, req.params.id);
+  await notificationService.markRead(req.ctx, req.user._id, req.params.id);
   res.json({ success: true });
 });
 
 exports.markAllRead = asyncHandler(async (req, res) => {
-  await notificationService.markAllRead(req.user._id);
+  await notificationService.markAllRead(req.ctx, req.user._id);
   res.json({ success: true });
 });
 
 // Delete a single notification.
 exports.remove = asyncHandler(async (req, res) => {
-  await notificationService.deleteOne(req.user._id, req.params.id);
+  await notificationService.deleteOne(req.ctx, req.user._id, req.params.id);
   res.json({ success: true });
 });
 
 // Clear (delete) all of the user's notifications.
 exports.clearAll = asyncHandler(async (req, res) => {
-  const deleted = await notificationService.clearAll(req.user._id);
+  const deleted = await notificationService.clearAll(req.ctx, req.user._id);
   res.json({ success: true, data: { deleted } });
 });
 
@@ -38,7 +38,7 @@ exports.clearAll = asyncHandler(async (req, res) => {
 // De-duped per (user, broadcast): tapping the in-app AND the push copy of the
 // same notification counts as a single click.
 exports.recordClick = asyncHandler(async (req, res) => {
-  if (req.body.broadcastId) await broadcastService.recordClick(req.body.broadcastId, req.user._id);
+  if (req.body.broadcastId) await broadcastService.recordClick(req.ctx, req.body.broadcastId, req.user._id);
   res.json({ success: true });
 });
 
@@ -48,6 +48,6 @@ exports.recordClick = asyncHandler(async (req, res) => {
 // makes the "Delivered" metric mean "arrived on a device" rather than just
 // "accepted by FCM".
 exports.recordDelivered = asyncHandler(async (req, res) => {
-  if (req.body.broadcastId) await broadcastService.recordDelivered(req.body.broadcastId, req.user._id);
+  if (req.body.broadcastId) await broadcastService.recordDelivered(req.ctx, req.body.broadcastId, req.user._id);
   res.json({ success: true });
 });

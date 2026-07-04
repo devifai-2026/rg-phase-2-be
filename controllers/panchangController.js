@@ -12,7 +12,7 @@ const panchangService = require('../services/panchangService');
 // GET /panchang?date=YYYY-MM-DD&lat=..&lon=..&lang=xx
 exports.getPanchang = asyncHandler(async (req, res) => {
   const lang = req.query.lang || reqLang(req);
-  const payload = await panchangService.getPanchang({
+  const payload = await panchangService.getPanchang(req.ctx, {
     date: req.query.date,
     lat: req.query.lat,
     lon: req.query.lon,

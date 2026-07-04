@@ -12,13 +12,13 @@ function reqLang(req) {
 /** Localize one stored-i18n-or-translate-on-read field. Prefers a stored i18n
  *  map value, else translates via the cache-backed path. Returns the source on
  *  English / empty / failure (never English-fallback for a real translation). */
-async function localizeField(src, i18nMap, lang) {
+async function localizeField(ctx, src, i18nMap, lang) {
   const text = String(src || '');
   if (!text.trim()) return text;
   const m = i18nMap || {};
   const stored = m.get ? m.get(lang) : m[lang];
   if (stored && stored !== text) return stored;
-  return translateService.localizeText(text, lang);
+  return translateService.localizeText(ctx, text, lang);
 }
 
 /** Localize a NAME: prefer the stored nameI18n transliteration, else compute it
@@ -44,10 +44,10 @@ function localizeName(src, i18nMap, lang) {
  * name from `displayName` (falling back to user.name), so we localize both.
  * Mutates the plain object in place. No-op for English.
  */
-async function localizeAstrologer(a, lang) {
+async function localizeAstrologer(ctx, a, lang) {
   if (!a || !lang || lang === 'en') return;
   await Promise.all([
-    (async () => { if (a.bio) a.bio = await localizeField(a.bio, a.bioI18n, lang); })(),
+    (async () => { if (a.bio) a.bio = await localizeField(ctx, a.bio, a.bioI18n, lang); })(),
     (async () => {
       // Name is transliterated (Latin proper names aren't translated by GCP), so
       // prefer the stored nameI18n entry; else transliterate on the fly.
@@ -60,7 +60,7 @@ async function localizeAstrologer(a, lang) {
     // Expertise/specialty tags (e.g. "Vedic", "Tarot") shown on the card/detail.
     (async () => {
       if (Array.isArray(a.expertise) && a.expertise.length) {
-        a.expertise = await Promise.all(a.expertise.map((e) => translateService.localizeText(String(e), lang)));
+        a.expertise = await Promise.all(a.expertise.map((e) => translateService.localizeText(ctx, String(e), lang)));
       }
     })(),
   ]);
@@ -102,13 +102,13 @@ exports.listPublic = asyncHandler(async (req, res) => {
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
   });
   const lang = reqLang(req);
-  if (Array.isArray(data.items)) await Promise.all(data.items.map((a) => localizeAstrologer(a, lang)));
+  if (Array.isArray(data.items)) await Promise.all(data.items.map((a) => localizeAstrologer(req.ctx, a, lang)));
   res.json({ success: true, data });
 });
 
 exports.getPublic = asyncHandler(async (req, res) => {
   const data = await astrologerService.getPublic(req.ctx, req.params.id);
-  await localizeAstrologer(data, reqLang(req));
+  await localizeAstrologer(req.ctx, data, reqLang(req));
   res.json({ success: true, data });
 });
 

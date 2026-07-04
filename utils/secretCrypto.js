@@ -41,7 +41,9 @@ function mask(plain, keep = 4) {
   const s = String(plain || '');
   if (!s) return '';
   if (s.length <= keep) return '•'.repeat(s.length);
-  return `${'•'.repeat(Math.max(8, s.length - keep))}${s.slice(-keep)}`;
+  // Fixed-width dots (not the secret's real length — avoids leaking length AND
+  // keeps UI columns from overflowing on long values) + the last `keep` chars.
+  return `••••••••${s.slice(-keep)}`;
 }
 
 module.exports = { encrypt, decrypt, isEncrypted, mask };

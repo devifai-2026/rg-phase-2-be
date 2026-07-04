@@ -10,20 +10,20 @@ function birthFromUser(user, body) {
 exports.chart = asyncHandler(async (req, res) => {
   const birth = birthFromUser(req.user, req.body);
   if (!birth.dob) throw new AppError('Birth details required', 400);
-  const data = await vedicAstroService.getChart(birth);
+  const data = await vedicAstroService.getChart(req.ctx, birth);
   res.json({ success: true, data });
 });
 
 exports.kundli = asyncHandler(async (req, res) => {
   const birth = birthFromUser(req.user, req.body);
   if (!birth.dob) throw new AppError('Birth details required', 400);
-  const data = await vedicAstroService.getKundli(birth);
+  const data = await vedicAstroService.getKundli(req.ctx, birth);
   res.json({ success: true, data });
 });
 
 exports.lalKitab = asyncHandler(async (req, res) => {
   const birth = birthFromUser(req.user, req.body);
   if (!birth.dob) throw new AppError('Birth details required', 400);
-  const data = await vedicAstroService.getLalKitab(birth);
+  const data = await vedicAstroService.getLalKitab(req.ctx, birth);
   res.json({ success: true, data });
 });

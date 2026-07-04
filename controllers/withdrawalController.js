@@ -3,7 +3,7 @@ const payoutService = require('../services/payoutService');
 const { toRupees } = require('../utils/money');
 
 exports.request = asyncHandler(async (req, res) => {
-  const data = await payoutService.requestWithdrawal({
+  const data = await payoutService.requestWithdrawal(req.ctx, {
     astrologerUserId: req.user._id,
     amount: toRupees(req.body.amountRupees),
     bankAccountDetails: req.body.bankAccountDetails,
@@ -12,6 +12,6 @@ exports.request = asyncHandler(async (req, res) => {
 });
 
 exports.listMine = asyncHandler(async (req, res) => {
-  const data = await payoutService.listMine(req.user._id);
+  const data = await payoutService.listMine(req.ctx, req.user._id);
   res.json({ success: true, data });
 });

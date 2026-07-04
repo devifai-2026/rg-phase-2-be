@@ -12,6 +12,10 @@ const router = express.Router();
 // Public: owner login.
 router.post('/login', ctrl.login);
 
+// Public (shared-secret): GitHub Actions build workflow posts its result here.
+// Must be BEFORE ownerProtect since CI has no owner token.
+router.post('/builds/:id/callback', ctrl.buildCallback);
+
 // Everything below requires a valid owner token.
 router.use(ownerProtect);
 
@@ -36,5 +40,7 @@ router.put('/tenants/:slug/subscription', ownerRoleOnly, ctrl.setSubscription);
 // Builds
 router.get('/builds', ctrl.listBuilds);
 router.post('/tenants/:slug/builds', ctrl.requestBuild);
+router.delete('/builds/clear', ctrl.clearBuilds);
+router.delete('/builds/:id', ctrl.deleteBuild);
 
 module.exports = router;

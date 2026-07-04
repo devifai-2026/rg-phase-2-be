@@ -3,7 +3,7 @@ const supportService = require('../services/supportService');
 
 // ── User / astrologer ──
 exports.create = asyncHandler(async (req, res) => {
-  const data = await supportService.createTicket({
+  const data = await supportService.createTicket(req.ctx, {
     userId: req.user._id,
     role: req.user.role,
     category: req.body.category,
@@ -15,7 +15,7 @@ exports.create = asyncHandler(async (req, res) => {
 });
 
 exports.listMine = asyncHandler(async (req, res) => {
-  const data = await supportService.listMine(req.user._id, {
+  const data = await supportService.listMine(req.ctx, req.user._id, {
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
   });
@@ -23,12 +23,12 @@ exports.listMine = asyncHandler(async (req, res) => {
 });
 
 exports.getMine = asyncHandler(async (req, res) => {
-  const data = await supportService.getMine(req.user._id, req.params.id);
+  const data = await supportService.getMine(req.ctx, req.user._id, req.params.id);
   res.json({ success: true, data });
 });
 
 exports.reply = asyncHandler(async (req, res) => {
-  const data = await supportService.reply({
+  const data = await supportService.reply(req.ctx, {
     ticketId: req.params.id,
     senderId: req.user._id,
     fromRole: req.user.role,
@@ -40,7 +40,7 @@ exports.reply = asyncHandler(async (req, res) => {
 
 // ── Admin ──
 exports.adminList = asyncHandler(async (req, res) => {
-  const data = await supportService.adminList({
+  const data = await supportService.adminList(req.ctx, {
     status: req.query.status,
     page: parseInt(req.query.page || '1', 10),
     limit: Math.min(parseInt(req.query.limit || '20', 10), 100),
@@ -49,6 +49,6 @@ exports.adminList = asyncHandler(async (req, res) => {
 });
 
 exports.setStatus = asyncHandler(async (req, res) => {
-  const data = await supportService.setStatus({ ticketId: req.params.id, status: req.body.status, adminId: req.user._id });
+  const data = await supportService.setStatus(req.ctx, { ticketId: req.params.id, status: req.body.status, adminId: req.user._id });
   res.json({ success: true, data });
 });

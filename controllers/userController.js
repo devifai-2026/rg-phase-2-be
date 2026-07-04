@@ -72,8 +72,8 @@ const referralService = require('../services/referralService');
 
 /** GET /users/referral — my code, reward amount, friends rewarded, applied state. */
 exports.referral = asyncHandler(async (req, res) => {
-  const code = await referralService.ensureCode(req.user); // backfill for older users
-  const reward = await referralService.rewardAmount();
+  const code = await referralService.ensureCode(req.ctx, req.user); // backfill for older users
+  const reward = await referralService.rewardAmount(req.ctx);
   res.json({
     success: true,
     data: {
@@ -88,6 +88,6 @@ exports.referral = asyncHandler(async (req, res) => {
 
 /** POST /users/referral/apply { code } — apply a friend's code (new users). */
 exports.applyReferral = asyncHandler(async (req, res) => {
-  const result = await referralService.applyCode(req.user, req.body.code);
+  const result = await referralService.applyCode(req.ctx, req.user, req.body.code);
   res.json({ success: true, data: result, message: 'Referral applied! Both of you earn on your first recharge.' });
 });

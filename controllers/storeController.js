@@ -243,7 +243,7 @@ exports.adminApprove = asyncHandler(async (req, res) => {
     { new: true }
   ).populate('astrologer', 'name');
   if (!item) throw new AppError('Item not found', 404);
-  notifyOwner(item, 'store_item_approved', 'Your store item is live! 🎉', `"${item.name}" is approved and now visible on your storefront.`);
+  notifyOwner(req.ctx, item, 'store_item_approved', 'Your store item is live! 🎉', `"${item.name}" is approved and now visible on your storefront.`);
   res.json({ success: true, data: item });
 });
 
@@ -286,16 +286,16 @@ exports.adminReject = asyncHandler(async (req, res) => {
     { new: true }
   ).populate('astrologer', 'name');
   if (!item) throw new AppError('Item not found', 404);
-  notifyOwner(item, 'store_item_rejected', 'Store item needs changes', note || `"${item.name}" was not approved. Please review and resubmit.`);
+  notifyOwner(req.ctx, item, 'store_item_rejected', 'Store item needs changes', note || `"${item.name}" was not approved. Please review and resubmit.`);
   res.json({ success: true, data: item });
 });
 
 /** Tell the owning astrologer about an approval/rejection (push + in-app). */
-function notifyOwner(item, type, title, body) {
+function notifyOwner(ctx, item, type, title, body) {
   const ownerId = item.astrologer && (item.astrologer._id || item.astrologer);
   if (!ownerId) return;
   require('../services/notificationService')
-    .notify(String(ownerId), { type, title, body, data: { type, kind: type } })
+    .notify(ctx, String(ownerId), { type, title, body, data: { type, kind: type } })
     .catch(() => {});
 }
 
@@ -331,8 +331,8 @@ exports.publicStorefront = asyncHandler(async (req, res) => {
   const lang = reqLang(req);
   const rawName = profile.displayName || (profile.user && profile.user.name) || 'Astrologer';
   const [name, bio] = await Promise.all([
-    translateService.localizeText(rawName, lang),
-    translateService.localizeText(profile.bio || '', lang),
+    translateService.localizeText(req.ctx, rawName, lang),
+    translateService.localizeText(req.ctx, profile.bio || '', lang),
     localizeEach(products, lang, ['name', 'description']),
     localizeEach(poojas, lang, ['name', 'description']),
   ]);

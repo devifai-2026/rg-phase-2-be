@@ -154,11 +154,34 @@ exports.listBuilds = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await BuildJob.find(q).sort({ createdAt: -1 }).limit(100).lean() });
 });
 
+// Delete a single build job (any status) — clears it from the console.
+exports.deleteBuild = asyncHandler(async (req, res) => {
+  await BuildJob.deleteOne({ _id: req.params.id });
+  res.json({ success: true });
+});
+
+// Cancel/clear all pending (queued/running) builds for a tenant (or all tenants
+// if no slug) — the "stop all" the owner can hit from the console.
+exports.clearBuilds = asyncHandler(async (req, res) => {
+  const filter = { status: { $in: ['queued', 'running'] } };
+  if (req.query.slug) filter.tenantSlug = req.query.slug;
+  const r = await BuildJob.deleteMany(filter);
+  res.json({ success: true, data: { cleared: r.deletedCount } });
+});
+
 exports.requestBuild = asyncHandler(async (req, res) => {
   const tenant = await Tenant.findOne({ slug: req.params.slug });
   if (!tenant) throw new AppError('Tenant not found', 404);
   const { app = 'user', artifact = 'aab' } = req.body;
   const androidCfg = app === 'astrologer' ? tenant.androidAstrologer : tenant.androidUser;
+
+  // Don't queue a duplicate: if a build for this tenant+app is already queued or
+  // running, refuse (one in-flight build per app at a time). The client also
+  // disables the button, but this is the authoritative guard.
+  const inFlight = await BuildJob.findOne({ tenant: tenant._id, app, status: { $in: ['queued', 'running'] } });
+  if (inFlight) {
+    throw new AppError(`A ${app} build is already ${inFlight.status}. Wait for it to finish.`, 409);
+  }
 
   // AUTO-VERSION every build. Android requires versionCode to strictly increase
   // for each Play upload, so we use a monotonic per-(tenant,app) counter =
@@ -185,7 +208,29 @@ exports.requestBuild = asyncHandler(async (req, res) => {
     requestedBy: req.owner._id,
     status: 'queued',
   });
+
+  // Dispatch to GitHub Actions (the app repos build it). No-op if GH token unset
+  // (job stays queued). Fire-and-forget so the request returns immediately.
+  require('../services/control/buildDispatchService').dispatch(job).catch(() => {});
+
   res.status(201).json({ success: true, data: job });
+});
+
+// Callback from the GitHub Actions build workflow — marks the BuildJob done and
+// records the artifact URL. Secured by a shared token (BUILD_CALLBACK_SECRET).
+exports.buildCallback = asyncHandler(async (req, res) => {
+  const secret = req.headers['x-build-secret'];
+  if (!process.env.BUILD_CALLBACK_SECRET || secret !== process.env.BUILD_CALLBACK_SECRET) {
+    throw new AppError('Unauthorized', 401);
+  }
+  const { status, artifactUrl, error, log } = req.body;
+  const patch = { finishedAt: new Date() };
+  if (status) patch.status = status;             // 'succeeded' | 'failed'
+  if (artifactUrl) patch.artifactUrl = artifactUrl;
+  if (error) patch.error = String(error).slice(0, 2000);
+  if (log) patch.log = String(log).slice(0, 8000);
+  await BuildJob.updateOne({ _id: req.params.id }, { $set: patch });
+  res.json({ success: true });
 });
 
 // ── Cross-tenant analytics (headline counts) ────────────────────────────────

@@ -10,11 +10,11 @@ function reqLang(req) {
 
 /** Localize a product's name + description into `lang` (translate-on-read+cache,
  *  no English fallback). Mutates the lean object in place. No-op for English. */
-async function localizeProduct(p, lang) {
+async function localizeProduct(ctx, p, lang) {
   if (!p || !lang || lang === 'en') return;
   const [name, description] = await Promise.all([
-    translateService.localizeText(p.name, lang),
-    translateService.localizeText(p.description, lang),
+    translateService.localizeText(ctx, p.name, lang),
+    translateService.localizeText(ctx, p.description, lang),
   ]);
   p.name = name;
   if (p.description != null) p.description = description;
@@ -58,7 +58,7 @@ exports.list = asyncHandler(async (req, res) => {
     Product.countDocuments(filter),
   ]);
   const lang = reqLang(req);
-  await Promise.all(items.map((it) => localizeProduct(it, lang)));
+  await Promise.all(items.map((it) => localizeProduct(req.ctx, it, lang)));
   res.json({ success: true, data: { items, total, page: p, limit: l } });
 });
 
@@ -66,7 +66,7 @@ exports.get = asyncHandler(async (req, res) => {
   const Product = req.model('Product');
   const product = await Product.findById(req.params.id).populate('reviews.user', 'name').lean();
   if (!product) throw new AppError('Product not found', 404);
-  await localizeProduct(product, reqLang(req));
+  await localizeProduct(req.ctx, product, reqLang(req));
   res.json({ success: true, data: product });
 });
 

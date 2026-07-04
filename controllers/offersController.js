@@ -15,7 +15,7 @@ exports.createCoupon = asyncHandler(async (req, res) => {
   const c = await Coupon.create(body);
   // System template: announce the new offer to all users (if enabled).
   const discount = c.type === 'percentage' ? `${c.value}%` : `₹${c.value}`;
-  require('../services/broadcastService').fireEvent('offer_created', {
+  require('../services/broadcastService').fireEvent(req.ctx, 'offer_created', {
     vars: { code: c.code, title: c.description || 'a new offer', discount },
   });
   res.status(201).json({ success: true, data: c });

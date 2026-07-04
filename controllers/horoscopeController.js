@@ -12,7 +12,7 @@ const horoscopeService = require('../services/horoscopeService');
 // GET /horoscope/:zodiac?date=YYYY-MM-DD&lang=xx  → one sign's prediction.
 exports.getDaily = asyncHandler(async (req, res) => {
   const lang = req.query.lang || reqLang(req);
-  const payload = await horoscopeService.getDaily({
+  const payload = await horoscopeService.getDaily(req.ctx, {
     zodiac: req.params.zodiac,
     date: req.query.date,
     lang,
@@ -23,6 +23,6 @@ exports.getDaily = asyncHandler(async (req, res) => {
 // GET /horoscope?date=YYYY-MM-DD&lang=xx  → all 12 signs.
 exports.getAll = asyncHandler(async (req, res) => {
   const lang = req.query.lang || reqLang(req);
-  const items = await horoscopeService.getAllSigns({ date: req.query.date, lang });
+  const items = await horoscopeService.getAllSigns(req.ctx, { date: req.query.date, lang });
   res.json({ success: true, data: items });
 });

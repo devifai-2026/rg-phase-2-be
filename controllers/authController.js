@@ -11,27 +11,27 @@ const meta = (req) => ({
 });
 
 exports.requestOtp = asyncHandler(async (req, res) => {
-  const data = await authService.requestOtp(req.body.phone);
+  const data = await authService.requestOtp(req.ctx, req.body.phone);
   res.json({ success: true, data });
 });
 
 exports.verifyOtp = asyncHandler(async (req, res) => {
-  const data = await authService.verifyOtp(req.body.phone, req.body.code, meta(req));
+  const data = await authService.verifyOtp(req.ctx, req.body.phone, req.body.code, meta(req));
   res.json({ success: true, data });
 });
 
 exports.refresh = asyncHandler(async (req, res) => {
-  const data = await authService.refresh(req.body.refreshToken, meta(req));
+  const data = await authService.refresh(req.ctx, req.body.refreshToken, meta(req));
   res.json({ success: true, data });
 });
 
 exports.logout = asyncHandler(async (req, res) => {
-  await authService.logout(req.body.refreshToken);
+  await authService.logout(req.ctx, req.body.refreshToken);
   res.json({ success: true });
 });
 
 exports.me = asyncHandler(async (req, res) => {
-  const user = await authService.me(req.user._id);
+  const user = await authService.me(req.ctx, req.user._id);
   res.json({ success: true, data: user });
 });
 
@@ -43,7 +43,7 @@ exports.updateMe = asyncHandler(async (req, res) => {
 
 exports.registerFcmToken = asyncHandler(async (req, res) => {
   const { token, platform, deviceId, deviceName, deviceModel, osVersion, appVersion } = req.body;
-  await authService.registerFcmToken(req.user._id, token, platform, {
+  await authService.registerFcmToken(req.ctx, req.user._id, token, platform, {
     deviceId,
     deviceName,
     deviceModel,
@@ -54,6 +54,6 @@ exports.registerFcmToken = asyncHandler(async (req, res) => {
 });
 
 exports.removeFcmToken = asyncHandler(async (req, res) => {
-  await authService.removeFcmToken(req.user._id, req.body.token);
+  await authService.removeFcmToken(req.ctx, req.user._id, req.body.token);
   res.json({ success: true });
 });

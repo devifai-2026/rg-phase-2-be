@@ -6,7 +6,7 @@ const serviceFeedbackService = require('../services/serviceFeedbackService');
 //         seekerBehaviour, comment }
 exports.submit = asyncHandler(async (req, res) => {
   const b = req.body || {};
-  const doc = await serviceFeedbackService.submit({
+  const doc = await serviceFeedbackService.submit(req.ctx, {
     astrologerUserId: req.user._id,
     kind: b.kind,
     sourceId: b.sourceId || b.sessionId || b.liveSessionId,
