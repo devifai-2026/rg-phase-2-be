@@ -39,6 +39,7 @@ async function dispatch(job) {
     tenant: job.tenantSlug,
     artifact: job.artifact,
     application_id: job.applicationId || '',
+    app_label: job.appLabel || job.tenantSlug,
     version_name: job.versionName || '1.0.0',
     version_code: String(job.versionCode || 1),
     api_base: job.apiBase || '',

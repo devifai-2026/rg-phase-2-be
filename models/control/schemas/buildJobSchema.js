@@ -19,6 +19,7 @@ const buildJobSchema = new mongoose.Schema(
     // Build inputs stamped into the flavor. apiBase + tenant slug become
     // --dart-define; applicationId/label come from Tenant.androidUser/Astrologer.
     applicationId: { type: String },
+    appLabel: { type: String }, // home-screen + notification-tray app name (tenant display name)
     versionName: { type: String },
     versionCode: { type: Number },
     apiBase: { type: String }, // https://<tenant-api-host>

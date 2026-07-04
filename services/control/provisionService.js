@@ -3,6 +3,7 @@ const { getTenantDb, modelFor } = require('../../config/tenantConnections');
 const { tenantContext } = require('../../utils/tenantContext');
 const atlasService = require('./atlasService');
 const subscriptionService = require('./subscriptionService');
+const firebaseAppService = require('./firebaseAppService');
 const logger = require('../../utils/logger');
 const AppError = require('../../utils/AppError');
 
@@ -78,6 +79,26 @@ async function createTenant({
     //     <slug>.admin.<domain> immediately. The PO is trusted, so the phone is
     //     marked verified without an OTP round-trip. No-op if no phone given.
     if (adminPhone) await ensureTenantAdmin(ctx, adminPhone, branding.displayName || slug);
+
+    // 4c) Register the tenant's Android applicationId(s) in the shared Firebase
+    //     project so CI builds can fetch a matching google-services.json. Uses
+    //     the FCM service-account (Firebase Management role). Best-effort: a
+    //     failure here is recorded but does not abort provisioning — the app can
+    //     be registered manually later. No-op when Firebase isn't configured.
+    try {
+      const fb = await firebaseAppService.ensureTenantApps({
+        userAppId: androidUser && androidUser.applicationId,
+        astroAppId: androidAstrologer && androidAstrologer.applicationId,
+        displayName: displayName || slug,
+      });
+      if (fb.errors && fb.errors.length) {
+        logger.warn('Tenant Firebase app registration had errors', { slug, errors: fb.errors });
+      } else if (fb.configured) {
+        logger.info('Tenant Firebase apps ensured', { slug, project: firebaseAppService.projectId() });
+      }
+    } catch (e) {
+      logger.error('Tenant Firebase app registration failed (non-fatal)', { slug, error: e.message });
+    }
 
     // 5) Start the free trial.
     await subscriptionService.startTrial(tenant._id);

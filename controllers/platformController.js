@@ -226,9 +226,13 @@ async function queueBuild(tenant, { app = 'user', artifact = 'aab', apiBase, ver
   const vn = versionName || `1.0.${priorCount + 1}`;
   const base = apiBase || (env.saas.publicDomain ? `https://api.${env.saas.publicDomain}` : `https://${env.saas.rootDomain}`);
 
+  // App name shown under the icon + in the notification tray. Prefer the tenant's
+  // display name (e.g. "Rudraganga"), fall back to the per-app label then slug.
+  const appLabel = (androidCfg && androidCfg.appLabel) || tenant.displayName || tenant.slug;
+
   const job = await BuildJob.create({
     tenant: tenant._id, tenantSlug: tenant.slug, app, artifact,
-    applicationId: androidCfg && androidCfg.applicationId,
+    applicationId: androidCfg && androidCfg.applicationId, appLabel,
     apiBase: base, versionName: vn, versionCode: vc,
     requestedBy: ownerId, status: 'queued',
   });
