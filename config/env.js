@@ -257,6 +257,14 @@ const env = {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
 
+    // Canonical public base domain for building tenant-facing URLs shown in the
+    // owner console (landing = <slug>.<publicDomain>, admin = <slug>.admin.<publicDomain>).
+    // Defaults to the last configured root (the real domain, e.g. devifai.in) since
+    // sslip.io roots come first for TLS but aren't the pretty public URL.
+    publicDomain: process.env.SAAS_PUBLIC_DOMAIN
+      || (process.env.SAAS_ROOT_DOMAIN || '').split(',').map((s) => s.trim()).filter(Boolean).slice(-1)[0]
+      || '',
+
     // Max live per-tenant mongoose connections kept warm (LRU-evicted).
     maxTenantConnections: parseInt(process.env.SAAS_MAX_TENANT_CONNECTIONS || '50', 10),
 

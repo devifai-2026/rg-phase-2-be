@@ -1,11 +1,26 @@
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
+const env = require('../config/env');
 const { mask } = require('../utils/secretCrypto');
 const { signOwner } = require('../utils/ownerToken');
 const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob } = require('../models/control');
 const provisionService = require('../services/control/provisionService');
 const subscriptionService = require('../services/control/subscriptionService');
 const { invalidateTenant } = require('../middlewares/tenantResolver');
+
+// Build the tenant-facing URLs the owner console shows after provisioning:
+// landing page + admin console. Derived from the platform public domain
+// (SAAS_PUBLIC_DOMAIN / last SAAS_ROOT_DOMAIN entry, e.g. devifai.in). If a
+// tenant has a custom domain in `domains`, prefer the first as the landing URL.
+function tenantUrls(tenant) {
+  const base = env.saas.publicDomain;
+  const slug = tenant.slug;
+  const customLanding = (tenant.domains || []).find((d) => d && !d.endsWith('.sslip.io'));
+  return {
+    landing: customLanding ? `https://${customLanding}` : (base ? `https://${slug}.${base}` : ''),
+    admin: base ? `https://${slug}.admin.${base}` : '',
+  };
+}
 
 // ── Owner auth ──────────────────────────────────────────────────────────────
 exports.login = asyncHandler(async (req, res) => {
@@ -29,7 +44,7 @@ exports.listTenants = asyncHandler(async (req, res) => {
   // Attach each tenant's subscription status for the console list.
   const subs = await Subscription.find({ tenant: { $in: tenants.map((t) => t._id) } }).lean();
   const byTenant = new Map(subs.map((s) => [String(s.tenant), s]));
-  const data = tenants.map((t) => ({ ...t, subscription: byTenant.get(String(t._id)) || null }));
+  const data = tenants.map((t) => ({ ...t, subscription: byTenant.get(String(t._id)) || null, urls: tenantUrls(t) }));
   res.json({ success: true, data });
 });
 
@@ -42,12 +57,13 @@ exports.getTenant = asyncHandler(async (req, res) => {
   const maskedSecrets = secretDoc
     ? Object.fromEntries(Object.entries(secretDoc.decrypted()).map(([k, v]) => [k, v ? mask(v) : '']))
     : {};
-  res.json({ success: true, data: { ...tenant, subscription, secrets: maskedSecrets } });
+  res.json({ success: true, data: { ...tenant, subscription, secrets: maskedSecrets, urls: tenantUrls(tenant) } });
 });
 
 exports.createTenant = asyncHandler(async (req, res) => {
   const tenant = await provisionService.createTenant(req.body);
-  res.status(201).json({ success: true, data: tenant });
+  // Return the tenant-facing URLs so the console can show them immediately.
+  res.status(201).json({ success: true, data: { ...tenant.toObject(), urls: tenantUrls(tenant) } });
 });
 
 exports.updateTenant = asyncHandler(async (req, res) => {
@@ -134,13 +150,29 @@ exports.requestBuild = asyncHandler(async (req, res) => {
   if (!tenant) throw new AppError('Tenant not found', 404);
   const { app = 'user', artifact = 'aab' } = req.body;
   const androidCfg = app === 'astrologer' ? tenant.androidAstrologer : tenant.androidUser;
+
+  // AUTO-VERSION every build. Android requires versionCode to strictly increase
+  // for each Play upload, so we use a monotonic per-(tenant,app) counter =
+  // (number of prior builds for this tenant+app) + 1. versionName is a readable
+  // base + that counter (e.g. 1.0.12). The owner can override via the request.
+  const priorCount = await BuildJob.countDocuments({ tenant: tenant._id, app });
+  const versionCode = req.body.versionCode || (priorCount + 1);
+  const versionName = req.body.versionName || `1.0.${priorCount + 1}`;
+
+  // Default the API base to the tenant's public API host so the built app talks
+  // to the right backend (all tenants share one backend; routed by X-Tenant).
+  const apiBase = req.body.apiBase
+    || (env.saas.publicDomain ? `https://api.${env.saas.publicDomain}` : `https://${env.saas.rootDomain}`);
+
   const job = await BuildJob.create({
     tenant: tenant._id,
     tenantSlug: tenant.slug,
     app,
     artifact,
     applicationId: androidCfg && androidCfg.applicationId,
-    apiBase: req.body.apiBase,
+    apiBase,
+    versionName,
+    versionCode,
     requestedBy: req.owner._id,
     status: 'queued',
   });
