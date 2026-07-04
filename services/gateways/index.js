@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const PaymentGatewayConfig = require('../../models/PaymentGatewayConfig');
+const { defaultContext } = require('../../utils/tenantContext');
 const logger = require('../../utils/logger');
 
 const payu = require('./payuGateway');
@@ -31,9 +31,11 @@ function newTxnId(prefix = 'txn') {
   return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-/** Resolve the currently-active gateway adapter + its config block. */
-async function active() {
-  const doc = await PaymentGatewayConfig.get();
+/** Resolve the currently-active gateway adapter + its config block. Reads the
+ *  PaymentGatewayConfig from the TENANT DB via ctx (per-tenant gateways). */
+async function active(ctx) {
+  ctx = ctx || defaultContext();
+  const doc = await ctx.model('PaymentGatewayConfig').get();
   const id = doc.active || 'payu';
   const adapter = ADAPTERS[id];
   if (!adapter) {
@@ -44,9 +46,10 @@ async function active() {
 }
 
 /** The adapter for a SPECIFIC gateway id (used by the callback, which knows the
- *  gateway from the txnid prefix / route). */
-async function byId(id) {
-  const doc = await PaymentGatewayConfig.get();
+ *  gateway from the txnid prefix / route). Tenant config via ctx. */
+async function byId(ctx, id) {
+  ctx = ctx || defaultContext();
+  const doc = await ctx.model('PaymentGatewayConfig').get();
   const adapter = ADAPTERS[id] || payu;
   return { id, adapter, cfg: doc[id] || {} };
 }

@@ -1123,14 +1123,14 @@ exports.agoraChannelDiagnostics = asyncHandler(async (req, res) => {
 // ── Firebase / GA4 analytics (native admin charts via the GA4 Data API) ──
 exports.gaAnalytics = asyncHandler(async (req, res) => {
   const ga = require('../services/gaService');
-  if (!ga.enabled(req.ctx)) {
+  if (!ga.enabled()) { // GA4 is platform-global config — no ctx
     // Not configured yet → tell the admin UI to show the setup hint + deep links.
     return res.json({ success: true, data: { configured: false } });
   }
   const { startDate, endDate } = req.query;
   const [overview, realtime] = await Promise.all([
-    ga.overview(req.ctx, { startDate, endDate }),
-    ga.realtime(req.ctx),
+    ga.overview({ startDate, endDate }),
+    ga.realtime(),
   ]);
   res.json({ success: true, data: { configured: true, ...overview, realtime } });
 });
@@ -1190,7 +1190,7 @@ exports.previewInvoiceTemplate = asyncHandler(async (req, res) => {
     ],
     subtotal: 3200, discount: 200, total: 3000,
   };
-  const buffer = await invoicePdfService.render(req.ctx, sample, tpl);
+  const buffer = await invoicePdfService.render(sample, tpl); // pure renderer — takes no ctx
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Disposition', 'inline; filename="invoice-preview.pdf"');
   res.send(buffer);
@@ -1497,7 +1497,7 @@ exports.runMarketingNow = asyncHandler(async (req, res) => {
 // reflects progress even after navigating away and back.
 exports.runTranslation = asyncHandler(async (req, res) => {
   const translateService = require('../services/translateService');
-  if (!translateService.configured(req.ctx)) {
+  if (!translateService.configured()) { // global GCP config — no ctx
     return res.json({ success: true, data: { configured: false, running: false, message: 'GCP Translate not configured' } });
   }
   const state = translateService.startFullTranslation(req.ctx);
@@ -1511,10 +1511,10 @@ exports.translationStatus = asyncHandler(async (req, res) => {
   const TranslationCache = req.model('TranslationCache');
   const cached = await TranslationCache.countDocuments({}).catch(() => 0);
   res.json({ success: true, data: {
-    configured: translateService.configured(req.ctx),
+    configured: translateService.configured(), // global GCP config — no ctx
     languages: translateService.LANGUAGES,
     cachedTranslations: cached,
-    run: translateService.getRunState(req.ctx),
+    run: translateService.getRunState(), // global run state — no ctx
   } });
 });
 
