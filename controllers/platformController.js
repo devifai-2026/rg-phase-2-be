@@ -52,13 +52,56 @@ exports.getTenant = asyncHandler(async (req, res) => {
   const tenant = await Tenant.findOne({ slug: req.params.slug }).lean();
   if (!tenant) throw new AppError('Tenant not found', 404);
   const subscription = await Subscription.findOne({ tenant: tenant._id }).lean();
-  // Secrets are returned MASKED — never expose plaintext to the console.
+  // Control-plane secrets — masked (never expose plaintext).
   const secretDoc = await TenantSecret.findOne({ tenant: tenant._id });
   const maskedSecrets = secretDoc
     ? Object.fromEntries(Object.entries(secretDoc.decrypted()).map(([k, v]) => [k, v ? mask(v) : '']))
     : {};
-  res.json({ success: true, data: { ...tenant, subscription, secrets: maskedSecrets, urls: tenantUrls(tenant) } });
+  // TENANT-DB config (theme, payment gateways, VedicAstro, Agora) — the source of
+  // truth the apps read. Surfaced so the console reflects the REAL per-tenant
+  // config, not just the control-plane TenantSecret. Best-effort per tenant DB.
+  const config = await tenantConfigSummary(tenant);
+  res.json({ success: true, data: { ...tenant, subscription, secrets: maskedSecrets, config, urls: tenantUrls(tenant) } });
 });
+
+// Read the tenant DB's config singletons and return a masked summary for the
+// owner console. Never throws — returns nulls if the tenant DB is unreachable.
+async function tenantConfigSummary(tenant) {
+  try {
+    const { getTenantDb, modelFor } = require('../config/tenantConnections');
+    const { decrypt } = require('../utils/secretCrypto');
+    let dbUri;
+    if (!tenant.dbOnDefaultCluster) {
+      const s = await TenantSecret.findOne({ tenant: tenant._id });
+      dbUri = s ? s.decrypted().dbUri : undefined;
+    }
+    const db = getTenantDb(tenant, dbUri);
+    const AppConfig = modelFor(db, 'AppConfig');
+    const PaymentGatewayConfig = modelFor(db, 'PaymentGatewayConfig');
+    const VedicAstroConfig = modelFor(db, 'VedicAstroConfig');
+    const AgoraConfig = modelFor(db, 'AgoraConfig');
+    const [app, pg, va, ag] = await Promise.all([
+      AppConfig.get(), PaymentGatewayConfig.get(), VedicAstroConfig.get(), AgoraConfig.get(),
+    ]);
+    const set = (v) => (v ? mask(String(v)) : '');
+    return {
+      theme: { enabled: !!(app.theme && app.theme.enabled), primary: (app.theme && app.theme.dark && app.theme.dark.red) || '', accent: (app.theme && app.theme.dark && app.theme.dark.gold) || '' },
+      appName: app.appName || '',
+      logoUrl: app.logoUrl || '',
+      payments: {
+        active: pg.active || 'payu',
+        payu: { key: set(pg.payu && pg.payu.key), salt: set(pg.payu && pg.payu.salt) },
+        razorpay: { keyId: set(pg.razorpay && pg.razorpay.keyId), keySecret: set(pg.razorpay && pg.razorpay.keySecret) },
+        cashfree: { appId: set(pg.cashfree && pg.cashfree.appId), secretKey: set(pg.cashfree && pg.cashfree.secretKey) },
+      },
+      vedicAstro: set(va.apiKey ? decrypt(va.apiKey) : ''),
+      agora: { appId: ag.appId || '', appCertificate: set(ag.appCertificate ? decrypt(ag.appCertificate) : '') },
+    };
+  } catch (e) {
+    require('../utils/logger').warn('tenantConfigSummary failed', e.message);
+    return null;
+  }
+}
 
 exports.createTenant = asyncHandler(async (req, res) => {
   const tenant = await provisionService.createTenant(req.body);
