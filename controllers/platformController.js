@@ -305,6 +305,14 @@ exports.buildCallback = asyncHandler(async (req, res) => {
   if (error) patch.error = String(error).slice(0, 2000);
   if (log) patch.log = String(log).slice(0, 8000);
   await BuildJob.updateOne({ _id: req.params.id }, { $set: patch });
+
+  // On a successful build, delete older artifacts of the same (tenant, app,
+  // artifact) — keep only the latest. Fire-and-forget so the callback is fast.
+  if (status === 'succeeded') {
+    BuildJob.findById(req.params.id).lean()
+      .then((job) => require('../services/control/buildArtifactService').pruneSuperseded(job))
+      .catch((e) => require('../utils/logger').warn('artifact prune after callback failed', e.message));
+  }
   res.json({ success: true });
 });
 

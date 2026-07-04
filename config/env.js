@@ -314,6 +314,11 @@ const env = {
     instanceName: process.env.GCP_VM_INSTANCE || 'rg-backend-vm',
   },
 
+  // GCS bucket where CI uploads signed app artifacts (tenants/<slug>/builds/...).
+  // Used to delete superseded APK/AABs when a newer build succeeds. Defaults to
+  // the same bucket CI writes to ('rudraganga').
+  gcpArtifactBucket: process.env.GCP_ARTIFACT_BUCKET || process.env.GCS_BUCKET || 'rudraganga',
+
   // NOTE: admin-tunable values (withdrawal threshold, escalation thresholds,
   // signup bonus, gift token rate, ring timeout, max call minutes) live in the
   // `AdminSettings` collection so admins can change them at runtime via
