@@ -212,51 +212,54 @@ exports.clearBuilds = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { cleared: r.deletedCount } });
 });
 
+// Queue + dispatch one tenant/app/artifact build. Returns { job } or
+// { skipped:'in_flight' } if a build for that tenant+app is already pending.
+// Shared by requestBuild (single) and buildAll (fan-out).
+async function queueBuild(tenant, { app = 'user', artifact = 'aab', apiBase, versionName, versionCode } = {}, ownerId) {
+  const inFlight = await BuildJob.findOne({ tenant: tenant._id, app, status: { $in: ['queued', 'running'] } });
+  if (inFlight) return { skipped: 'in_flight', app };
+
+  const androidCfg = app === 'astrologer' ? tenant.androidAstrologer : tenant.androidUser;
+  // Monotonic per-(tenant,app) version (Android requires increasing versionCode).
+  const priorCount = await BuildJob.countDocuments({ tenant: tenant._id, app });
+  const vc = versionCode || (priorCount + 1);
+  const vn = versionName || `1.0.${priorCount + 1}`;
+  const base = apiBase || (env.saas.publicDomain ? `https://api.${env.saas.publicDomain}` : `https://${env.saas.rootDomain}`);
+
+  const job = await BuildJob.create({
+    tenant: tenant._id, tenantSlug: tenant.slug, app, artifact,
+    applicationId: androidCfg && androidCfg.applicationId,
+    apiBase: base, versionName: vn, versionCode: vc,
+    requestedBy: ownerId, status: 'queued',
+  });
+  require('../services/control/buildDispatchService').dispatch(job).catch(() => {});
+  return { job };
+}
+
 exports.requestBuild = asyncHandler(async (req, res) => {
   const tenant = await Tenant.findOne({ slug: req.params.slug });
   if (!tenant) throw new AppError('Tenant not found', 404);
-  const { app = 'user', artifact = 'aab' } = req.body;
-  const androidCfg = app === 'astrologer' ? tenant.androidAstrologer : tenant.androidUser;
+  const r = await queueBuild(tenant, req.body, req.owner._id);
+  if (r.skipped) throw new AppError(`A ${r.app} build is already in progress. Wait for it to finish.`, 409);
+  res.status(201).json({ success: true, data: r.job });
+});
 
-  // Don't queue a duplicate: if a build for this tenant+app is already queued or
-  // running, refuse (one in-flight build per app at a time). The client also
-  // disables the button, but this is the authoritative guard.
-  const inFlight = await BuildJob.findOne({ tenant: tenant._id, app, status: { $in: ['queued', 'running'] } });
-  if (inFlight) {
-    throw new AppError(`A ${app} build is already ${inFlight.status}. Wait for it to finish.`, 409);
+// Build EVERY active tenant (optionally filtered). Fans out one BuildJob per
+// tenant × requested app(s), skipping any already in-flight. artifact defaults
+// to 'aab' (Play). Body: { apps?:['user','astrologer'], artifact?:'aab'|'apk' }.
+exports.buildAll = asyncHandler(async (req, res) => {
+  const apps = Array.isArray(req.body.apps) && req.body.apps.length ? req.body.apps : ['user', 'astrologer'];
+  const artifact = req.body.artifact || 'aab';
+  const tenants = await Tenant.find({ status: 'active' });
+  const results = [];
+  for (const tenant of tenants) {
+    for (const app of apps) {
+      const r = await queueBuild(tenant, { app, artifact }, req.owner._id);
+      results.push({ tenant: tenant.slug, app, artifact, queued: !r.skipped, reason: r.skipped });
+    }
   }
-
-  // AUTO-VERSION every build. Android requires versionCode to strictly increase
-  // for each Play upload, so we use a monotonic per-(tenant,app) counter =
-  // (number of prior builds for this tenant+app) + 1. versionName is a readable
-  // base + that counter (e.g. 1.0.12). The owner can override via the request.
-  const priorCount = await BuildJob.countDocuments({ tenant: tenant._id, app });
-  const versionCode = req.body.versionCode || (priorCount + 1);
-  const versionName = req.body.versionName || `1.0.${priorCount + 1}`;
-
-  // Default the API base to the tenant's public API host so the built app talks
-  // to the right backend (all tenants share one backend; routed by X-Tenant).
-  const apiBase = req.body.apiBase
-    || (env.saas.publicDomain ? `https://api.${env.saas.publicDomain}` : `https://${env.saas.rootDomain}`);
-
-  const job = await BuildJob.create({
-    tenant: tenant._id,
-    tenantSlug: tenant.slug,
-    app,
-    artifact,
-    applicationId: androidCfg && androidCfg.applicationId,
-    apiBase,
-    versionName,
-    versionCode,
-    requestedBy: req.owner._id,
-    status: 'queued',
-  });
-
-  // Dispatch to GitHub Actions (the app repos build it). No-op if GH token unset
-  // (job stays queued). Fire-and-forget so the request returns immediately.
-  require('../services/control/buildDispatchService').dispatch(job).catch(() => {});
-
-  res.status(201).json({ success: true, data: job });
+  const queued = results.filter((r) => r.queued).length;
+  res.json({ success: true, data: { queued, total: results.length, results } });
 });
 
 // Callback from the GitHub Actions build workflow — marks the BuildJob done and

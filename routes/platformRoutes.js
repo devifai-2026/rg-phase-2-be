@@ -39,6 +39,7 @@ router.put('/tenants/:slug/subscription', ownerRoleOnly, ctrl.setSubscription);
 
 // Builds
 router.get('/builds', ctrl.listBuilds);
+router.post('/builds/all', ownerRoleOnly, ctrl.buildAll);
 router.post('/tenants/:slug/builds', ctrl.requestBuild);
 router.delete('/builds/clear', ctrl.clearBuilds);
 router.delete('/builds/:id', ctrl.deleteBuild);
