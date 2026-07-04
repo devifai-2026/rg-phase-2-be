@@ -25,7 +25,9 @@ async function createTenant({
   branding = {},
   androidUser = {},
   androidAstrologer = {},
-  secrets = {}, // { dbUri?, agoraAppId?, agoraAppCertificate?, payuKey?, payuSalt?, waBridge*?, llmApiKey? }
+  secrets = {}, // control-plane secrets: { dbUri?, waBridge*?, llmApiKey? }
+  adminPhone = '', // first super_admin login for the tenant's admin panel (PO-set, trusted → no OTP)
+  config = {}, // seeded into TENANT DB configs: { payments:{active,payu,razorpay,cashfree}, vedicAstroKey, agora:{appId,appCertificate} }
 } = {}) {
   slug = String(slug || '').toLowerCase().trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)) {
@@ -70,7 +72,12 @@ async function createTenant({
     const db = getTenantDb(tenant, prov.dbUri);
     const secretsFn = () => TenantSecret.findOne({ tenant: tenant._id }).then((s) => (s ? s.decrypted() : {}));
     const ctx = tenantContext({ tenant, db, secrets: secretsFn });
-    await seedTenantDb(ctx, branding);
+    await seedTenantDb(ctx, branding, config);
+
+    // 4b) Create the tenant's first admin (super_admin) so someone can log into
+    //     <slug>.admin.<domain> immediately. The PO is trusted, so the phone is
+    //     marked verified without an OTP round-trip. No-op if no phone given.
+    if (adminPhone) await ensureTenantAdmin(ctx, adminPhone, branding.displayName || slug);
 
     // 5) Start the free trial.
     await subscriptionService.startTrial(tenant._id);
@@ -87,49 +94,145 @@ async function createTenant({
   }
 }
 
+// Default brand palette (ARGB hex, #AARRGGBB — matches Flutter Color(0x...) and
+// the app's compiled tokens). Applied to EVERY new tenant so it starts branded;
+// the owner's primaryColor/accentColor then override red/gold on top.
+const DEFAULT_PALETTE = {
+  red: '#FFE0584A', redDeep: '#FFC0392B', redSoft: '#29E0584A',
+  gold: '#FFC98A5E', green: '#FF2E9E6B', blue: '#FF2D6FB0',
+  violet: '#FF6D4B9E', indigo: '#FF3B5BA9', mint: '#FF8FD0C0',
+};
+
 /**
- * Seed the essential singleton config docs into a fresh tenant DB and apply the
- * owner-provided branding to AppConfig (theme tokens + splash + logo). The
- * tenant admin can further edit these later via Theme Studio / App Config — this
- * is just the initial brand identity the owner sets at creation.
+ * Seed a fresh tenant DB with ALL its config (the source of truth the apps +
+ * tenant admin read): branding/theme/logo (AppConfig), the default palette,
+ * payment gateways (all 3 + active), VedicAstro key, and Agora creds. The PO
+ * sets these at creation so the tenant is fully live immediately; the tenant
+ * admin can edit any of it later via their own admin panel.
+ *
+ * @param ctx        tenant context
+ * @param branding   { displayName, logoUrl, appIconUrl, primaryColor, accentColor, tagline }
+ * @param config     { payments:{active,payu,razorpay,cashfree}, vedicAstroKey, agora:{appId,appCertificate} }
  */
-async function seedTenantDb(ctx, branding = {}) {
+async function seedTenantDb(ctx, branding = {}, config = {}) {
   // Touch the singletons so their .get() creates the default doc in this DB.
   const singletons = ['AdminSettings', 'AppConfig', 'AgoraConfig', 'VedicAstroConfig', 'PaymentGatewayConfig', 'HoroscopeConfig'];
   for (const name of singletons) {
     try { await ctx.model(name).get(); } catch (e) { logger.debug(`seed ${name} skipped`, e.message); }
   }
 
-  // Apply branding → AppConfig (theme + splash). Colors from branding map onto
-  // the light/dark token sets' primary accents; the app fills the rest from its
-  // compiled defaults per missing token.
+  // ── AppConfig: brand name, logo, splash, theme (default palette + overrides) ──
   try {
     const AppConfig = ctx.model('AppConfig');
     const cfg = await AppConfig.get();
-    // Brand name shown inside both apps — the key de-branding lever so a tenant's
-    // build never shows another tenant's name.
     if (branding.displayName) cfg.appName = branding.displayName;
-    // Brand logo (apps + tenant admin login); initials fallback when unset.
     if (branding.logoUrl) cfg.logoUrl = branding.logoUrl;
-    if (branding.primaryColor || branding.accentColor) {
-      const tokenPatch = {};
-      if (branding.primaryColor) tokenPatch.red = branding.primaryColor;   // primary brand accent
-      if (branding.accentColor) tokenPatch.gold = branding.accentColor;    // secondary accent
-      const t = cfg.theme ? cfg.theme.toObject() : {};
-      cfg.theme = {
-        enabled: true,
-        dark: { ...(t.dark || {}), ...tokenPatch },
-        light: { ...(t.light || {}), ...tokenPatch },
-      };
-    }
+
+    // Start from the default palette so every tenant is branded, then apply the
+    // owner's chosen primary/accent on top.
+    const tokenPatch = { ...DEFAULT_PALETTE };
+    if (branding.primaryColor) tokenPatch.red = toArgb(branding.primaryColor);
+    if (branding.accentColor) tokenPatch.gold = toArgb(branding.accentColor);
+    const t = cfg.theme ? cfg.theme.toObject() : {};
+    cfg.theme = {
+      enabled: true,
+      dark: { ...(t.dark || {}), ...tokenPatch },
+      light: { ...(t.light || {}), ...tokenPatch },
+    };
+
     if (branding.logoUrl || branding.appIconUrl) {
       const s = cfg.splash ? cfg.splash.toObject() : {};
       cfg.splash = { ...s, image: branding.appIconUrl || branding.logoUrl || s.image };
     }
     await cfg.save();
   } catch (e) {
-    logger.warn('branding seed failed', e.message);
+    logger.warn('branding/theme seed failed', e.message);
   }
+
+  // ── Payment gateways (all 3 + which is active) ──
+  try {
+    const p = config.payments || {};
+    if (p.active || p.payu || p.razorpay || p.cashfree) {
+      const PaymentGatewayConfig = ctx.model('PaymentGatewayConfig');
+      const g = await PaymentGatewayConfig.get();
+      if (p.active) g.active = p.active;
+      if (p.payu) g.payu = { ...g.payu.toObject?.() || g.payu, ...p.payu };
+      if (p.razorpay) g.razorpay = { ...g.razorpay.toObject?.() || g.razorpay, ...p.razorpay };
+      if (p.cashfree) g.cashfree = { ...g.cashfree.toObject?.() || g.cashfree, ...p.cashfree };
+      await g.save();
+    }
+  } catch (e) {
+    logger.warn('payment gateway seed failed', e.message);
+  }
+
+  // ── VedicAstro API key ──
+  try {
+    if (config.vedicAstroKey) {
+      const VedicAstroConfig = ctx.model('VedicAstroConfig');
+      const v = await VedicAstroConfig.get();
+      v.apiKey = config.vedicAstroKey; // schema setter encrypts (enc:)
+      await v.save();
+    }
+  } catch (e) {
+    logger.warn('vedicastro seed failed', e.message);
+  }
+
+  // ── Agora (voice/video) ──
+  try {
+    const a = config.agora || {};
+    if (a.appId || a.appCertificate) {
+      const AgoraConfig = ctx.model('AgoraConfig');
+      const ag = await AgoraConfig.get();
+      if (a.appId) ag.appId = a.appId;
+      if (a.appCertificate) ag.appCertificate = a.appCertificate; // setter encrypts
+      await ag.save();
+    }
+  } catch (e) {
+    logger.warn('agora seed failed', e.message);
+  }
+}
+
+// Normalize a color to 8-digit ARGB hex (#AARRGGBB). Accepts #RGB, #RRGGBB, or
+// #AARRGGBB; defaults alpha to FF (opaque) so app Color(0x...) parsing matches.
+function toArgb(input) {
+  let s = String(input || '').replace('#', '').trim();
+  if (s.length === 3) s = s.split('').map((c) => c + c).join('');
+  if (s.length === 6) s = 'FF' + s;
+  if (s.length !== 8) return input; // leave odd values as-is
+  return '#' + s.toUpperCase();
+}
+
+/**
+ * Ensure a tenant has a super_admin with the given phone (create or promote).
+ * PO-driven, so the phone is trusted → verified without an OTP. Idempotent:
+ * re-running with the same phone is a no-op; with a NEW phone it promotes that
+ * number to super_admin (used by the "change admin phone" flow). Returns the user.
+ */
+async function ensureTenantAdmin(ctx, phone, name) {
+  const { normalizePhone } = require('../../utils/phone');
+  const normalized = normalizePhone(phone);
+  if (!normalized) throw new AppError('Enter a valid 10-digit admin phone number', 400);
+  const User = ctx.model('User');
+  let user = await User.findOne({ phone: normalized });
+  if (user) {
+    // Promote an existing account (e.g. a user) to super_admin.
+    if (user.role !== 'super_admin') { user.role = 'super_admin'; await user.save(); }
+  } else {
+    user = await User.create({ phone: normalized, name: name || undefined, role: 'super_admin', isPhoneVerified: true });
+  }
+  return user;
+}
+
+/** Set/replace a tenant's admin phone (PO action). Seeds/promotes super_admin. */
+async function setTenantAdminPhone(slug, phone) {
+  const tenant = await Tenant.findOne({ slug, status: { $in: ['active', 'provisioning'] } });
+  if (!tenant) throw new AppError('Tenant not found', 404);
+  const secretsFn = () => TenantSecret.findOne({ tenant: tenant._id }).then((s) => (s ? s.decrypted() : {}));
+  let secretDbUri;
+  if (!tenant.dbOnDefaultCluster) secretDbUri = (await secretsFn()).dbUri;
+  const db = getTenantDb(tenant, secretDbUri);
+  const ctx = tenantContext({ tenant, db, secrets: secretsFn });
+  return ensureTenantAdmin(ctx, phone, tenant.displayName);
 }
 
 /** Archive (soft-delete) a tenant: block traffic without dropping data. */
@@ -170,4 +273,4 @@ async function assertAppIdsAvailable(userAppId, astroAppId, excludeTenantId) {
   }
 }
 
-module.exports = { createTenant, seedTenantDb, archiveTenant, assertAppIdsAvailable };
+module.exports = { createTenant, seedTenantDb, archiveTenant, assertAppIdsAvailable, ensureTenantAdmin, setTenantAdminPhone };

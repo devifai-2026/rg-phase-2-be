@@ -17,6 +17,7 @@ router.use(ownerProtect);
 
 router.get('/me', ctrl.me);
 router.get('/overview', ctrl.overview);
+router.get('/analytics', ctrl.analytics);
 
 // Tenants
 router.get('/tenants', ctrl.listTenants);
@@ -24,6 +25,7 @@ router.get('/tenants/:slug', ctrl.getTenant);
 router.post('/tenants', ownerRoleOnly, ctrl.createTenant);
 router.patch('/tenants/:slug', ctrl.updateTenant);
 router.put('/tenants/:slug/secrets', ownerRoleOnly, ctrl.updateSecrets);
+router.put('/tenants/:slug/admin-phone', ownerRoleOnly, ctrl.setAdminPhone);
 router.delete('/tenants/:slug', ownerRoleOnly, ctrl.archiveTenant);
 
 // Plans & subscriptions

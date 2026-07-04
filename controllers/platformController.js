@@ -106,6 +106,15 @@ exports.updateSecrets = asyncHandler(async (req, res) => {
   res.json({ success: true });
 });
 
+// Set/change the tenant's admin login phone (seeds/promotes a super_admin in the
+// tenant DB). That phone can then log into <slug>.admin.<domain> via OTP.
+exports.setAdminPhone = asyncHandler(async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) throw new AppError('phone is required', 400);
+  const admin = await provisionService.setTenantAdminPhone(req.params.slug, phone);
+  res.json({ success: true, data: { phone: admin.phone, role: admin.role, name: admin.name } });
+});
+
 exports.archiveTenant = asyncHandler(async (req, res) => {
   const tenant = await provisionService.archiveTenant(req.params.slug);
   if (!tenant) throw new AppError('Tenant not found', 404);
@@ -188,4 +197,12 @@ exports.overview = asyncHandler(async (req, res) => {
     Subscription.countDocuments({ status: 'suspended' }),
   ]);
   res.json({ success: true, data: { tenants: tenantCount, activeSubs, trialing, suspended } });
+});
+
+// Full analytics report: platform totals + per-tenant metrics (users, astrologers,
+// sessions, revenue) + MongoDB storage/doc counts + subscription breakdown. Reads
+// each tenant's own DB — heavier than /overview, so it's a separate endpoint.
+exports.analytics = asyncHandler(async (req, res) => {
+  const data = await require('../services/control/analyticsService').report();
+  res.json({ success: true, data });
 });
