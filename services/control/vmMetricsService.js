@@ -75,31 +75,39 @@ async function series(metricType, { startISO, endISO, alignSec = 300, perSeriesA
  * Returns { configured, instanceName, window, cpu, memory, disk, net, latest, present }.
  * Never throws.
  */
+// Cloud Monitoring only produces a new data point per metric ~once a minute, so
+// caching the report for 60s is safe and turns repeated dashboard loads into an
+// instant response instead of ~2.5s of external API round-trips each time.
+const _cache = new Map(); // hours -> { at, data }
+const CACHE_TTL_MS = 60 * 1000;
+
 async function report({ hours = 3 } = {}, nowMs) {
   if (!configured()) return { configured: false };
+  const now = nowMs || Date.now();
+  const cached = _cache.get(hours);
+  if (cached && (now - cached.at) < CACHE_TTL_MS) return cached.data;
   try {
-    const end = nowMs || Date.now();
+    const end = now;
     const start = end - hours * 3600 * 1000;
     const endISO = new Date(end).toISOString();
     const startISO = new Date(start).toISOString();
     const align = hours <= 3 ? 300 : 900; // 5m for short windows, 15m for long
 
-    // CPU utilization (0..1) — always present.
-    const cpuRaw = await series('compute.googleapis.com/instance/cpu/utilization', { startISO, endISO, alignSec: align });
+    // Fetch all four series IN PARALLEL — each is a separate Cloud Monitoring
+    // round-trip; sequential awaits made this ~2.5s. Parallel ≈ one round-trip.
+    const [cpuRaw, mem, dsk, rx] = await Promise.all([
+      series('compute.googleapis.com/instance/cpu/utilization', { startISO, endISO, alignSec: align }),
+      series('agent.googleapis.com/memory/percent_used', { startISO, endISO, alignSec: align, extraFilter: 'AND metric.labels.state="used"' }),
+      series('agent.googleapis.com/disk/percent_used', { startISO, endISO, alignSec: align, extraFilter: 'AND metric.labels.state="used"' }),
+      series('compute.googleapis.com/instance/network/received_bytes_count', { startISO, endISO, alignSec: align, perSeriesAligner: 'ALIGN_RATE' }),
+    ]);
     const cpu = cpuRaw.map((p) => ({ t: p.t, v: +(p.v * 100).toFixed(2) })); // → percent
-
-    // Memory & disk from the Ops Agent (may be absent).
-    const mem = await series('agent.googleapis.com/memory/percent_used', { startISO, endISO, alignSec: align, extraFilter: 'AND metric.labels.state="used"' });
     const memory = mem.map((p) => ({ t: p.t, v: +p.v.toFixed(2) }));
-    const dsk = await series('agent.googleapis.com/disk/percent_used', { startISO, endISO, alignSec: align, extraFilter: 'AND metric.labels.state="used"' });
     const disk = dsk.map((p) => ({ t: p.t, v: +p.v.toFixed(2) }));
-
-    // Network throughput (bytes/s) — always present via built-in agent; useful fallback.
-    const rx = await series('compute.googleapis.com/instance/network/received_bytes_count', { startISO, endISO, alignSec: align, perSeriesAligner: 'ALIGN_RATE' });
     const net = rx.map((p) => ({ t: p.t, v: +(p.v / 1024).toFixed(2) })); // KB/s
 
     const last = (arr) => (arr.length ? arr[arr.length - 1].v : null);
-    return {
+    const data = {
       configured: true,
       instanceName: cfg().instanceName,
       window: { hours, startISO, endISO },
@@ -107,6 +115,8 @@ async function report({ hours = 3 } = {}, nowMs) {
       present: { cpu: cpu.length > 0, memory: memory.length > 0, disk: disk.length > 0, net: net.length > 0 },
       latest: { cpu: last(cpu), memory: last(memory), disk: last(disk), net: last(net) },
     };
+    _cache.set(hours, { at: now, data });
+    return data;
   } catch (e) {
     logger.error('vmMetrics report failed', e.message);
     return { configured: true, error: e.message, cpu: [], memory: [], disk: [], net: [], present: {}, latest: {} };
