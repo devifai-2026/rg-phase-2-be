@@ -334,6 +334,47 @@ async function aggregateMatch(ctx, { girl, boy, lang } = {}) {
   }
 }
 
+/**
+ * Manglik Dosha for one birth — /dosha/manglik-dosh. Instant (no cron). Inputs:
+ * dob (DD/MM/YYYY), tob (HH:mm), lat, lon; tz fixed 5.5. Cached per birth+lang,
+ * stale-on-failure. Returns the raw `response` (manglik_by_mars/saturn/rahuketu,
+ * score, factors[], aspects[], bot_response).
+ */
+async function manglikDosh(ctx, { dob, tob, lat, lon, lang } = {}) {
+  ctx = ctx || defaultContext();
+  const AstroCache = ctx.model('AstroCache');
+  const d = String(dob || '').trim();
+  const t = String(tob || '12:00').trim();
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return null;
+  const la = Number(lat) || 0;
+  const lo = Number(lon) || 0;
+  const pLang = providerLangFor(lang);
+
+  const cacheKey = hashObject({ endpoint: 'dosha/manglik-dosh', dob: d, tob: t, lat: la, lon: lo, lang: pLang });
+  const cached = await AstroCache.findOne({ cacheKey });
+  if (cached) return cached.payload;
+
+  const { apiKey, baseUrl, cacheTtlDays } = await resolveConfig(ctx);
+  if (!apiKey) return null;
+
+  try {
+    const { data } = await axios.get(`${baseUrl}/dosha/manglik-dosh`, {
+      params: { api_key: apiKey, dob: d, tob: t, lat: la, lon: lo, tz: 5.5, lang: pLang },
+      timeout: 15000,
+    });
+    const payload = (data && data.response) ? data.response : null;
+    if (payload) {
+      const expiresAt = new Date(Date.now() + cacheTtlDays * 24 * 60 * 60 * 1000);
+      await AstroCache.create({ cacheKey, endpoint: 'dosha/manglik-dosh', params: { dob: d, tob: t, lat: la, lon: lo, lang: pLang }, payload, fetchedAt: new Date(), expiresAt });
+    }
+    return payload;
+  } catch (e) {
+    logger.warn('manglik-dosh fetch failed; serving stale if any', e.message);
+    const stale = await AstroCache.findOne({ cacheKey });
+    return stale ? stale.payload : null;
+  }
+}
+
 // resolveConfig is exported so horoscopeService reuses the SAME admin-managed
 // key / baseUrl resolution (DB-first, env fallback) — no duplicated config path.
-module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot, numerology, birthChartSvg, aggregateMatch };
+module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot, numerology, birthChartSvg, aggregateMatch, manglikDosh };
