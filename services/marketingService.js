@@ -38,7 +38,7 @@ async function generateFor(ctx, audience, count, batch, adminId) {
   const MarketingNotif = ctx.model('MarketingNotif');
   if (!llmService.available()) throw new Error('LLM not configured');
   const examples = await exampleLines(ctx, audience);
-  const out = await llmService.completeJSON({
+  const out = await llmService.completeJSON(ctx, {
     system: await promptService.getSystem('marketing'),
     messages: [{ role: 'user', content: marketingPrompt.buildUserMessage({ audience, count, examples }) }],
     schema: marketingPrompt.MARKETING_SCHEMA,

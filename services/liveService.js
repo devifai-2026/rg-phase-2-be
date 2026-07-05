@@ -751,7 +751,7 @@ async function aiSummary(ls, profile) {
 
   if (llmService.available()) {
     try {
-      const out = await llmService.completeJSON({
+      const out = await llmService.completeJSON(ctx, {
         system: await promptService.getSystem('liveSummary'),
         messages: [{ role: 'user', content: liveSummaryPrompt.buildUserMessage({ name, facts, moderation, questions }) }],
         schema: liveSummaryPrompt.SUMMARY_SCHEMA,
@@ -794,7 +794,7 @@ function publicPoll(poll) {
 async function aiPoll(ctx = {}) {
   if (llmService.available()) {
     try {
-      const parsed = await llmService.completeJSON({
+      const parsed = await llmService.completeJSON(ctx, {
         system: await promptService.getSystem('livePoll'),
         messages: [{ role: 'user', content: livePollPrompt.buildUserMessage(ctx) }],
         schema: livePollPrompt.POLL_SCHEMA,

@@ -66,7 +66,7 @@ async function chat(ctx, { userId, conversationId, message }) {
       `Configure the Gemini/Vertex provider for full readings.`;
   } else {
     try {
-      answer = await llmService.complete({
+      answer = await llmService.complete(ctx, {
         system,
         messages: history.map((m) => ({ role: m.role, content: m.content })),
         maxTokens: env.llm.maxTokens,

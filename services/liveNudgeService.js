@@ -115,7 +115,7 @@ function _data(ls, profileId) {
 async function _craft({ kind, astrologerName, topic, pollQuestion, language }) {
   if (llmService.available()) {
     try {
-      const line = await llmService.complete({
+      const line = await llmService.complete(ctx, {
         system: await promptService.getSystem('liveNudge'),
         messages: [{ role: 'user', content: liveNudgePrompt.buildUserMessage({ kind, astrologerName, topic, pollQuestion, language }) }],
         maxTokens: 64,
