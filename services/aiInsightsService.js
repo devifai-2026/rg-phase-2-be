@@ -88,7 +88,7 @@ async function generateChatRecap(ctx, { sessionId }) {
   if (llmService.available()) {
     try {
       ai = await llmService.completeJSON(ctx, {
-        system: await promptService.getSystem('chatRecap'),
+        system: await promptService.getSystem(ctx, 'chatRecap'),
         messages: [{ role: 'user', content: chatRecapPrompt.buildUserMessage({
           transcript, catalogue: catForPrompt, todayISO: new Date().toISOString().slice(0, 10),
           userId: String(session.user), astrologerId: String(session.astrologer),
@@ -488,7 +488,7 @@ async function optimizeProfile(ctx, astrologerUserId) {
   if (llmService.available()) {
     try {
       const out = await llmService.completeJSON(ctx, {
-        system: await promptService.getSystem('profileOptimizer'),
+        system: await promptService.getSystem(ctx, 'profileOptimizer'),
         messages: [{ role: 'user', content: optimizerPrompt.buildUserMessage({
           currentBio: bio, expertise, languages, experienceYears: p.experienceYears, stats, lang,
         }) }],
@@ -559,7 +559,7 @@ async function moderateLiveComment(ctx, text) {
   if (!llmService.available()) return { allowed: true, category: 'ok', reason: '' };
   try {
     const v = await llmService.completeJSON(ctx, {
-      system: await promptService.getSystem('liveModeration'),
+      system: await promptService.getSystem(ctx, 'liveModeration'),
       messages: [{ role: 'user', content: liveModerationPrompt.buildUserMessage({ text: clean }) }],
       schema: liveModerationPrompt.MODERATION_SCHEMA,
       maxTokens: 256,

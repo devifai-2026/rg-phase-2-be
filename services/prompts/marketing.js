@@ -49,9 +49,28 @@ const SYSTEM = (
  * @param {'users'|'astrologers'} p.audience
  * @param {number} p.count                 how many lines to produce
  * @param {string[]} [p.examples]          existing saved lines (style reference)
+ * @param {string} [p.lang]                force ALL lines into this language code
  */
-function buildUserMessage({ audience, count, examples = [] }) {
+const LANG_INSTRUCTION = {
+  en: 'English',
+  hi: 'Hindi, written in Devanagari script',
+  'hi-rom': 'Hinglish (Hindi written in Roman/Latin script)',
+  bn: 'Bengali, written in Bengali script',
+  'bn-rom': 'Banglish (Bengali written in Roman/Latin script)',
+  mr: 'Marathi, written in Devanagari script',
+  pa: 'Punjabi, written in Gurmukhi script',
+  as: 'Assamese, written in Bengali/Eastern-Nagari script',
+  kn: 'Kannada, written in Kannada script',
+  te: 'Telugu, written in Telugu script',
+  ta: 'Tamil, written in Tamil script',
+};
+
+function buildUserMessage({ audience, count, examples = [], lang }) {
   let msg = `AUDIENCE: ${audience}\nWrite ${count} fresh push-notification lines for this audience.\n`;
+  const forced = lang && LANG_INSTRUCTION[lang];
+  if (forced) {
+    msg += `\nLANGUAGE: write EVERY line in ${forced}. Do NOT mix languages — all ${count} lines must be in ${forced}. Set each line's \`lang\` to "${lang}".\n`;
+  }
   if (examples.length) {
     msg += '\nExisting lines (for STYLE reference only, write NEW, different ones):\n'
       + examples.slice(0, 30).map((e) => `- ${e}`).join('\n') + '\n';

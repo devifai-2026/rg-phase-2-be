@@ -1466,7 +1466,8 @@ exports.updateMarketingConfig = asyncHandler(async (req, res) => {
 exports.generateMarketing = asyncHandler(async (req, res) => {
   const marketingService = require('../services/marketingService');
   const total = Math.min(parseInt(req.body?.total || '30', 10) || 30, 60);
-  const out = await marketingService.generate(req.ctx, { total, adminId: req.user._id });
+  const lang = req.body?.lang || undefined; // '' / undefined = model's default mix
+  const out = await marketingService.generate(req.ctx, { total, adminId: req.user._id, lang });
   res.json({ success: true, data: out });
 });
 

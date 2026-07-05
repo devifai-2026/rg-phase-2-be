@@ -116,7 +116,7 @@ async function _craft({ kind, astrologerName, topic, pollQuestion, language }) {
   if (llmService.available()) {
     try {
       const line = await llmService.complete(ctx, {
-        system: await promptService.getSystem('liveNudge'),
+        system: await promptService.getSystem(ctx, 'liveNudge'),
         messages: [{ role: 'user', content: liveNudgePrompt.buildUserMessage({ kind, astrologerName, topic, pollQuestion, language }) }],
         maxTokens: 64,
         temperature: 0.9,

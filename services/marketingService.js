@@ -33,14 +33,14 @@ async function exampleLines(ctx, audience, n = 12) {
 }
 
 /** Generate one audience's batch via the LLM (best-effort). Returns created docs. */
-async function generateFor(ctx, audience, count, batch, adminId) {
+async function generateFor(ctx, audience, count, batch, adminId, lang) {
   ctx = ctx || defaultContext();
   const MarketingNotif = ctx.model('MarketingNotif');
   if (!llmService.available()) throw new Error('LLM not configured');
   const examples = await exampleLines(ctx, audience);
   const out = await llmService.completeJSON(ctx, {
-    system: await promptService.getSystem('marketing'),
-    messages: [{ role: 'user', content: marketingPrompt.buildUserMessage({ audience, count, examples }) }],
+    system: await promptService.getSystem(ctx, 'marketing'),
+    messages: [{ role: 'user', content: marketingPrompt.buildUserMessage({ audience, count, examples, lang }) }],
     schema: marketingPrompt.MARKETING_SCHEMA,
     maxTokens: 2048,
     logMeta: { feature: 'marketing' },
@@ -50,7 +50,7 @@ async function generateFor(ctx, audience, count, batch, adminId) {
     .filter((i) => i && i.title && i.body)
     .slice(0, count)
     .map((i) => ({
-      audience, lang: i.lang || 'en',
+      audience, lang: lang || i.lang || 'en',
       title: String(i.title).slice(0, 80), body: String(i.body).slice(0, 160),
       status: 'pending', batch, createdBy: adminId,
     }));
@@ -62,13 +62,13 @@ async function generateFor(ctx, audience, count, batch, adminId) {
  * Generate a fresh review batch (half users, half astrologers). Returns the
  * pending items for the admin to Save/Reject. Throws if the LLM is unavailable.
  */
-async function generate(ctx, { total = DEFAULT_TOTAL, adminId } = {}) {
+async function generate(ctx, { total = DEFAULT_TOTAL, adminId, lang } = {}) {
   ctx = ctx || defaultContext();
   const batch = crypto.randomUUID();
   const perAudience = Math.max(1, Math.floor(total / 2));
   const [u, a] = await Promise.all([
-    generateFor(ctx, 'users', perAudience, batch, adminId).catch((e) => { logger.warn('marketing gen users failed', e.message); return []; }),
-    generateFor(ctx, 'astrologers', total - perAudience, batch, adminId).catch((e) => { logger.warn('marketing gen astro failed', e.message); return []; }),
+    generateFor(ctx, 'users', perAudience, batch, adminId, lang).catch((e) => { logger.warn('marketing gen users failed', e.message); return []; }),
+    generateFor(ctx, 'astrologers', total - perAudience, batch, adminId, lang).catch((e) => { logger.warn('marketing gen astro failed', e.message); return []; }),
   ]);
   const created = [...u, ...a];
   if (!created.length) throw new Error('Generation produced nothing (LLM unavailable?)');
