@@ -83,6 +83,23 @@ function defaultSystem(key) {
   return entry && entry.module ? entry.module.SYSTEM : '';
 }
 
+/** The tenant's brand name for prompt substitution — never a hardcoded brand.
+ *  Prefers branding.displayName, then tenant.displayName, then a neutral default. */
+function brandName(ctx) {
+  const t = (ctx && ctx.tenant) || {};
+  return (t.branding && t.branding.displayName)
+    || t.displayName
+    || 'the app';
+}
+
+/** Replace the {appName} placeholder in a prompt with the tenant's brand, so a
+ *  single DB prompt stays brand-neutral and each tenant's generations use ITS
+ *  name — never a hardcoded "RudraGanga". No-op when the prompt has no placeholder. */
+function applyBrand(ctx, text) {
+  if (!text || !text.includes('{appName}')) return text;
+  return text.split('{appName}').join(brandName(ctx));
+}
+
 /** Resolve the guardrails text from the DB (admin-editable), cached like any
  *  prompt; falls back to the code default. Read directly from the row to avoid
  *  recursing through getSystem's append step. */
@@ -182,6 +199,9 @@ async function getSystem(ctx, key) {
       raw = def;
     }
   }
+  // Substitute the tenant brand into {appName} so a single, brand-neutral DB
+  // prompt yields THIS tenant's name in every generation.
+  raw = applyBrand(ctx, raw);
   // Every prompt EXCEPT the guardrails prompt itself gets the global guardrails
   // appended (idempotent; uses the current admin-editable guardrails value).
   if (key === GUARDRAILS_KEY) return raw;
