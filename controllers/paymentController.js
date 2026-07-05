@@ -129,15 +129,11 @@ exports.payuRedirect = asyncHandler(async (req, res) => {
     // Tenant-scoped callback URLs so the s2s callback can resolve the tenant DB.
     surl: withTenant(env.payu.surl, req), furl: withTenant(env.payu.furl, req),
   });
-  // In mock mode (no PayU keys) just confirm + show a done page so the dev flow
-  // is testable end-to-end without real checkout.
+  // LIVE app: never mark a booking paid without real payment. If the active
+  // gateway has no keys, fail cleanly instead of confirming for free.
   if (payment.mock) {
-    booking.paymentStatus = 'paid';
-    booking.status = 'confirmed';
-    await booking.save();
-    require('../services/storeEarningsService').bumpPoojaBooked(req.ctx, booking).catch(() => {});
-    require('../services/storeEarningsService').creditAstrologerForBooking(req.ctx, booking).catch(() => {});
-    return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h3>✅ Booking confirmed (mock payment)</h3><p>Return to the app.</p></body></html>');
+    logger.error('pooja booking blocked — payment gateway not configured (no keys)', { bookingId: String(booking._id), tenant: req.tenant && req.tenant.slug });
+    return res.status(503).send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h3>Payment temporarily unavailable</h3><p>Please try again shortly or contact support.</p></body></html>');
   }
   sendPayuForm(res, payment);
 });
@@ -170,13 +166,10 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
     surl: withTenant(env.payu.surl, req), furl: withTenant(env.payu.furl, req),
   });
   if (checkout.mock) {
-    // No keys for the active gateway → credit immediately so dev flow is testable.
-    await walletService.credit(req.ctx, { userId: pending.user, amount: pending.amount, source: 'recharge', description: 'Wallet recharge (mock)', refId: txnid, meta: { txnid } });
-    await Transaction.updateOne({ _id: pending._id }, { $set: { status: 'completed' } });
-    require('../services/referralService').onFirstRecharge(req.ctx, pending.user).catch(() => {});
-    extendActiveSession(req.ctx, pending.user); // top up a live session's lock if any
-    emit.toUser(pending.user, 'wallet-updated', await walletService.getBalance(req.ctx, pending.user));
-    return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h3>✅ Recharge successful (mock)</h3><p>Return to the app.</p></body></html>');
+    // LIVE app: never fake-credit. If the active gateway has no keys configured,
+    // the recharge cannot proceed — fail cleanly instead of crediting for free.
+    logger.error('recharge blocked — active payment gateway is not configured (no keys)', { txnid, tenant: req.tenant && req.tenant.slug });
+    return res.status(503).send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h3>Payment temporarily unavailable</h3><p>Please try again shortly or contact support.</p></body></html>');
   }
   sendCheckout(res, checkout);
 });

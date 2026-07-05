@@ -24,7 +24,7 @@ async function goLive(ctx, { astrologerUserId, title, topic }) {
   // Guard: only one live broadcast per astrologer at a time. Reuse if present.
   const existing = await LiveSession.findOne({ astrologer: astrologerUserId, status: 'live' });
   if (existing) {
-    const token = await agoraService.tokenForLive(existing.channelName, existing.agora.broadcasterUid, 'broadcaster');
+    const token = await agoraService.tokenForLive(ctx, existing.channelName, existing.agora.broadcasterUid, 'broadcaster');
     return { liveSession: existing, token };
   }
 
@@ -42,7 +42,7 @@ async function goLive(ctx, { astrologerUserId, title, topic }) {
     agora: { broadcasterUid },
   });
 
-  const token = await agoraService.tokenForLive(channelName, broadcasterUid, 'broadcaster');
+  const token = await agoraService.tokenForLive(ctx, channelName, broadcasterUid, 'broadcaster');
 
   // While live, mark the astrologer BUSY so users can't send 1-on-1 service
   // requests (canReceive() requires currentCallStatus==='available'). The
@@ -448,7 +448,7 @@ async function joinLive(ctx, { liveSessionId, userId }) {
   if (ls.status !== 'live') throw new AppError('This broadcast has ended', 410);
 
   const uid = agoraService.newUid();
-  const token = await agoraService.tokenForLive(ls.channelName, uid, 'audience');
+  const token = await agoraService.tokenForLive(ctx, ls.channelName, uid, 'audience');
 
   // NOTE: the live viewer COUNT is owned by the socket lifecycle (join-live
   // increments, leave-live/disconnect decrements) so it self-corrects on

@@ -43,6 +43,8 @@ async function verifyOtp(ctx, phone, code, meta = {}) {
 
   let user = await User.findOne({ phone });
   let isNewUser = false;
+  let signupBonus = 0;        // amount actually credited (0 if none) → drives the app's confetti modal
+  let freeChatMinutes = 0;
   if (!user) {
     user = await User.create({ phone, isPhoneVerified: true });
     isNewUser = true;
@@ -58,9 +60,11 @@ async function verifyOtp(ctx, phone, code, meta = {}) {
         description: 'Signup bonus',
         refId: `signup-bonus:${user._id}`,
       });
+      signupBonus = settings.signupBonus; // credited → tell the app to celebrate
     }
     if (settings.signupFreeChatEnabled && settings.signupFreeChatMinutes > 0) {
       user.freeChatMinutes = settings.signupFreeChatMinutes;
+      freeChatMinutes = settings.signupFreeChatMinutes;
       await user.save();
     }
     // System template: welcome notification for new users (sent if enabled).
@@ -73,7 +77,9 @@ async function verifyOtp(ctx, phone, code, meta = {}) {
   if (user.isBlocked) throw new AppError('Your account has been blocked by the admin. Please contact support for assistance.', 403);
 
   const auth = await buildAuthResponse(ctx, user, meta);
-  return { ...auth, isNewUser };
+  // signupBonus > 0 ONLY when a bonus was actually credited this signup, so the
+  // app shows the celebration modal only then (never on a ₹0 / disabled bonus).
+  return { ...auth, isNewUser, signupBonus, freeChatMinutes };
 }
 
 // ── Admin-driven user onboarding (with OTP verification) ──
