@@ -20,6 +20,7 @@ const buildJobSchema = new mongoose.Schema(
     // --dart-define; applicationId/label come from Tenant.androidUser/Astrologer.
     applicationId: { type: String },
     appLabel: { type: String }, // home-screen + notification-tray app name (tenant display name)
+    iconUrl: { type: String }, // tenant appIconUrl → flutter_launcher_icons (launcher/home-screen icon)
     versionName: { type: String },
     versionCode: { type: Number },
     apiBase: { type: String }, // https://<tenant-api-host>

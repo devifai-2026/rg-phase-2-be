@@ -337,9 +337,14 @@ async function queueBuild(tenant, { app = 'user', artifact = 'aab', apiBase, ver
   // display name (e.g. "Rudraganga"), fall back to the per-app label then slug.
   const appLabel = (androidCfg && androidCfg.appLabel) || tenant.displayName || tenant.slug;
 
+  // Launcher (home-screen) icon source — the owner's uploaded appIconUrl. The
+  // workflow downloads it and runs flutter_launcher_icons before the build so the
+  // installed app shows the tenant's icon, not the compiled default.
+  const iconUrl = (tenant.branding && tenant.branding.appIconUrl) || '';
+
   const job = await BuildJob.create({
     tenant: tenant._id, tenantSlug: tenant.slug, app, artifact,
-    applicationId: androidCfg && androidCfg.applicationId, appLabel,
+    applicationId: androidCfg && androidCfg.applicationId, appLabel, iconUrl,
     apiBase: base, versionName: vn, versionCode: vc,
     requestedBy: ownerId, status: 'queued',
   });
