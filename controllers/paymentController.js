@@ -8,6 +8,15 @@ const emit = require('../websockets/emit');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 
+// Append ?tenant=<slug> to a URL so the tenant survives browser/WebView hops that
+// carry no X-Tenant header or bearer token (the PayU redirect → gateway → surl/furl
+// callback → result-page chain). Multi-tenant only; single-tenant leaves URLs as-is.
+function withTenant(url, req) {
+  const slug = req && req.tenant && req.tenant.slug;
+  if (!slug || !env.saas.enabled || !url) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'tenant=' + encodeURIComponent(slug);
+}
+
 /**
  * After a wallet recharge, if the user is mid-session, extend that session's
  * locked reservation so per-minute billing keeps running (no low_balance end).
@@ -117,6 +126,8 @@ exports.payuRedirect = asyncHandler(async (req, res) => {
     email: user?.email || 'user@example.com',
     phone: booking.contactPhone || user?.phone,
     udf: ['pooja', String(booking._id)],
+    // Tenant-scoped callback URLs so the s2s callback can resolve the tenant DB.
+    surl: withTenant(env.payu.surl, req), furl: withTenant(env.payu.furl, req),
   });
   // In mock mode (no PayU keys) just confirm + show a done page so the dev flow
   // is testable end-to-end without real checkout.
@@ -154,7 +165,9 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
     productinfo: 'Wallet Recharge',
     customer: { name: user?.name, email: user?.email, phone: user?.phone },
     udf: ['wallet', String(pending.user)],
-    surl: env.payu.surl, furl: env.payu.furl, // callback URLs (gateway-neutral)
+    // Carry the tenant on the gateway callback URLs so the s2s callback (which
+    // has no header/token) can resolve the tenant DB.
+    surl: withTenant(env.payu.surl, req), furl: withTenant(env.payu.furl, req),
   });
   if (checkout.mock) {
     // No keys for the active gateway → credit immediately so dev flow is testable.
@@ -200,7 +213,7 @@ exports.initiateRecharge = asyncHandler(async (req, res) => {
 // Terminal callback responses redirect the browser/webview to a tiny RESULT
 // page at /payments/payu/result?status=… so the in-app WebView can detect it
 // (by URL) and close. The status is the single source of truth for the app.
-const resultUrl = (status) => `/api/payments/payu/result?status=${encodeURIComponent(status)}`;
+const resultUrl = (status, req) => withTenant(`/api/payments/payu/result?status=${encodeURIComponent(status)}`, req);
 
 exports.payuCallback = asyncHandler(async (req, res) => {
   const Transaction = req.model('Transaction');
@@ -221,12 +234,12 @@ exports.payuCallback = asyncHandler(async (req, res) => {
 
   if (!ok) {
     logger.warn(`${gwId} callback verify failed`, { txnid });
-    return res.redirect(resultUrl('failed'));
+    return res.redirect(resultUrl('failed', req));
   }
 
   if (result.status !== 'success') {
     if (udf1 === 'order') await Order.updateOne({ paymentId: txnid }, { $set: { paymentStatus: 'failed' } });
-    return res.redirect(resultUrl('failed'));
+    return res.redirect(resultUrl('failed', req));
   }
 
   // Amount: PayU sends it in the callback; Razorpay/Cashfree don't (null) — we
@@ -243,10 +256,10 @@ exports.payuCallback = asyncHandler(async (req, res) => {
     // Cashfree return no amount) use the intent's amount.
     if (amountRupees != null && pending && pending.amount !== amountRupees) {
       logger.warn('Recharge amount tampering detected', { txnid, expected: pending.amount, got: amountRupees });
-      return res.redirect(resultUrl('failed'));
+      return res.redirect(resultUrl('failed', req));
     }
     const credited = amountRupees != null ? amountRupees : (pending ? pending.amount : 0);
-    if (!credited) return res.redirect(resultUrl('failed'));
+    if (!credited) return res.redirect(resultUrl('failed', req));
     await walletService.credit(req.ctx, {
       userId,
       amount: credited,
@@ -271,7 +284,7 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       userId,
       vars: { name: u?.name || 'there', amount: credited, balance: bal.balance },
     });
-    return res.redirect(resultUrl('success'));
+    return res.redirect(resultUrl('success', req));
   }
 
   // ── Order payment ──
@@ -309,7 +322,7 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       // Live admin-console badge + bell.
       emit.adminActivity('order', { id: order._id, title: `New order ₹${order.total}` });
     }
-    return res.redirect(resultUrl('success'));
+    return res.redirect(resultUrl('success', req));
   }
 
   // ── Pooja booking payment ──
@@ -330,10 +343,10 @@ exports.payuCallback = asyncHandler(async (req, res) => {
         data: { bookingId: String(booking._id) },
       });
     }
-    return res.redirect(resultUrl('success'));
+    return res.redirect(resultUrl('success', req));
   }
 
-  res.redirect(resultUrl('success'));
+  res.redirect(resultUrl('success', req));
 });
 
 /**

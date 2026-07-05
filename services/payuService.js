@@ -33,7 +33,7 @@ function buildRequestHash({ txnid, amount, productinfo, firstname, email, udf = 
   return sha512(seq.join('|'));
 }
 
-function buildPaymentRequest({ txnid, amountRupees, productinfo, firstname, email, phone, udf = [] }) {
+function buildPaymentRequest({ txnid, amountRupees, productinfo, firstname, email, phone, udf = [], surl, furl }) {
   const amount = amountStr(amountRupees);
   const hash = buildRequestHash({ txnid, amount, productinfo, firstname, email, udf });
   const fields = {
@@ -44,8 +44,9 @@ function buildPaymentRequest({ txnid, amountRupees, productinfo, firstname, emai
     firstname,
     email,
     phone,
-    surl: env.payu.surl,
-    furl: env.payu.furl,
+    // Callers may pass tenant-scoped callback URLs; fall back to the env defaults.
+    surl: surl || env.payu.surl,
+    furl: furl || env.payu.furl,
     udf1: udf[0] || '',
     udf2: udf[1] || '',
     udf3: udf[2] || '',

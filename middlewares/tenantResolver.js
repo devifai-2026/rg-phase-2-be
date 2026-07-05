@@ -92,7 +92,15 @@ function extractSlug(req) {
   const fromHost = slugFromHost(req.headers.host);
   if (fromHost) return fromHost;
   // 3) tenant slug baked into the auth token at login.
-  return slugFromToken(req);
+  const fromToken = slugFromToken(req);
+  if (fromToken) return fromToken;
+  // 4) ?tenant= query param — for browser/WebView navigations that carry no
+  //    header or bearer token (e.g. the PayU payment redirect + its surl/furl
+  //    gateway callbacks). Same trust model as the header: it only routes the
+  //    request to a tenant DB; callbacks are still hash-verified downstream.
+  const q = req.query && req.query.tenant;
+  if (q) return String(q).toLowerCase().trim();
+  return null;
 }
 
 // Small in-process cache of resolved tenants (control-plane reads are cheap but
