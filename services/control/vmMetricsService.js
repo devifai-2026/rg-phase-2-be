@@ -54,7 +54,19 @@ async function series(metricType, { startISO, endISO, alignSec = 300, perSeriesA
   params.set('aggregation.alignmentPeriod', `${alignSec}s`);
   params.set('aggregation.perSeriesAligner', perSeriesAligner);
   const url = `${BASE}/projects/${projectId}/timeSeries?${params.toString()}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${t}`, 'x-goog-user-project': projectId } });
+  // Hard timeout so a stalled Cloud Monitoring call can never hang the request
+  // (was seen hanging ~60s). Abort at 6s and treat as "no data" for that series.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  let res;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${t}`, 'x-goog-user-project': projectId }, signal: ctrl.signal });
+  } catch (e) {
+    logger.warn('vmMetrics query aborted/failed', { metricType, error: e.message });
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const body = await res.text();
     logger.warn('vmMetrics query failed', { metricType, status: res.status, body: body.slice(0, 200) });
@@ -119,6 +131,9 @@ async function report({ hours = 3 } = {}, nowMs) {
     return data;
   } catch (e) {
     logger.error('vmMetrics report failed', e.message);
+    // Serve the last good data (even if stale) so the dashboard never blocks on
+    // a transient Cloud Monitoring hiccup; fall back to empty only if never cached.
+    if (cached) return cached.data;
     return { configured: true, error: e.message, cpu: [], memory: [], disk: [], net: [], present: {}, latest: {} };
   }
 }
