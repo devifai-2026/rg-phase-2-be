@@ -3,7 +3,7 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 // (secrets are returned unmasked to the owner console — the PO owns these values)
 const { signOwner } = require('../utils/ownerToken');
-const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore } = require('../models/control');
+const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore, NetFallbackEvent } = require('../models/control');
 const { encrypt, decrypt } = require('../utils/secretCrypto');
 const provisionService = require('../services/control/provisionService');
 const subscriptionService = require('../services/control/subscriptionService');
@@ -591,4 +591,62 @@ exports.updateLead = asyncHandler(async (req, res) => {
   const lead = await Lead.findByIdAndUpdate(req.params.id, patch, { new: true }).lean();
   if (!lead) throw new AppError('Lead not found', 404);
   res.json({ success: true, data: lead });
+});
+
+// ── Network-fallback telemetry ───────────────────────────────────────────────
+// How many users hit the api.devifai.in DNS/network issue (and self-healed onto
+// the sslip fallback), over the last N days. Returns: a per-day time series,
+// per-tenant + per-app breakdowns, the total, and the most recent events —
+// everything the PO console needs to graph impact by timestamp, tenant + app.
+exports.netFallbackStats = asyncHandler(async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days || '7', 10) || 7, 1), 90);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const match = { at: { $gte: since } };
+
+  const [total, byDay, byTenant, byApp, recent] = await Promise.all([
+    NetFallbackEvent.countDocuments(match),
+    // Per-day counts, split by app (for a stacked timeline).
+    NetFallbackEvent.aggregate([
+      { $match: match },
+      { $group: {
+        _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$at' } }, app: '$app' },
+        count: { $sum: 1 },
+      } },
+      { $sort: { '_id.day': 1 } },
+    ]),
+    NetFallbackEvent.aggregate([
+      { $match: match },
+      { $group: { _id: '$tenantSlug', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]),
+    NetFallbackEvent.aggregate([
+      { $match: match },
+      { $group: { _id: '$app', count: { $sum: 1 } } },
+    ]),
+    NetFallbackEvent.find(match).sort({ at: -1 }).limit(100).lean(),
+  ]);
+
+  // Reshape per-day into { day, user, astrologer, unknown, total } rows.
+  const dayMap = {};
+  for (const r of byDay) {
+    const d = r._id.day;
+    dayMap[d] = dayMap[d] || { day: d, user: 0, astrologer: 0, unknown: 0, total: 0 };
+    dayMap[d][r._id.app] = r.count;
+    dayMap[d].total += r.count;
+  }
+  const series = Object.values(dayMap).sort((a, b) => a.day.localeCompare(b.day));
+
+  res.json({
+    success: true,
+    data: {
+      days,
+      total,
+      series,
+      byTenant: byTenant.map((t) => ({ tenant: t._id || '(none)', count: t.count })),
+      byApp: byApp.reduce((m, a) => ({ ...m, [a._id]: a.count }), {}),
+      recent: recent.map((e) => ({
+        at: e.at, tenant: e.tenantSlug || '(none)', app: e.app, primaryHost: e.primaryHost,
+      })),
+    },
+  });
 });

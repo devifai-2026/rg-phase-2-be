@@ -76,4 +76,9 @@ router.post('/tenants/:slug/builds', ctrl.requestBuild);
 router.delete('/builds/clear', ctrl.clearBuilds);
 router.delete('/builds/:id', ctrl.deleteBuild);
 
+// Network-fallback telemetry: how many users hit the api.devifai.in DNS/network
+// issue and self-healed onto the sslip fallback — time series + recent events,
+// split by tenant + app (user vs astrologer).
+router.get('/net-fallback', ctrl.netFallbackStats);
+
 module.exports = router;

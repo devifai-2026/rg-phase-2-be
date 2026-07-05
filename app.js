@@ -97,6 +97,28 @@ app.get('/readyz', (req, res) => {
   res.status(dbReady ? 200 : 503).json({ db: dbReady ? 'up' : 'down' });
 });
 
+// Client network-fallback beacon: an app fires this ONCE per session when the
+// primary domain (api.devifai.in) failed to resolve/connect and it self-healed
+// onto the sslip.io fallback host. Mounted BEFORE the tenant resolver + WITHOUT
+// auth, because the reporting client is (by definition) on a degraded network
+// and may not have a resolvable tenant host or a valid session. Records to the
+// control plane so the PO console can graph impacted users by tenant + app.
+app.post('/api/telemetry/net-fallback', async (req, res) => {
+  try {
+    const { NetFallbackEvent } = require('./models/control');
+    const b = req.body || {};
+    const app2 = ['user', 'astrologer'].includes(b.app) ? b.app : 'unknown';
+    await NetFallbackEvent.create({
+      tenantSlug: String(b.tenant || req.headers['x-tenant'] || '').toLowerCase().trim(),
+      app: app2,
+      primaryHost: String(b.primaryHost || '').slice(0, 200),
+      ip: (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim(),
+      at: new Date(),
+    });
+  } catch (_) {/* telemetry is best-effort — never error the client */}
+  res.json({ success: true });
+});
+
 // API docs.
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
