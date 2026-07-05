@@ -27,6 +27,7 @@ router.get('/me', ctrl.me);
 router.get('/overview', ctrl.overview);
 router.get('/analytics', ctrl.analytics);
 router.get('/vm-metrics', ctrl.vmMetrics);
+router.get('/api-metrics', ctrl.apiMetrics);
 
 // Branding asset upload (logo / app icon) → GCS, returns a public URL.
 router.post('/branding-upload', ownerRoleOnly, upload.single('image'), ctrl.uploadBranding);

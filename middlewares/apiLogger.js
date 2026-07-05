@@ -1,5 +1,10 @@
 const crypto = require('crypto');
 const bqService = require('../services/bqService');
+const logger = require('../utils/logger');
+
+// Requests slower than this get a warn line in the server log so slow endpoints
+// are visible in journalctl (BigQuery is analyze-later, not live).
+const SLOW_MS = 1000;
 
 /**
  * Attaches a request id and writes an API-log row on response finish.
@@ -16,6 +21,14 @@ function apiLogger(req, res, next) {
     const ms = Date.now() - start;
     // Skip noisy/health endpoints.
     if (req.originalUrl === '/healthz' || req.originalUrl === '/readyz') return;
+
+    // Flag slow requests so they're greppable in the live server log.
+    if (ms >= SLOW_MS) {
+      logger.warn('slow request', {
+        method: req.method, path: req.originalUrl, status: res.statusCode,
+        durationMs: ms, tenant: (req.tenant && req.tenant.slug) || req.headers['x-tenant'] || null,
+      });
+    }
 
     bqService.logApiRequest({
       method: req.method,

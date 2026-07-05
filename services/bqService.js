@@ -360,8 +360,53 @@ async function notificationDashboard({ days = 14, audiences, includeIds, exclude
   };
 }
 
+/**
+ * API observability for the PO console: request volume, latency (avg + p95),
+ * and status-class breakdown over time, from the api_logs table. `hours` sets
+ * the window; buckets are 1h for ≤48h else 1d. Returns {} when BigQuery is off.
+ */
+async function apiMetrics({ hours = 24 } = {}) {
+  if (!enabled()) return { configured: false };
+  const bucketMin = hours <= 48 ? 60 : 1440;
+  const ds = _ds();
+  const trunc = bucketMin === 60 ? 'HOUR' : 'DAY';
+  const [series, statusRows, slow] = await Promise.all([
+    // Per-bucket volume + latency + error counts.
+    query(
+      `SELECT TIMESTAMP_TRUNC(ts, ${trunc}) AS bucket,
+              COUNT(*) AS reqs,
+              APPROX_QUANTILES(duration_ms, 100)[OFFSET(95)] AS p95,
+              CAST(AVG(duration_ms) AS INT64) AS avg_ms,
+              COUNTIF(status >= 500) AS errs_5xx,
+              COUNTIF(status >= 400 AND status < 500) AS errs_4xx
+       FROM ${ds}.api_logs
+       WHERE ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @h HOUR)
+       GROUP BY bucket ORDER BY bucket`,
+      { h: hours },
+    ).catch(() => []),
+    // Overall status-class split over the window (2xx/3xx/4xx/5xx).
+    query(
+      `SELECT DIV(status,100) AS klass, COUNT(*) AS n
+       FROM ${ds}.api_logs
+       WHERE ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @h HOUR)
+       GROUP BY klass ORDER BY klass`,
+      { h: hours },
+    ).catch(() => []),
+    // Slowest endpoints (by p95) in the window.
+    query(
+      `SELECT path, COUNT(*) AS n, CAST(AVG(duration_ms) AS INT64) AS avg_ms,
+              APPROX_QUANTILES(duration_ms, 100)[OFFSET(95)] AS p95
+       FROM ${ds}.api_logs
+       WHERE ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @h HOUR)
+       GROUP BY path HAVING n >= 3 ORDER BY p95 DESC LIMIT 10`,
+      { h: hours },
+    ).catch(() => []),
+  ]);
+  return { configured: true, hours, series, statusRows, slow };
+}
+
 module.exports = {
   enabled, start, stop, flush, query,
   logApiRequest, logAnalytics, logNotification, logBroadcast,
-  broadcastCounts, deleteBroadcastStats, notificationDashboard, TABLES,
+  broadcastCounts, deleteBroadcastStats, notificationDashboard, apiMetrics, TABLES,
 };

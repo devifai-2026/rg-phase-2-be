@@ -425,6 +425,14 @@ exports.vmMetrics = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+// API observability (from api_logs in BigQuery): request volume, latency (avg+p95),
+// status-class breakdown, and slowest endpoints. ?hours=24 (default).
+exports.apiMetrics = asyncHandler(async (req, res) => {
+  const hours = Math.min(Math.max(parseInt(req.query.hours || '24', 10) || 24, 1), 720);
+  const data = await require('../services/bqService').apiMetrics({ hours });
+  res.json({ success: true, data });
+});
+
 // Upload a tenant branding asset (logo / app icon) → GCS → returns a public URL
 // the create/edit-tenant form stores in branding.logoUrl / branding.appIconUrl.
 // Multipart field 'image'; query/body: kind=logo|icon, slug=<tenant|new>.
