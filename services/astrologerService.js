@@ -359,7 +359,7 @@ async function translateBio(ctx, profile) {
   if (!profile.bio) return;
   try {
     const translateService = require('./translateService');
-    const map = await translateService.localize(ctx, profile.bio); // {en,hi,bn,mr,pa,as}
+    const map = await translateService.localize(profile.bio); // {en,hi,bn,mr,pa,as} — localize takes (text), NOT ctx
     delete map.en; // en lives in `bio`
     profile.bioI18n = map;
     await profile.save();
