@@ -13,7 +13,7 @@ const cronRunSchema = new mongoose.Schema(
   {
     cron: { type: String, required: true, index: true },   // e.g. 'reengagement', 'reminder', 'presence'
     tenantSlug: { type: String, required: true, index: true },
-    ranAt: { type: Date, default: Date.now, index: true },
+    ranAt: { type: Date, default: Date.now },
     durationMs: { type: Number, default: 0 },
     rowsAffected: { type: Number, default: null }, // null = cron doesn't produce a count (e.g. presence reconcile)
     ok: { type: Boolean, default: true, index: true },
