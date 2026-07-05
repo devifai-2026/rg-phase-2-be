@@ -377,9 +377,29 @@ async function fulfillNotifyRequests(ctx, profile) {
   const notificationService = require('./notificationService');
   const emit = require('../websockets/emit');
 
+  // Follower alerts are cooldown-gated so a flapping (online↔offline) astrologer
+  // can't spam followers — at most ONE follower heads-up per cooldown window,
+  // however many times they toggle. The window is claimed ATOMICALLY (gated on
+  // lastFollowerOnlineAlertAt) so concurrent toggles across instances can't
+  // double-fire. Notify-me waiters are NOT gated (they explicitly asked).
+  const COOLDOWN_MS = (env.presence && env.presence.followerAlertCooldownMs) || 5 * 60 * 1000;
+  const AstrologerProfile = ctx.model('AstrologerProfile');
+  const cutoff = new Date(Date.now() - COOLDOWN_MS);
+  const claim = await AstrologerProfile.findOneAndUpdate(
+    {
+      _id: profile._id,
+      $or: [{ lastFollowerOnlineAlertAt: null }, { lastFollowerOnlineAlertAt: { $lte: cutoff } }],
+    },
+    { $set: { lastFollowerOnlineAlertAt: new Date() } },
+    { new: false },
+  ).select('_id').lean();
+  const followerAlertsAllowed = !!claim; // won the cooldown claim → OK to alert followers
+
   const [pending, followers] = await Promise.all([
     NotifyRequest.find({ astrologer: profile.user, status: 'pending' }),
-    Follow.find({ astrologer: profile.user, active: true }).select('user'),
+    followerAlertsAllowed
+      ? Follow.find({ astrologer: profile.user, active: true }).select('user')
+      : Promise.resolve([]), // within cooldown → skip follower fan-out entirely
   ]);
   if (!pending.length && !followers.length) return;
 

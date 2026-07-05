@@ -148,6 +148,10 @@ const env = {
     // Only ping devices whose lastReachableAt is older than this (avoid pinging
     // an astrologer whose socket heartbeat already keeps them fresh).
     probeStaleAfterMs: parseInt(process.env.PRESENCE_PROBE_STALE_AFTER_MS || '60000', 10), // 60s
+    // Cooldown for the "your astrologer is online" heads-up to FOLLOWERS. An
+    // astrologer flapping online/offline sends at most ONE follower alert per
+    // this window (default 5 min), no matter how many times they toggle.
+    followerAlertCooldownMs: parseInt(process.env.PRESENCE_FOLLOWER_ALERT_COOLDOWN_MS || '300000', 10), // 5 min
   },
 
   notifyMe: {

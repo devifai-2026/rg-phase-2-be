@@ -156,6 +156,12 @@ const astrologerProfileSchema = new mongoose.Schema(
     // burst of waiting seekers can't spam them. Timestamp of the last such nudge.
     lastWaitingNudgeAt: { type: Date, default: null },
 
+    // Cooldown for the "your astrologer is online" heads-up sent to FOLLOWERS.
+    // An astrologer flapping online/offline must not spam followers — we send at
+    // most one follower alert per env.presence.followerAlertCooldownMs (default
+    // 5 min). Timestamp of the last follower online-alert we sent.
+    lastFollowerOnlineAlertAt: { type: Date, default: null },
+
     // Curated "featured astrologers" section in the app.
     isFeatured: { type: Boolean, default: false, index: true },
     // Whether this astrologer participates in the new-user free-chat program.
