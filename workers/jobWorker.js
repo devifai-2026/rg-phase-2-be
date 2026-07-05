@@ -18,6 +18,7 @@ const reminderService = require('../services/reminderService');
 const marketingService = require('../services/marketingService');
 const horoscopeService = require('../services/horoscopeService');
 const { forEachTenant } = require('../utils/forEachTenant');
+const { recordCronRun } = require('../utils/cronRecorder');
 
 /**
  * Job handlers. Each must be idempotent — a job can be retried or re-run after
@@ -123,11 +124,11 @@ function start() {
     // Backstop for orphaned LIVE broadcasts: end any session still 'live' whose
     // astrologer has no live socket + a stale heartbeat (crash/restart/hard-kill
     // where the in-memory grace timer was lost). Idempotent + multi-instance safe.
-    forEachTenant((ctx) => liveService.sweepStaleLives(ctx)).catch((e) => logger.warn('stale-live sweep failed', e.message));
+    forEachTenant((ctx) => recordCronRun('stale_live_sweep', ctx, workerId, () => liveService.sweepStaleLives(ctx))).catch((e) => logger.warn('stale-live sweep failed', e.message));
     // Re-nudge followers of any live astrologer who haven't joined yet — every
     // ~5 min, max 3 times (the per-(live,user) atomic claim self-throttles, so
     // running this every minute is safe and instance-independent).
-    forEachTenant((ctx) => liveNudgeService.sweepLiveNudges(ctx)).catch((e) => logger.warn('live nudge sweep failed', e.message));
+    forEachTenant((ctx) => recordCronRun('live_nudge', ctx, workerId, () => liveNudgeService.sweepLiveNudges(ctx))).catch((e) => logger.warn('live nudge sweep failed', e.message));
   }, 60 * 1000);
   // Run one sweep shortly after boot so a process restart promptly cleans up any
   // broadcast left 'live' by the previous (crashed/killed) process.
@@ -148,27 +149,27 @@ function start() {
   // questions have come due. Each cue is claimed atomically, so running on every
   // instance is safe (no double-send). Kick one scan shortly after boot too.
   reengagementTimer = setInterval(() => {
-    if (!stopped) forEachTenant((ctx) => reengagementService.scanDue(ctx)).catch((e) => logger.warn('reengagement scan failed', e.message));
+    if (!stopped) forEachTenant((ctx) => recordCronRun('reengagement', ctx, workerId, () => reengagementService.scanDue(ctx))).catch((e) => logger.warn('reengagement scan failed', e.message));
   }, env.jobs.reengagementScanMs);
   setTimeout(() => {
-    if (!stopped) forEachTenant((ctx) => reengagementService.scanDue(ctx)).catch(() => {});
+    if (!stopped) forEachTenant((ctx) => recordCronRun('reengagement', ctx, workerId, () => reengagementService.scanDue(ctx))).catch(() => {});
   }, 30 * 1000);
 
   // Scheduled reminders (Feature 1 extension): fire due mantra (recurring, 5 min
   // before) + one-off event reminders. Claimed atomically per row, so safe on
   // every instance. Run on the same cadence as re-engagement.
   reminderTimer = setInterval(() => {
-    if (!stopped) forEachTenant((ctx) => reminderService.scanDue(ctx)).catch((e) => logger.warn('reminder scan failed', e.message));
+    if (!stopped) forEachTenant((ctx) => recordCronRun('reminder', ctx, workerId, () => reminderService.scanDue(ctx))).catch((e) => logger.warn('reminder scan failed', e.message));
   }, env.jobs.reengagementScanMs);
   setTimeout(() => {
-    if (!stopped) forEachTenant((ctx) => reminderService.scanDue(ctx)).catch(() => {});
+    if (!stopped) forEachTenant((ctx) => recordCronRun('reminder', ctx, workerId, () => reminderService.scanDue(ctx))).catch(() => {});
   }, 35 * 1000);
 
   // AI Marketing Agent: heartbeat every 60s. tick() itself decides if a cycle is
   // due (every5/every10/fixed times) and claims it atomically (multi-instance
   // safe). No-op when the feature is toggled off.
   marketingTimer = setInterval(() => {
-    if (!stopped) forEachTenant((ctx) => marketingService.tick(ctx)).catch((e) => logger.warn('marketing tick failed', e.message));
+    if (!stopped) forEachTenant((ctx) => recordCronRun('marketing', ctx, workerId, () => marketingService.tick(ctx))).catch((e) => logger.warn('marketing tick failed', e.message));
   }, 60 * 1000);
 
   // Daily horoscope pre-warm: heartbeat every 60 min. tick() atomically claims
@@ -178,10 +179,10 @@ function start() {
   // interval is fine — tick() self-throttles. Kick one shortly after boot so a
   // fresh deploy warms immediately.
   horoscopeTimer = setInterval(() => {
-    if (!stopped) forEachTenant((ctx) => horoscopeService.tick(ctx)).catch((e) => logger.warn('horoscope tick failed', e.message));
+    if (!stopped) forEachTenant((ctx) => recordCronRun('horoscope_prewarm', ctx, workerId, () => horoscopeService.tick(ctx))).catch((e) => logger.warn('horoscope tick failed', e.message));
   }, 60 * 60 * 1000);
   setTimeout(() => {
-    if (!stopped) forEachTenant((ctx) => horoscopeService.tick(ctx)).catch(() => {});
+    if (!stopped) forEachTenant((ctx) => recordCronRun('horoscope_prewarm', ctx, workerId, () => horoscopeService.tick(ctx))).catch(() => {});
   }, 40 * 1000);
 
   // SaaS billing sweep (control-plane, not per-tenant): move expired trials/

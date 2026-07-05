@@ -31,6 +31,10 @@ router.get('/vm-metrics', ctrl.vmMetrics);
 // Branding asset upload (logo / app icon) → GCS, returns a public URL.
 router.post('/branding-upload', ownerRoleOnly, upload.single('image'), ctrl.uploadBranding);
 
+// Cron monitor: run history + per-(cron,tenant) summary.
+router.get('/cron-runs', ctrl.cronRuns);
+router.get('/cron-summary', ctrl.cronSummary);
+
 // Leads (owner views/manages; public submit is above ownerProtect)
 router.get('/leads', ctrl.listLeads);
 router.patch('/leads/:id', ownerRoleOnly, ctrl.updateLead);

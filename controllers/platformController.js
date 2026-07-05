@@ -3,7 +3,7 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 // (secrets are returned unmasked to the owner console — the PO owns these values)
 const { signOwner } = require('../utils/ownerToken');
-const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead } = require('../models/control');
+const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun } = require('../models/control');
 const provisionService = require('../services/control/provisionService');
 const subscriptionService = require('../services/control/subscriptionService');
 const { invalidateTenant } = require('../middlewares/tenantResolver');
@@ -435,6 +435,48 @@ exports.uploadBranding = asyncHandler(async (req, res) => {
     buffer: req.file.buffer, mimetype: req.file.mimetype, kind, slug,
   });
   res.status(201).json({ success: true, data: { url } });
+});
+
+// ── Cron monitor ─────────────────────────────────────────────────────────────
+// List recent cron runs, newest first. Filters: ?tenant=<slug> ?cron=<name>
+// ?ok=true|false. Powers the PO console cron page + tenant filter.
+exports.cronRuns = asyncHandler(async (req, res) => {
+  const q = {};
+  if (req.query.tenant) q.tenantSlug = req.query.tenant;
+  if (req.query.cron) q.cron = req.query.cron;
+  if (req.query.ok === 'true') q.ok = true;
+  if (req.query.ok === 'false') q.ok = false;
+  const limit = Math.min(parseInt(req.query.limit || '200', 10) || 200, 1000);
+  const runs = await CronRun.find(q).sort({ ranAt: -1 }).limit(limit).lean();
+  res.json({ success: true, data: runs });
+});
+
+// Cron summary: for each (cron, tenant) the latest run + rolling totals over the
+// last 24h (runs, total rows, failures). Gives the console an at-a-glance grid.
+exports.cronSummary = asyncHandler(async (req, res) => {
+  const since = new Date(Date.now() - 24 * 3600 * 1000);
+  const match = {};
+  if (req.query.tenant) match.tenantSlug = req.query.tenant;
+  const rows = await CronRun.aggregate([
+    { $match: match },
+    { $sort: { ranAt: -1 } },
+    { $group: {
+      _id: { cron: '$cron', tenantSlug: '$tenantSlug' },
+      lastRanAt: { $first: '$ranAt' },
+      lastRows: { $first: '$rowsAffected' },
+      lastOk: { $first: '$ok' },
+      lastError: { $first: '$error' },
+      lastDurationMs: { $first: '$durationMs' },
+      runs24h: { $sum: { $cond: [{ $gte: ['$ranAt', since] }, 1, 0] } },
+      rows24h: { $sum: { $cond: [{ $gte: ['$ranAt', since] }, { $ifNull: ['$rowsAffected', 0] }, 0] } },
+      fails24h: { $sum: { $cond: [{ $and: [{ $gte: ['$ranAt', since] }, { $eq: ['$ok', false] }] }, 1, 0] } },
+    } },
+    { $project: { _id: 0, cron: '$_id.cron', tenantSlug: '$_id.tenantSlug', lastRanAt: 1, lastRows: 1, lastOk: 1, lastError: 1, lastDurationMs: 1, runs24h: 1, rows24h: 1, fails24h: 1 } },
+    { $sort: { cron: 1, tenantSlug: 1 } },
+  ]);
+  const crons = [...new Set(rows.map((r) => r.cron))];
+  const tenants = [...new Set(rows.map((r) => r.tenantSlug))];
+  res.json({ success: true, data: { rows, crons, tenants } });
 });
 
 // ── Leads ───────────────────────────────────────────────────────────────────
