@@ -74,6 +74,9 @@ app.get('/internal/tls-check', async (req, res) => {
     // Always allow the platform's own root host(s).
     const root = (env.saas.rootDomain || '').toLowerCase();
     if (domain === root) return res.sendStatus(200);
+    // Always allow configured non-tenant platform hosts (owner console, landing,
+    // api, …) — they're served on this box but don't map to a tenant.
+    if ((env.saas.platformHosts || []).includes(domain)) return res.sendStatus(200);
     if (!env.saas.enabled) return res.sendStatus(403);
     // Allow a tenant subdomain that resolves to an active tenant.
     const { slugFromHost } = require('./middlewares/tenantResolver');

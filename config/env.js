@@ -265,6 +265,16 @@ const env = {
       || (process.env.SAAS_ROOT_DOMAIN || '').split(',').map((s) => s.trim()).filter(Boolean).slice(-1)[0]
       || '',
 
+    // Non-tenant PLATFORM hosts (owner console, landing, api, …) that Caddy
+    // serves on this box and must always pass the on-demand-TLS ask endpoint —
+    // they don't map to a tenant so the tenant check would 403 them otherwise.
+    // Comma-separated exact hostnames, e.g.
+    //   SAAS_PLATFORM_HOSTS=console.devifai.in,apnaastro.devifai.in
+    platformHosts: (process.env.SAAS_PLATFORM_HOSTS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+
     // Max live per-tenant mongoose connections kept warm (LRU-evicted).
     maxTenantConnections: parseInt(process.env.SAAS_MAX_TENANT_CONNECTIONS || '50', 10),
 
