@@ -422,6 +422,42 @@ exports.analytics = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+// Business growth time-series (daily new users / sessions / revenue) — platform
+// totals + per-tenant. ?days=30 (default). From existing createdAt timestamps.
+exports.growthAnalytics = asyncHandler(async (req, res) => {
+  const days = parseInt(req.query.days || '30', 10) || 30;
+  const data = await require('../services/control/analyticsService').growthSeries({ days });
+  res.json({ success: true, data });
+});
+
+// Consultation + earnings analytics: minutes/day by service type + top-earning
+// astrologers, per tenant. ?days=30 (default).
+exports.consultAnalytics = asyncHandler(async (req, res) => {
+  const days = parseInt(req.query.days || '30', 10) || 30;
+  const data = await require('../services/control/analyticsService').consultAnalytics({ days });
+  res.json({ success: true, data });
+});
+
+// Tenant health scorecard: this-week vs last-week deltas per tenant.
+exports.healthScorecard = asyncHandler(async (req, res) => {
+  const data = await require('../services/control/analyticsService').healthScorecard();
+  res.json({ success: true, data });
+});
+
+// Firebase / GA4 app-engagement analytics (moved here from the tenant admin —
+// GA4 is a platform-global property, so it belongs in the owner console, not a
+// per-tenant admin). Reuses gaService; ctx-free (no tenant DB).
+exports.gaAnalytics = asyncHandler(async (req, res) => {
+  const ga = require('../services/gaService');
+  if (!ga.enabled()) return res.json({ success: true, data: { configured: false } });
+  const { startDate, endDate } = req.query;
+  const [overview, realtime] = await Promise.all([
+    ga.overview({ startDate, endDate }),
+    ga.realtime(),
+  ]);
+  res.json({ success: true, data: { configured: true, ...overview, realtime } });
+});
+
 // Live Google Cloud VM metrics (CPU / memory / disk / network) from Cloud
 // Monitoring, for the dashboard's infrastructure charts. ?hours=3 (default).
 exports.vmMetrics = asyncHandler(async (req, res) => {

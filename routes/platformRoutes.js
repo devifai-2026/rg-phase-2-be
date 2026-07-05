@@ -26,6 +26,10 @@ router.use(ownerProtect);
 router.get('/me', ctrl.me);
 router.get('/overview', ctrl.overview);
 router.get('/analytics', ctrl.analytics);
+router.get('/analytics/growth', ctrl.growthAnalytics);      // daily users/sessions/revenue trends
+router.get('/analytics/consult', ctrl.consultAnalytics);    // minutes-by-type + top astrologers
+router.get('/analytics/scorecard', ctrl.healthScorecard);   // per-tenant this-week vs last-week
+router.get('/analytics/ga', ctrl.gaAnalytics);              // Firebase/GA4 (moved from admin)
 router.get('/vm-metrics', ctrl.vmMetrics);
 router.get('/api-metrics', ctrl.apiMetrics);
 
