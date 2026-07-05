@@ -3,7 +3,7 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 // (secrets are returned unmasked to the owner console — the PO owns these values)
 const { signOwner } = require('../utils/ownerToken');
-const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore, NetFallbackEvent } = require('../models/control');
+const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore, NetFallbackEvent, HealthSample } = require('../models/control');
 const { encrypt, decrypt } = require('../utils/secretCrypto');
 const provisionService = require('../services/control/provisionService');
 const subscriptionService = require('../services/control/subscriptionService');
@@ -456,6 +456,26 @@ exports.gaAnalytics = asyncHandler(async (req, res) => {
     ga.realtime(),
   ]);
   res.json({ success: true, data: { configured: true, ...overview, realtime } });
+});
+
+// Backend health history (service up/down + response time over time) recorded by
+// the health sampler. Returns { series:[{t, up, ms}], uptimePct, latest }. ?hours=3.
+exports.healthHistory = asyncHandler(async (req, res) => {
+  const hours = Math.min(Math.max(parseInt(req.query.hours || '3', 10) || 3, 1), 168);
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const rows = await HealthSample.find({ at: { $gte: since } }).sort({ at: 1 }).lean();
+  const series = rows.map((r) => ({ t: r.at, up: r.up ? 1 : 0, ms: r.ms || 0 }));
+  const ups = series.filter((s) => s.up).length;
+  res.json({
+    success: true,
+    data: {
+      hours,
+      series,
+      uptimePct: series.length ? +((ups / series.length) * 100).toFixed(2) : null,
+      latest: series.length ? series[series.length - 1] : null,
+      samples: series.length,
+    },
+  });
 });
 
 // Live Google Cloud VM metrics (CPU / memory / disk / network) from Cloud

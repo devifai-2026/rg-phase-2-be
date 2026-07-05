@@ -18,6 +18,7 @@ const leadSchema = require('./schemas/leadSchema');
 const cronRunSchema = require('./schemas/cronRunSchema');
 const platformKeystoreSchema = require('./schemas/platformKeystoreSchema');
 const netFallbackEventSchema = require('./schemas/netFallbackEventSchema');
+const healthSampleSchema = require('./schemas/healthSampleSchema');
 
 const conn = getControlConnection();
 
@@ -32,5 +33,6 @@ const Lead = conn.model('Lead', leadSchema);
 const CronRun = conn.model('CronRun', cronRunSchema);
 const PlatformKeystore = conn.model('PlatformKeystore', platformKeystoreSchema);
 const NetFallbackEvent = conn.model('NetFallbackEvent', netFallbackEventSchema);
+const HealthSample = conn.model('HealthSample', healthSampleSchema);
 
-module.exports = { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore, NetFallbackEvent, connection: conn };
+module.exports = { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore, NetFallbackEvent, HealthSample, connection: conn };

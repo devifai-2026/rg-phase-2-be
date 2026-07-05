@@ -106,6 +106,10 @@ function start() {
   const workerId = env.instanceId;
   logger.info('Job worker started', { workerId, pollMs: env.jobs.pollIntervalMs });
 
+  // Periodic backend health sampler → control-plane HealthSample series, so the
+  // PO console can graph service up/down + response time over time.
+  try { require('../services/control/healthSampler').start(); } catch (e) { logger.warn('health sampler start failed', e.message); }
+
   // Mongo timer queue: drives bill_tick + ring_timeout (precise scheduling) and
   // any fan-out jobs that fell back to Mongo when Pub/Sub was off/unreachable.
   pollTimer = setInterval(() => {
