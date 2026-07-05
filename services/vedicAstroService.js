@@ -283,6 +283,57 @@ async function birthChartSvg(ctx, { dob, tob, lat, lon } = {}) {
   }
 }
 
+/**
+ * Aggregate marriage matching (Guna Milan + doshas + overall score) —
+ * /matching/aggregate-match. Runs instantly (no cron). Both partners' birth
+ * details in; tz fixed 5.5, div/style not needed. lang localizes the text.
+ * Cached per (both births, providerLang); serves stale on failure. Returns the
+ * raw `response` (ashtakoot_score, dashkoot_score, doshas, score, bot_response…).
+ */
+async function aggregateMatch(ctx, { girl, boy, lang } = {}) {
+  ctx = ctx || defaultContext();
+  const AstroCache = ctx.model('AstroCache');
+  const g = normalizeBirth(girl || {});
+  const b = normalizeBirth(boy || {});
+  const pLang = providerLangFor(lang);
+
+  // Provider wants DD/MM/YYYY; normalizeBirth gives YYYY-MM-DD → convert.
+  const toDmy = (isoOrDmy) => {
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(isoOrDmy)) return isoOrDmy;
+    const [y, m, d] = String(isoOrDmy).split('-');
+    return (y && m && d) ? `${d}/${m}/${y}` : isoOrDmy;
+  };
+  const gDob = toDmy(g.dob); const bDob = toDmy(b.dob);
+
+  const cacheKey = hashObject({ endpoint: 'matching/aggregate-match', g: { ...g, dob: gDob }, b: { ...b, dob: bDob }, lang: pLang });
+  const cached = await AstroCache.findOne({ cacheKey });
+  if (cached) return cached.payload;
+
+  const { apiKey, baseUrl, cacheTtlDays } = await resolveConfig(ctx);
+  if (!apiKey) return null;
+
+  try {
+    const { data } = await axios.get(`${baseUrl}/matching/aggregate-match`, {
+      params: {
+        api_key: apiKey, lang: pLang,
+        girl_dob: gDob, girl_tob: g.tob, girl_lat: g.lat, girl_lon: g.lon, girl_tz: 5.5,
+        boy_dob: bDob, boy_tob: b.tob, boy_lat: b.lat, boy_lon: b.lon, boy_tz: 5.5,
+      },
+      timeout: 15000,
+    });
+    const payload = (data && data.response) ? data.response : null;
+    if (payload) {
+      const expiresAt = new Date(Date.now() + cacheTtlDays * 24 * 60 * 60 * 1000);
+      await AstroCache.create({ cacheKey, endpoint: 'matching/aggregate-match', params: { girl: gDob, boy: bDob, lang: pLang }, payload, fetchedAt: new Date(), expiresAt });
+    }
+    return payload;
+  } catch (e) {
+    logger.warn('aggregate-match fetch failed; serving stale if any', e.message);
+    const stale = await AstroCache.findOne({ cacheKey });
+    return stale ? stale.payload : null;
+  }
+}
+
 // resolveConfig is exported so horoscopeService reuses the SAME admin-managed
 // key / baseUrl resolution (DB-first, env fallback) — no duplicated config path.
-module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot, numerology, birthChartSvg };
+module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot, numerology, birthChartSvg, aggregateMatch };

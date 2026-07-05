@@ -19,6 +19,7 @@ router.use('/matrimony', require('./matrimonyRoutes'));
 router.use('/horoscope', require('./horoscopeRoutes'));
 router.use('/panchang', require('./panchangRoutes'));
 router.use('/numerology', require('./numerologyRoutes'));
+router.use('/matching', require('./matchingRoutes'));
 router.use('/poojas', require('./poojaRoutes'));
 router.use('/ai', require('./aiRoutes'));
 router.use('/notifications', require('./notificationRoutes'));
