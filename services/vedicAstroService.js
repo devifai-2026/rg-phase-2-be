@@ -179,6 +179,110 @@ function localAshtakoot(b1, b2) {
   };
 }
 
+// VedicAstroAPI uses non-standard lang codes (Kannada 'ka' not 'kn', Bengali
+// 'be' not 'bn'); the rest of the app's langs pass through or fall back to en.
+// Mirrors horoscopeService.PROVIDER_LANG so numerology localizes the same way.
+const PROVIDER_LANG = { en: 'en', hi: 'hi', mr: 'mr', bn: 'be', kn: 'ka', te: 'te', ta: 'ta' };
+function providerLangFor(appLang) {
+  const l = String(appLang || '').trim().toLowerCase();
+  return PROVIDER_LANG[l] || 'en';
+}
+
+/**
+ * Numerology for a NAME (+ a reference date, defaults to today) — runs instantly
+ * (no cron): /prediction/numerology. Cached in AstroCache keyed by
+ * (name, date, providerLang) so repeat runs are free; serves stale on upstream
+ * failure. `date` is DD/MM/YYYY per the provider. Returns the raw `response`
+ * object (destiny/personality/attitude/character/soul/agenda/purpose).
+ */
+async function numerology(ctx, { name, date, lang } = {}) {
+  ctx = ctx || defaultContext();
+  const AstroCache = ctx.model('AstroCache');
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return null;
+  // Reference date in the provider's DD/MM/YYYY; default to today (IST-ish).
+  const d = date && /^\d{2}\/\d{2}\/\d{4}$/.test(date)
+    ? date
+    : (() => { const n = new Date(); return `${String(n.getDate()).padStart(2, '0')}/${String(n.getMonth() + 1).padStart(2, '0')}/${n.getFullYear()}`; })();
+  const pLang = providerLangFor(lang);
+
+  const cacheKey = hashObject({ endpoint: 'prediction/numerology', name: cleanName.toLowerCase(), date: d, lang: pLang });
+  const cached = await AstroCache.findOne({ cacheKey });
+  if (cached) return cached.payload;
+
+  const { apiKey, baseUrl, cacheTtlDays } = await resolveConfig(ctx);
+  if (!apiKey) return null; // numerology has no meaningful local fallback
+
+  try {
+    const { data } = await axios.get(`${baseUrl}/prediction/numerology`, {
+      params: { api_key: apiKey, name: cleanName, date: d, lang: pLang },
+      timeout: 15000,
+    });
+    const payload = (data && data.response) ? data.response : null;
+    if (payload) {
+      const expiresAt = new Date(Date.now() + cacheTtlDays * 24 * 60 * 60 * 1000);
+      await AstroCache.create({
+        cacheKey, endpoint: 'prediction/numerology',
+        params: { name: cleanName, date: d, lang: pLang }, payload, fetchedAt: new Date(), expiresAt,
+      });
+    }
+    return payload;
+  } catch (e) {
+    logger.warn('numerology fetch failed; serving stale if any', e.message);
+    const stale = await AstroCache.findOne({ cacheKey });
+    return stale ? stale.payload : null;
+  }
+}
+
+/**
+ * Birth chart image (Lagna / D1) — /horoscope/chart-image returns a raw SVG
+ * string that the app renders directly. Runs instantly (no cron). Inputs: dob
+ * (DD/MM/YYYY), tob (HH:mm), lat, lon; tz/div/style are fixed (5.5 / D1 / north).
+ * Cached per (dob, tob, lat, lon) so re-opening the same chart is free; serves
+ * stale on upstream failure. Returns the SVG string, or null if unavailable.
+ */
+async function birthChartSvg(ctx, { dob, tob, lat, lon } = {}) {
+  ctx = ctx || defaultContext();
+  const AstroCache = ctx.model('AstroCache');
+  const d = String(dob || '').trim();
+  const t = String(tob || '12:00').trim();
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return null; // provider wants DD/MM/YYYY
+  const la = Number(lat) || 0;
+  const lo = Number(lon) || 0;
+
+  const cacheKey = hashObject({ endpoint: 'horoscope/chart-image', dob: d, tob: t, lat: la, lon: lo, div: 'D1', style: 'north' });
+  const cached = await AstroCache.findOne({ cacheKey });
+  if (cached && cached.payload && cached.payload.svg) return cached.payload.svg;
+
+  const { apiKey, baseUrl, cacheTtlDays } = await resolveConfig(ctx);
+  if (!apiKey) return null;
+
+  try {
+    const { data } = await axios.get(`${baseUrl}/horoscope/chart-image`, {
+      params: {
+        api_key: apiKey, dob: d, tob: t, lat: la, lon: lo,
+        tz: 5.5, div: 'D1', style: 'north', lang: 'en',
+      },
+      timeout: 15000,
+    });
+    // The provider returns the SVG either as data.response (string) or raw string.
+    const svg = typeof data === 'string' ? data : (data && data.response);
+    if (typeof svg === 'string' && svg.includes('<svg')) {
+      const expiresAt = new Date(Date.now() + cacheTtlDays * 24 * 60 * 60 * 1000);
+      await AstroCache.create({
+        cacheKey, endpoint: 'horoscope/chart-image',
+        params: { dob: d, tob: t, lat: la, lon: lo }, payload: { svg }, fetchedAt: new Date(), expiresAt,
+      });
+      return svg;
+    }
+    return null;
+  } catch (e) {
+    logger.warn('birth-chart fetch failed; serving stale if any', e.message);
+    const stale = await AstroCache.findOne({ cacheKey });
+    return stale && stale.payload ? stale.payload.svg : null;
+  }
+}
+
 // resolveConfig is exported so horoscopeService reuses the SAME admin-managed
 // key / baseUrl resolution (DB-first, env fallback) — no duplicated config path.
-module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot };
+module.exports = { isConfigured, resolveConfig, getChart, getKundli, getLalKitab, matchAshtakoot, numerology, birthChartSvg };

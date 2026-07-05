@@ -2,6 +2,7 @@ const express = require('express');
 const ctrl = require('../controllers/astrologerController');
 const reviewCtrl = require('../controllers/reviewController');
 const sfDesign = require('../controllers/storefrontDesignController');
+const birthChart = require('../controllers/birthChartController');
 const validate = require('../middlewares/validate');
 const v = require('../utils/validators');
 const { protect } = require('../middlewares/auth');
@@ -54,6 +55,9 @@ router.get('/me/storefront-design/usage', protect, astrologerOnly, sfDesign.usag
 router.get('/me/storefront-design', protect, astrologerOnly, sfDesign.list);
 router.post('/me/storefront-design/generate', protect, astrologerOnly, sfDesign.generate);
 router.put('/me/storefront-design/active', protect, astrologerOnly, sfDesign.setActive);
+
+// Birth chart (D1 Lagna) SVG — instant, no cron. dob/tob/lat/lon in the body.
+router.post('/me/birth-chart', protect, astrologerOnly, birthChart.getBirthChart);
 router.get('/me/products', protect, astrologerOnly, store.myProducts);
 // Shareable catalogue (storefront + RudraMaal) for the in-chat product picker.
 router.get('/me/catalogue', protect, astrologerOnly, store.shareableCatalogue);
