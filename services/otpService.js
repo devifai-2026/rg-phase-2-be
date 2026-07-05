@@ -39,13 +39,34 @@ async function requestOtp(ctx, phone) {
   if (env.isDev) {
     logger.info('[OTP DEV] code generated', { phone, code });
   } else {
-    const deliver = env.waBridge.otpTemplateId
-      // Template body: "Hello, here is your {{1}} for Rudraganga App {{2}} ..."
-      // {{1}} = the literal word "OTP", {{2}} = the actual code (in that order).
-      ? waBridge.sendTemplate({ to: phone, templateId: env.waBridge.otpTemplateId, variables: ['OTP', code] })
+    // Resolve the TENANT's own WABridge credentials + OTP template + brand name
+    // (set in the PO console at tenant creation), falling back to shared env
+    // defaults. This is why Astro Talk sends from its own template/device, not
+    // Rudraganga's. Best-effort — a secrets/config read failure falls back safely.
+    let secrets = {};
+    let brandName = '';
+    try { secrets = ctx.secrets ? await ctx.secrets() : {}; } catch (e) { logger.warn('otp: secrets read failed', e.message); }
+    try {
+      const cfg = await ctx.model('AppConfig').get();
+      brandName = (cfg && cfg.appName) || '';
+    } catch (e) { /* fall back to env brand */ }
+
+    const creds = {
+      appKey: secrets.waBridgeAppKey,
+      authKey: secrets.waBridgeAuthKey,
+      deviceId: secrets.waBridgeDeviceId,
+    };
+    const templateId = secrets.waBridgeOtpTemplateId || env.waBridge.otpTemplateId;
+    const brand = brandName || 'your app';
+
+    const deliver = templateId
+      // Template body: "Hello, here is your {{1}} ... {{2}} ..." where {{1}} = the
+      // literal word "OTP", {{2}} = the actual code (matches the WABridge template).
+      ? waBridge.sendTemplate({ to: phone, templateId, variables: ['OTP', code], creds })
       : waBridge.sendText({
           to: phone,
-          message: `${code} is your Rudraganga verification code. It is valid for ${Math.ceil(env.otp.ttlSec / 60)} minutes.`,
+          message: `${code} is your ${brand} verification code. It is valid for ${Math.ceil(env.otp.ttlSec / 60)} minutes.`,
+          creds,
         });
     deliver.catch((e) => logger.error('OTP WhatsApp send failed', { phone, error: e.message }));
   }

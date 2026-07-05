@@ -17,26 +17,41 @@ function normalizeNumber(phone) {
   return `91${last10}`;
 }
 
-function isConfigured() {
-  return !!(env.waBridge.appKey && env.waBridge.authKey && env.waBridge.deviceId);
+// Resolve the WABridge credentials to use: a per-tenant `creds` object (from the
+// tenant's secrets) when provided, else the shared env defaults. This is what
+// makes each tenant send OTP from ITS OWN WABridge account/device.
+function resolveCreds(creds) {
+  const c = creds || {};
+  return {
+    appKey: c.appKey || env.waBridge.appKey,
+    authKey: c.authKey || env.waBridge.authKey,
+    deviceId: c.deviceId || env.waBridge.deviceId,
+    baseUrl: c.baseUrl || env.waBridge.baseUrl,
+  };
 }
 
-async function sendText({ to, message }) {
+function isConfigured(creds) {
+  const c = resolveCreds(creds);
+  return !!(c.appKey && c.authKey && c.deviceId);
+}
+
+async function sendText({ to, message, creds }) {
+  const c = resolveCreds(creds);
   // In dev or when unconfigured, log instead of calling the bridge.
-  if (!isConfigured()) {
+  if (!isConfigured(creds)) {
     logger.warn('[WABridge MOCK] would send WhatsApp', { to: normalizeNumber(to), message });
     return { messageId: 'mock', mock: true };
   }
 
   const payload = {
-    'app-key': env.waBridge.appKey,
-    'auth-key': env.waBridge.authKey,
+    'app-key': c.appKey,
+    'auth-key': c.authKey,
     destination_number: normalizeNumber(to),
-    device_id: env.waBridge.deviceId,
+    device_id: c.deviceId,
     message,
   };
 
-  const { data } = await axios.post(`${env.waBridge.baseUrl}/createtextmessage`, payload, {
+  const { data } = await axios.post(`${c.baseUrl}/createtextmessage`, payload, {
     // No client timeout — WABridge runs slow in prod (~15s+) and the OTP send is
     // fire-and-forget (otpService), so we let even a slow send complete rather
     // than abort it.
@@ -49,8 +64,9 @@ async function sendText({ to, message }) {
   return { messageId: (data.data && data.data.messageid) || '', raw: data };
 }
 
-async function sendTemplate({ to, templateId, variables = [], buttonVariable = [], media = '' }) {
-  if (!isConfigured()) {
+async function sendTemplate({ to, templateId, variables = [], buttonVariable = [], media = '', creds }) {
+  const c = resolveCreds(creds);
+  if (!isConfigured(creds)) {
     logger.warn('[WABridge MOCK] would send WhatsApp template', { to: normalizeNumber(to), templateId, variables, buttonVariable, media });
     return { messageId: 'mock', mock: true };
   }
@@ -60,10 +76,10 @@ async function sendTemplate({ to, templateId, variables = [], buttonVariable = [
   }
 
   const payload = {
-    'app-key': env.waBridge.appKey,
-    'auth-key': env.waBridge.authKey,
+    'app-key': c.appKey,
+    'auth-key': c.authKey,
     destination_number: normalizeNumber(to),
-    device_id: env.waBridge.deviceId,
+    device_id: c.deviceId,
     template_id: templateId,
     variables,
     button_variable: buttonVariable,
@@ -71,7 +87,7 @@ async function sendTemplate({ to, templateId, variables = [], buttonVariable = [
     message: '',
   };
 
-  const { data } = await axios.post(`${env.waBridge.baseUrl}/createmessage`, payload, {
+  const { data } = await axios.post(`${c.baseUrl}/createmessage`, payload, {
     // No client timeout — WABridge runs slow in prod (~15s+) and the OTP send is
     // fire-and-forget (otpService), so we let even a slow send complete rather
     // than abort it.
