@@ -446,6 +446,33 @@ exports.uploadBranding = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: { url } });
 });
 
+// ── AI System Prompts (PO-managed, per tenant) ───────────────────────────────
+// Danger Prompts moved from the tenant admin to the PO console: the platform
+// owner edits each tenant's LLM system prompts. Resolves the tenant ctx and
+// reuses promptService.
+exports.listTenantPrompts = asyncHandler(async (req, res) => {
+  const { contextForSlug } = require('../utils/tenantContext');
+  const promptService = require('../services/promptService');
+  const tenant = await Tenant.findOne({ slug: req.params.slug });
+  if (!tenant) throw new AppError('Tenant not found', 404);
+  const ctx = await contextForSlug(req.params.slug);
+  const prompts = await promptService.listForAdmin(ctx);
+  res.json({ success: true, data: prompts });
+});
+
+exports.updateTenantPrompt = asyncHandler(async (req, res) => {
+  const { contextForSlug } = require('../utils/tenantContext');
+  const promptService = require('../services/promptService');
+  const { key, system } = req.body;
+  if (!key) throw new AppError('Prompt key is required', 400);
+  const tenant = await Tenant.findOne({ slug: req.params.slug });
+  if (!tenant) throw new AppError('Tenant not found', 404);
+  const ctx = await contextForSlug(req.params.slug);
+  const saved = await promptService.saveOverride(ctx, key, system, req.owner._id);
+  promptService.bustCache(key);
+  res.json({ success: true, data: saved });
+});
+
 // ── Platform release keystore ────────────────────────────────────────────────
 // Metadata for the console (never ships the raw bytes here). Also reveals the
 // passwords to the owner (they own it) so they can register the key elsewhere.

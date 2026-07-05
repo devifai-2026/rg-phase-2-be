@@ -36,6 +36,10 @@ router.post('/branding-upload', ownerRoleOnly, upload.single('image'), ctrl.uplo
 router.get('/cron-runs', ctrl.cronRuns);
 router.get('/cron-summary', ctrl.cronSummary);
 
+// AI System Prompts (Danger Prompts) — PO-managed per tenant.
+router.get('/tenants/:slug/prompts', ctrl.listTenantPrompts);
+router.put('/tenants/:slug/prompts', ownerRoleOnly, ctrl.updateTenantPrompt);
+
 // Platform release keystore (owner-only): metadata/passwords + raw .jks download.
 router.get('/keystore', ownerRoleOnly, ctrl.getKeystore);
 router.get('/keystore/download', ownerRoleOnly, ctrl.downloadKeystore);

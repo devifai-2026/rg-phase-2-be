@@ -121,10 +121,9 @@ router.post('/agora/reveal', admin.revealAgoraSecret);
 // Live channel diagnostics (broadcaster/audience) — debug audio/video transfer.
 router.get('/agora/channel/:sessionId', admin.agoraChannelDiagnostics);
 
-// ── Danger Prompts (LLM SYSTEM prompts) — super-admin only, OTP-gated edits ──
-router.get('/prompts', superAdminOnly, admin.listPrompts);
-router.post('/prompts/request-otp', superAdminOnly, admin.requestPromptOtp);
-router.put('/prompts', superAdminOnly, admin.updatePrompt);
+// ── Danger Prompts (LLM SYSTEM prompts) MOVED to the PO console ──────────────
+// The platform owner now manages each tenant's AI system prompts via
+// /platform/tenants/:slug/prompts. The tenant admin no longer edits them.
 
 // ── VedicAstroAPI credentials (key encrypted; save + reveal are OTP-gated) ──
 router.get('/vedic-astro', admin.getVedicAstroConfig);
