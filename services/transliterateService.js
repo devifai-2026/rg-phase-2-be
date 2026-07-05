@@ -21,12 +21,15 @@ try {
 
 // App languages → the sanscript target script for that language.
 // as (Assamese) shares the Bengali/Eastern-Nagari script.
-const SCRIPT_BY_LANG = { hi: 'devanagari', mr: 'devanagari', bn: 'bengali', as: 'bengali', pa: 'gurmukhi' };
-const LANGUAGES = ['en', 'hi', 'bn', 'mr', 'pa', 'as'];
+const SCRIPT_BY_LANG = {
+  hi: 'devanagari', mr: 'devanagari', bn: 'bengali', as: 'bengali', pa: 'gurmukhi',
+  kn: 'kannada', te: 'telugu', ta: 'tamil',
+};
+const LANGUAGES = ['en', 'hi', 'bn', 'mr', 'pa', 'as', 'kn', 'te', 'ta'];
 
 // Virama/halant per script — a trailing one (dangling on a consonant-final word)
 // reads as an artifact for names, so we strip it word-finally.
-const HALANT = { devanagari: '्', bengali: '্', gurmukhi: '੍' };
+const HALANT = { devanagari: '्', bengali: '্', gurmukhi: '੍', kannada: '್', telugu: '్', tamil: '்' };
 
 /** Remove a dangling word-final virama from each token (transliteration artifact). */
 function tidy(out, script) {

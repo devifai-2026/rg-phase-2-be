@@ -4,6 +4,7 @@ const { tenantContext } = require('../../utils/tenantContext');
 const atlasService = require('./atlasService');
 const subscriptionService = require('./subscriptionService');
 const firebaseAppService = require('./firebaseAppService');
+const translateService = require('../translateService');
 const logger = require('../../utils/logger');
 const AppError = require('../../utils/AppError');
 
@@ -146,8 +147,21 @@ async function seedTenantDb(ctx, branding = {}, config = {}) {
   try {
     const AppConfig = ctx.model('AppConfig');
     const cfg = await AppConfig.get();
-    if (branding.displayName) cfg.appName = branding.displayName;
+    if (branding.displayName) cfg.appName = branding.displayName; // brand name — same in every language
     if (branding.logoUrl) cfg.logoUrl = branding.logoUrl;
+
+    // Tagline is prose → auto-translate into all app languages (name is NOT
+    // translated; it's a proper noun). Best-effort: on translate failure every
+    // locale falls back to the source string.
+    if (branding.tagline) {
+      cfg.tagline = branding.tagline;
+      try {
+        const i18n = await translateService.localize(branding.tagline); // { en, hi, …, kn, te, ta }
+        cfg.taglineI18n = i18n;
+      } catch (e) {
+        logger.warn('tagline translate failed (using source for all locales)', e.message);
+      }
+    }
 
     // Start from the default palette so every tenant is branded, then apply the
     // owner's chosen primary/accent on top.

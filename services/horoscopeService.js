@@ -20,17 +20,18 @@ const logger = require('../utils/logger');
 // model and is identical across tenant connections, so we source it from the
 // default-bound model at load time. Per-request access still uses ctx.model.
 const SIGNS = defaultContext().model('Horoscope').SIGNS;
-const SUPPORTED_LANGS = ['en', 'hi', 'bn', 'mr', 'pa', 'as']; // the app's languages
+const SUPPORTED_LANGS = ['en', 'hi', 'bn', 'mr', 'pa', 'as', 'kn', 'te', 'ta']; // the app's languages
 const HOROSCOPE_TTL_DAYS = 45;                                // old rows self-clean
 
 // VedicAstroAPI uses NON-STANDARD language codes that differ from the app's ISO
 // codes (verified against the provider's own list): Bengali is 'be' not 'bn',
-// Kannada 'ka', Spanish 'sp'. It supports: en, ta, ka, te, hi, ml, be, sp, fr,
-// mr, si, ne, ko, ja, gu. Of the app's 6 languages, en/hi/bn/mr are supported
-// (bn via 'be'); Punjabi (pa) and Assamese (as) are NOT — those fall back to
-// English content (the app UI stays in the user's language, only the prediction
-// text is English). Map: app ISO code → provider code (absent → English).
-const PROVIDER_LANG = { en: 'en', hi: 'hi', mr: 'mr', bn: 'be' };
+// Kannada 'ka' not 'kn'. It supports: en, ta, ka, te, hi, ml, be, sp, fr,
+// mr, si, ne, ko, ja, gu. Of the app's 9 languages, en/hi/bn/mr/kn/te/ta ARE
+// supported (bn via 'be', kn via 'ka', te/ta as-is) → real localized predictions;
+// Punjabi (pa) and Assamese (as) are NOT — those fall back to English content
+// (the app UI stays in the user's language, only the prediction text is English).
+// Map: app ISO code → provider code (absent → English).
+const PROVIDER_LANG = { en: 'en', hi: 'hi', mr: 'mr', bn: 'be', kn: 'ka', te: 'te', ta: 'ta' };
 
 /** The provider lang code to actually fetch in for an app language. */
 function providerLang(appLang) {

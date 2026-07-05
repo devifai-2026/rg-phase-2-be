@@ -57,6 +57,13 @@ const appConfigSchema = new mongoose.Schema(
     // Tenant.branding.logoUrl and editable by the tenant admin.
     logoUrl: { type: String, default: '' },
 
+    // Brand tagline / one-line description (shown on splash + login). Unlike the
+    // app NAME (a proper noun — identical in every language), the tagline is real
+    // prose, so it's auto-translated into all app languages at provisioning and
+    // stored per-locale in taglineI18n. The app reads taglineI18n[lang] ?? tagline.
+    tagline: { type: String, default: '' },
+    taglineI18n: { type: Map, of: String, default: undefined },
+
     // Brand theme tokens, editable from the admin Theme Studio. `enabled` gates
     // whether the app uses these at all; when false (or empty) the app keeps its
     // compiled tokens. Each set is dark/light; unset tokens fall back per-token.

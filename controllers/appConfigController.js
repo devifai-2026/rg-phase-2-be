@@ -186,7 +186,10 @@ exports.publicConfig = asyncHandler(async (req, res) => {
     localizeEach(lessons, lang, ['title']),
   ]);
 
-  res.json({ success: true, data: { appName: cfg.appName || '', logoUrl: cfg.logoUrl || '', sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
+  // Brand name is identical in every language; the tagline is localized.
+  const tagline = (cfg.taglineI18n && (cfg.taglineI18n.get ? cfg.taglineI18n.get(lang) : cfg.taglineI18n[lang])) || cfg.tagline || '';
+
+  res.json({ success: true, data: { appName: cfg.appName || '', logoUrl: cfg.logoUrl || '', tagline, sections: sec, banners, poojaBanners, videos, lessons, theme, splash } });
 });
 
 // Drop null/empty/undefined values so the app only overrides what's actually set.

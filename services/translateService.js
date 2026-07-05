@@ -12,7 +12,9 @@ const { defaultContext } = require('../utils/tenantContext');
  * source text unchanged — callers never break.
  */
 
-const LANGUAGES = ['en', 'hi', 'bn', 'mr', 'pa', 'as'];
+// App languages. kn=Kannada, te=Telugu, ta=Tamil — all natively supported by
+// Google Cloud Translate (no code aliasing needed, unlike VedicAstro's bn→be).
+const LANGUAGES = ['en', 'hi', 'bn', 'mr', 'pa', 'as', 'kn', 'te', 'ta'];
 
 let _client = null;
 function configured() {

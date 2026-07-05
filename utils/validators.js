@@ -42,7 +42,7 @@ module.exports = {
     email: Joi.string().email().allow(''),
     avatar: Joi.string().allow(''),
     gender: Joi.string().valid('male', 'female', 'other'),
-    language: Joi.string().valid('en', 'hi', 'bn', 'mr', 'pa', 'as'),
+    language: Joi.string().valid('en', 'hi', 'bn', 'mr', 'pa', 'as', 'kn', 'te', 'ta'),
     profileCompleted: Joi.boolean(),
     location: Joi.object({
       lat: Joi.number().allow(null),
@@ -61,7 +61,7 @@ module.exports = {
       chartStyle: Joi.string().valid('north', 'south'),
       monthSystem: Joi.string().valid('amanta', 'purnimanta'),
       themeMode: Joi.string().valid('light', 'dark', 'system'),
-      language: Joi.string().valid('en', 'hi', 'bn', 'mr', 'pa', 'as'),
+      language: Joi.string().valid('en', 'hi', 'bn', 'mr', 'pa', 'as', 'kn', 'te', 'ta'),
       ayanamsa: Joi.string().valid('lahiri', 'kp_new', 'kp_old', 'raman', 'kp_khullar'),
     }),
     notificationSettings: Joi.object({
@@ -209,7 +209,7 @@ module.exports = {
     expertise: Joi.array().items(Joi.string().max(60)),
     languages: Joi.array().items(Joi.string().max(60)),
     experienceYears: Joi.number().integer().min(0).max(80),
-    language: Joi.string().valid('en', 'hi', 'bn', 'mr', 'pa', 'as'),
+    language: Joi.string().valid('en', 'hi', 'bn', 'mr', 'pa', 'as', 'kn', 'te', 'ta'),
     // Marks onboarding done (first-time language + complete-profile flow). Once
     // true, the app skips those screens on subsequent logins.
     profileCompleted: Joi.boolean(),
