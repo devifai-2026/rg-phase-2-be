@@ -3,7 +3,8 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 // (secrets are returned unmasked to the owner console — the PO owns these values)
 const { signOwner } = require('../utils/ownerToken');
-const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun } = require('../models/control');
+const { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore } = require('../models/control');
+const { encrypt, decrypt } = require('../utils/secretCrypto');
 const provisionService = require('../services/control/provisionService');
 const subscriptionService = require('../services/control/subscriptionService');
 const { invalidateTenant } = require('../middlewares/tenantResolver');
@@ -435,6 +436,37 @@ exports.uploadBranding = asyncHandler(async (req, res) => {
     buffer: req.file.buffer, mimetype: req.file.mimetype, kind, slug,
   });
   res.status(201).json({ success: true, data: { url } });
+});
+
+// ── Platform release keystore ────────────────────────────────────────────────
+// Metadata for the console (never ships the raw bytes here). Also reveals the
+// passwords to the owner (they own it) so they can register the key elsewhere.
+exports.getKeystore = asyncHandler(async (req, res) => {
+  const ks = await PlatformKeystore.findOne({ key: 'platform' }).lean();
+  if (!ks) return res.json({ success: true, data: null });
+  res.json({
+    success: true,
+    data: {
+      alias: ks.alias,
+      sha256: ks.sha256 || '',
+      validUntil: ks.validUntil || null,
+      filename: ks.filename || 'release.jks',
+      note: ks.note || '',
+      storePassword: ks.storePasswordEnc ? decrypt(ks.storePasswordEnc) : '',
+      keyPassword: ks.keyPasswordEnc ? decrypt(ks.keyPasswordEnc) : '',
+      updatedAt: ks.updatedAt,
+    },
+  });
+});
+
+// Download the raw .jks (owner-only). Guard this — it's the platform signing key.
+exports.downloadKeystore = asyncHandler(async (req, res) => {
+  const ks = await PlatformKeystore.findOne({ key: 'platform' });
+  if (!ks) throw new AppError('No platform keystore stored', 404);
+  const buf = Buffer.from(decrypt(ks.keystoreB64Enc), 'base64');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${ks.filename || 'release.jks'}"`);
+  res.send(buf);
 });
 
 // ── Cron monitor ─────────────────────────────────────────────────────────────

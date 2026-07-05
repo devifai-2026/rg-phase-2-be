@@ -35,6 +35,10 @@ router.post('/branding-upload', ownerRoleOnly, upload.single('image'), ctrl.uplo
 router.get('/cron-runs', ctrl.cronRuns);
 router.get('/cron-summary', ctrl.cronSummary);
 
+// Platform release keystore (owner-only): metadata/passwords + raw .jks download.
+router.get('/keystore', ownerRoleOnly, ctrl.getKeystore);
+router.get('/keystore/download', ownerRoleOnly, ctrl.downloadKeystore);
+
 // Leads (owner views/manages; public submit is above ownerProtect)
 router.get('/leads', ctrl.listLeads);
 router.patch('/leads/:id', ownerRoleOnly, ctrl.updateLead);

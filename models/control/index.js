@@ -16,6 +16,7 @@ const ownerUserSchema = require('./schemas/ownerUserSchema');
 const buildJobSchema = require('./schemas/buildJobSchema');
 const leadSchema = require('./schemas/leadSchema');
 const cronRunSchema = require('./schemas/cronRunSchema');
+const platformKeystoreSchema = require('./schemas/platformKeystoreSchema');
 
 const conn = getControlConnection();
 
@@ -28,5 +29,6 @@ const OwnerUser = conn.model('OwnerUser', ownerUserSchema);
 const BuildJob = conn.model('BuildJob', buildJobSchema);
 const Lead = conn.model('Lead', leadSchema);
 const CronRun = conn.model('CronRun', cronRunSchema);
+const PlatformKeystore = conn.model('PlatformKeystore', platformKeystoreSchema);
 
-module.exports = { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, connection: conn };
+module.exports = { Tenant, Plan, Subscription, TenantSecret, OwnerUser, BuildJob, Lead, CronRun, PlatformKeystore, connection: conn };
