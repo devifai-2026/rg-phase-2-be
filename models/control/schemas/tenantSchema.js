@@ -48,13 +48,18 @@ const tenantSchema = new mongoose.Schema(
 
     // Lifecycle. `status` here is the tenant's own enablement; the billing gate
     // is Subscription.status (a suspended subscription blocks the tenant even if
-    // status='active'). 'provisioning' = DB being created; 'archived' = soft-deleted.
+    // status='active'). 'provisioning' = DB being created; 'archived' = suspended
+    // (reversible, blocks all logins); 'deleted' = permanently removed
+    // (irreversible, blocks all logins, cannot be reactivated).
     status: {
       type: String,
-      enum: ['provisioning', 'active', 'disabled', 'archived'],
+      enum: ['provisioning', 'active', 'disabled', 'archived', 'deleted'],
       default: 'provisioning',
       index: true,
     },
+    // When set, the tenant was permanently deleted and can never be reactivated.
+    deletedAt: { type: Date },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'OwnerUser' },
 
     // ── Isolation ──
     dbName: { type: String, required: true }, // physical Mongo database name

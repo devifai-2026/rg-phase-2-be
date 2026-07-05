@@ -13,6 +13,17 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+// Add whole calendar months, clamping the day (e.g. Jan 31 +1mo → Feb 28/29).
+function addMonths(date, months) {
+  const d = new Date(date.getTime());
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return d;
+}
+
 /** Start a tenant on the free trial. Called during provisioning. */
 async function startTrial(tenantId, now = new Date()) {
   const plan = await Plan.findOne({ key: 'free_trial' });
@@ -62,6 +73,57 @@ async function setStatus(tenantId, status) {
   return sub;
 }
 
+/**
+ * Record a monthly payment. Advances the paid period by ONE calendar month from
+ * the LATER of (current period end, now) so consecutive on-time payments don't
+ * lose days and a late payment starts fresh from today. Sets status → active.
+ * `payment` = { amount, method?, reference? }. Returns the updated subscription.
+ */
+async function recordPayment(tenantId, payment, planKey, now = new Date()) {
+  const sub = await Subscription.findOne({ tenant: tenantId });
+  if (!sub) throw new Error('No subscription for tenant');
+  // New period starts where the last one ended if still in the future, else now.
+  const base = sub.currentPeriodEnd && sub.currentPeriodEnd > now ? sub.currentPeriodEnd : now;
+  const periodStart = sub.currentPeriodEnd && sub.currentPeriodEnd > now ? sub.currentPeriodEnd : now;
+  const periodEnd = addMonths(base, 1);
+  if (planKey) {
+    const plan = await Plan.findOne({ key: planKey });
+    if (plan) { sub.plan = plan._id; sub.planKey = plan.key; }
+  }
+  sub.status = 'active';
+  sub.currentPeriodStart = sub.currentPeriodStart || now;
+  sub.currentPeriodEnd = periodEnd;
+  sub.graceUntil = addDays(periodEnd, env.saas.graceDays);
+  sub.payments.push({
+    amount: Number(payment.amount) || 0,
+    currency: payment.currency || 'INR',
+    method: payment.method || 'manual',
+    reference: payment.reference || '',
+    paidAt: now,
+    periodStart,
+    periodEnd,
+    recordedBy: payment.recordedBy,
+  });
+  await sub.save();
+  await afterChange(tenantId);
+  return sub;
+}
+
+/** Reactivate a suspended/cancelled subscription (used after un-suspending). */
+async function reactivate(tenantId) {
+  const sub = await Subscription.findOne({ tenant: tenantId });
+  if (!sub) return null;
+  const now = new Date();
+  // If the paid period is still valid → active; else back to past_due so the
+  // owner records a payment. Trial that hasn't expired → trialing.
+  if (sub.currentPeriodEnd && sub.currentPeriodEnd > now) sub.status = 'active';
+  else if (sub.trialEndsAt && sub.trialEndsAt > now) sub.status = 'trialing';
+  else sub.status = 'past_due';
+  await sub.save();
+  await afterChange(tenantId);
+  return sub;
+}
+
 /** Invalidate the resolver cache so a status/plan change takes effect at once. */
 async function afterChange(tenantId) {
   const t = await Tenant.findById(tenantId).select('slug');
@@ -105,4 +167,4 @@ async function sweepExpired(now = new Date()) {
   return { pastDue, suspended };
 }
 
-module.exports = { startTrial, activatePaidPlan, setStatus, sweepExpired, addDays };
+module.exports = { startTrial, activatePaidPlan, setStatus, recordPayment, reactivate, sweepExpired, addDays, addMonths };

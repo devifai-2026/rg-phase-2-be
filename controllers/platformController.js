@@ -183,8 +183,28 @@ exports.setAdminPhone = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { phone: admin.phone, role: admin.role, name: admin.name } });
 });
 
+// Suspend a tenant (reversible): blocks all logins (users/admin/astrologers)
+// immediately. Data retained; can be reactivated.
 exports.archiveTenant = asyncHandler(async (req, res) => {
   const tenant = await provisionService.archiveTenant(req.params.slug);
+  if (!tenant) throw new AppError('Tenant not found', 404);
+  res.json({ success: true, data: tenant });
+});
+
+// Reactivate a suspended tenant → active (all logins work again).
+exports.reactivateTenant = asyncHandler(async (req, res) => {
+  const tenant = await provisionService.reactivateTenant(req.params.slug);
+  if (!tenant) throw new AppError('Tenant not found', 404);
+  res.json({ success: true, data: tenant });
+});
+
+// Permanently delete a tenant (irreversible). Requires confirm=<slug> in the
+// body to prevent accidents. Blocks all logins forever; data retained in DB.
+exports.deleteTenant = asyncHandler(async (req, res) => {
+  if (req.body.confirm !== req.params.slug) {
+    throw new AppError('Type the tenant slug to confirm permanent deletion', 400);
+  }
+  const tenant = await provisionService.deleteTenant(req.params.slug, req.owner._id);
   if (!tenant) throw new AppError('Tenant not found', 404);
   res.json({ success: true, data: tenant });
 });
@@ -214,6 +234,67 @@ exports.setSubscription = asyncHandler(async (req, res) => {
     throw new AppError('Provide planKey or status', 400);
   }
   res.json({ success: true, data: sub });
+});
+
+// Record a monthly payment for a tenant → advances the billing period by one
+// month and sets the subscription active. Body: { amount, method?, reference?, planKey? }.
+exports.recordPayment = asyncHandler(async (req, res) => {
+  const tenant = await Tenant.findOne({ slug: req.params.slug });
+  if (!tenant) throw new AppError('Tenant not found', 404);
+  const { amount, method, reference, planKey } = req.body;
+  if (amount == null || Number(amount) < 0) throw new AppError('A valid amount is required', 400);
+  const sub = await subscriptionService.recordPayment(
+    tenant._id,
+    { amount: Number(amount), method, reference, recordedBy: req.owner._id },
+    planKey,
+  );
+  res.json({ success: true, data: sub });
+});
+
+// Billing overview for the calendar: every tenant's next due date, status, last
+// payment, and monthly amount — plus this-period aggregates. Powers the console
+// billing calendar (paid / upcoming / overdue color-coding).
+exports.billingOverview = asyncHandler(async (req, res) => {
+  const now = new Date();
+  const tenants = await Tenant.find({ status: { $nin: ['deleted'] } }).select('slug displayName status').lean();
+  const subs = await Subscription.find({ tenant: { $in: tenants.map((t) => t._id) } }).lean();
+  const byTenant = new Map(subs.map((s) => [String(s.tenant), s]));
+  const graceMs = (env.saas.graceDays || 0) * 86400000;
+
+  const rows = tenants.map((t) => {
+    const s = byTenant.get(String(t._id));
+    const dueDate = s ? (s.currentPeriodEnd || s.trialEndsAt || null) : null;
+    const payments = (s && s.payments) || [];
+    const lastPayment = payments.length ? payments[payments.length - 1] : null;
+    const monthly = lastPayment ? lastPayment.amount : 0;
+    // Derive a billing state for the calendar.
+    let state = 'none';
+    if (s) {
+      if (s.status === 'suspended' || s.status === 'cancelled') state = 'suspended';
+      else if (s.status === 'trialing') state = 'trial';
+      else if (dueDate) {
+        const due = new Date(dueDate).getTime();
+        if (due < now.getTime()) state = (now.getTime() - due) > graceMs ? 'overdue' : 'grace';
+        else state = (due - now.getTime()) < 7 * 86400000 ? 'due_soon' : 'paid';
+      } else state = 'active';
+    }
+    return {
+      slug: t.slug, displayName: t.displayName, tenantStatus: t.status,
+      subStatus: s ? s.status : null, planKey: s ? s.planKey : null,
+      dueDate, state, monthly,
+      lastPaymentAt: lastPayment ? lastPayment.paidAt : null,
+      lastPaymentAmount: lastPayment ? lastPayment.amount : null,
+    };
+  });
+
+  const totals = {
+    tenants: rows.length,
+    overdue: rows.filter((r) => r.state === 'overdue' || r.state === 'grace').length,
+    dueSoon: rows.filter((r) => r.state === 'due_soon').length,
+    active: rows.filter((r) => ['paid', 'due_soon', 'active'].includes(r.state)).length,
+    monthlyRecurring: rows.reduce((a, r) => a + (['paid', 'due_soon', 'grace', 'overdue'].includes(r.state) ? (r.monthly || 0) : 0), 0),
+  };
+  res.json({ success: true, data: { now, graceDays: env.saas.graceDays || 0, rows, totals } });
 });
 
 // ── Builds ──────────────────────────────────────────────────────────────────
@@ -341,6 +422,19 @@ exports.vmMetrics = asyncHandler(async (req, res) => {
   const hours = Math.min(Math.max(parseInt(req.query.hours || '3', 10) || 3, 1), 168);
   const data = await require('../services/control/vmMetricsService').report({ hours });
   res.json({ success: true, data });
+});
+
+// Upload a tenant branding asset (logo / app icon) → GCS → returns a public URL
+// the create/edit-tenant form stores in branding.logoUrl / branding.appIconUrl.
+// Multipart field 'image'; query/body: kind=logo|icon, slug=<tenant|new>.
+exports.uploadBranding = asyncHandler(async (req, res) => {
+  if (!req.file) throw new AppError('Image file required (field: image)', 400);
+  const kind = (req.body.kind || req.query.kind) === 'icon' ? 'icon' : 'logo';
+  const slug = req.body.slug || req.query.slug || 'new';
+  const { url } = await require('../services/control/brandingUploadService').upload({
+    buffer: req.file.buffer, mimetype: req.file.mimetype, kind, slug,
+  });
+  res.status(201).json({ success: true, data: { url } });
 });
 
 // ── Leads ───────────────────────────────────────────────────────────────────

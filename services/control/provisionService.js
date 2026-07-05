@@ -256,10 +256,47 @@ async function setTenantAdminPhone(slug, phone) {
   return ensureTenantAdmin(ctx, phone, tenant.displayName);
 }
 
-/** Archive (soft-delete) a tenant: block traffic without dropping data. */
+/** Suspend a tenant (reversible): status → archived, blocks ALL logins
+ *  (users/admin/astrologers) immediately without dropping data. */
 async function archiveTenant(slug) {
-  const tenant = await Tenant.findOneAndUpdate({ slug }, { status: 'archived' }, { new: true });
+  const tenant = await Tenant.findOneAndUpdate(
+    { slug, status: { $ne: 'deleted' } },
+    { status: 'archived' },
+    { new: true },
+  );
   if (tenant) require('../../middlewares/tenantResolver').invalidateTenant(slug);
+  return tenant;
+}
+
+/** Reactivate a suspended (archived) tenant → status active. A permanently
+ *  deleted tenant (status 'deleted') can NOT be reactivated. */
+async function reactivateTenant(slug) {
+  const tenant = await Tenant.findOne({ slug });
+  if (!tenant) return null;
+  if (tenant.status === 'deleted') {
+    throw new AppError('This tenant was permanently deleted and cannot be reactivated', 409);
+  }
+  tenant.status = 'active';
+  await tenant.save();
+  require('../../middlewares/tenantResolver').invalidateTenant(slug);
+  // Restore the billing gate to a usable state.
+  try { await subscriptionService.reactivate(tenant._id); } catch (_) { /* best effort */ }
+  return tenant;
+}
+
+/** Permanently delete a tenant (irreversible): status → deleted + deletedAt.
+ *  Blocks ALL logins forever and cannot be reactivated. Data is retained in the
+ *  tenant DB (not dropped) so it can be exported/audited, but the tenant is dead. */
+async function deleteTenant(slug, ownerId) {
+  const tenant = await Tenant.findOneAndUpdate(
+    { slug },
+    { status: 'deleted', deletedAt: new Date(), deletedBy: ownerId },
+    { new: true },
+  );
+  if (tenant) {
+    require('../../middlewares/tenantResolver').invalidateTenant(slug);
+    try { await subscriptionService.setStatus(tenant._id, 'cancelled'); } catch (_) { /* best effort */ }
+  }
   return tenant;
 }
 
@@ -294,4 +331,4 @@ async function assertAppIdsAvailable(userAppId, astroAppId, excludeTenantId) {
   }
 }
 
-module.exports = { createTenant, seedTenantDb, archiveTenant, assertAppIdsAvailable, ensureTenantAdmin, setTenantAdminPhone };
+module.exports = { createTenant, seedTenantDb, archiveTenant, reactivateTenant, deleteTenant, assertAppIdsAvailable, ensureTenantAdmin, setTenantAdminPhone };

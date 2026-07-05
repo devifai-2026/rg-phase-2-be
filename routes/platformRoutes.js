@@ -1,6 +1,7 @@
 const express = require('express');
 const ctrl = require('../controllers/platformController');
 const { ownerProtect, ownerRoleOnly } = require('../middlewares/ownerOnly');
+const { upload } = require('../middlewares/upload');
 
 /**
  * Platform-owner control-plane API. Mounted at /platform OUTSIDE the tenant
@@ -27,6 +28,9 @@ router.get('/overview', ctrl.overview);
 router.get('/analytics', ctrl.analytics);
 router.get('/vm-metrics', ctrl.vmMetrics);
 
+// Branding asset upload (logo / app icon) → GCS, returns a public URL.
+router.post('/branding-upload', ownerRoleOnly, upload.single('image'), ctrl.uploadBranding);
+
 // Leads (owner views/manages; public submit is above ownerProtect)
 router.get('/leads', ctrl.listLeads);
 router.patch('/leads/:id', ownerRoleOnly, ctrl.updateLead);
@@ -38,12 +42,19 @@ router.post('/tenants', ownerRoleOnly, ctrl.createTenant);
 router.patch('/tenants/:slug', ctrl.updateTenant);
 router.put('/tenants/:slug/secrets', ownerRoleOnly, ctrl.updateSecrets);
 router.put('/tenants/:slug/admin-phone', ownerRoleOnly, ctrl.setAdminPhone);
+// Suspend (reversible) — blocks all logins. DELETE kept for back-compat = suspend.
 router.delete('/tenants/:slug', ownerRoleOnly, ctrl.archiveTenant);
+router.post('/tenants/:slug/suspend', ownerRoleOnly, ctrl.archiveTenant);
+router.post('/tenants/:slug/reactivate', ownerRoleOnly, ctrl.reactivateTenant);
+// Permanent delete (irreversible) — requires { confirm: <slug> } in the body.
+router.post('/tenants/:slug/delete', ownerRoleOnly, ctrl.deleteTenant);
 
-// Plans & subscriptions
+// Plans & subscriptions & billing
 router.get('/plans', ctrl.listPlans);
 router.post('/plans', ownerRoleOnly, ctrl.upsertPlan);
+router.get('/billing', ctrl.billingOverview);
 router.put('/tenants/:slug/subscription', ownerRoleOnly, ctrl.setSubscription);
+router.post('/tenants/:slug/payment', ownerRoleOnly, ctrl.recordPayment);
 
 // Builds
 router.get('/builds', ctrl.listBuilds);
