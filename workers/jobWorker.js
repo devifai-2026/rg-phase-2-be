@@ -137,7 +137,7 @@ function start() {
   // Run one sweep shortly after boot so a process restart promptly cleans up any
   // broadcast left 'live' by the previous (crashed/killed) process.
   setTimeout(() => {
-    if (!stopped) liveService.sweepStaleLives().catch(() => {});
+    if (!stopped) forEachTenant((ctx) => liveService.sweepStaleLives(ctx)).catch(() => {});
   }, 20 * 1000);
 
   // Reachability probe: silently FCM-ping toggled-on astrologers whose device

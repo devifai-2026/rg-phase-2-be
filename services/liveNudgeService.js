@@ -138,8 +138,8 @@ async function _craft({ kind, astrologerName, topic, pollQuestion, language }) {
   return `🪔 ${name} is live now${topic ? ` on ${topic}` : ''} — join for real-time astrology guidance.`.slice(0, 140);
 }
 
-async function _send(userId, ls, profileId, body, kind) {
-  await notificationService.notify(userId, {
+async function _send(ctx, userId, ls, profileId, body, kind) {
+  await notificationService.notify(ctx, userId, {
     type: 'live_nudge',
     title: 'A live session is on now',
     body,
@@ -207,7 +207,7 @@ async function nudgeForPoll(ctx, liveSession, pollQuestion) {
       const body = await _craft({
         kind: t.kind, astrologerName, topic: ls.topic, pollQuestion, language: u.language || 'en',
       });
-      await _send(t.id, ls, profileId, body, t.kind);
+      await _send(ctx, t.id, ls, profileId, body, t.kind);
       sent += 1;
     }
     if (sent) logger.info('live poll nudges sent', { liveSessionId: String(ls._id), sent, followers: followerIds.length, randoms: randomIds.length });
@@ -264,7 +264,7 @@ async function sweepLiveNudges(ctx) {
         });
         if (!claimed) continue;
         const body = await _craft({ kind: 'follower', astrologerName, topic: ls.topic, language: u.language || 'en' });
-        await _send(id, ls, profileId, body, 'follower');
+        await _send(ctx, id, ls, profileId, body, 'follower');
         sent += 1;
       }
     } catch (e) {

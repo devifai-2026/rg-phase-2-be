@@ -17,23 +17,35 @@
 //   node scripts/forceEndRunningConsultations.js                 # ends consultations
 //   node scripts/forceEndRunningConsultations.js --include-live  # also ends live broadcasts
 //
+// Multi-tenant: pass --slug <tenant> to target ONE tenant's DB (the teardown —
+// billing settle, wallet release/credit — then runs against that tenant's DB, as
+// it must). Without --slug it uses the default connection (single-tenant mode).
+//   node scripts/forceEndRunningConsultations.js --slug astrotalk
+//
 // Safe + idempotent: endSession() no-ops on already-terminal sessions. Does NOT
 // delete any history/billing records — it only TRANSITIONS stuck sessions to
 // 'completed'. Run on the VM with the service env loaded:
-//   set -a; source /etc/rg-backend.env; set +a; node scripts/forceEndRunningConsultations.js
+//   set -a; source /etc/rg-backend.env; set +a; node scripts/forceEndRunningConsultations.js --slug astrotalk
 require('dotenv').config();
 const { connectDB, disconnectDB } = require('../config/db');
-const Session = require('../models/Session');
+const { contextForSlug, defaultContext } = require('../utils/tenantContext');
 const sessionService = require('../services/sessionService');
 const liveService = require('../services/liveService');
 
 const DRY = process.argv.includes('--dry-run');
 const INCLUDE_LIVE = process.argv.includes('--include-live');
+const slugIdx = process.argv.indexOf('--slug');
+const SLUG = slugIdx !== -1 ? process.argv[slugIdx + 1] : null;
 const RUNNING = ['accepted', 'ongoing'];
 
 async function run() {
   await connectDB();
+  // Build the ctx whose DB the teardown must run against. With --slug we open the
+  // tenant connection; otherwise the default connection (single-tenant).
+  const ctx = SLUG ? await contextForSlug(SLUG) : defaultContext();
+  const Session = ctx.model('Session');
   console.log(DRY ? '\n=== DRY RUN (no writes) ===\n' : '\n=== FORCE-ENDING RUNNING CONSULTATIONS ===\n');
+  console.log(`Tenant: ${SLUG || '(default)'}\n`);
 
   const running = await Session.find({ status: { $in: RUNNING } })
     .select('sessionId type status startedAt acceptedAt user astrologer')
@@ -49,7 +61,7 @@ async function run() {
       // 'admin_cleanup' would need to be in the endReason enum; use 'hangup' (an
       // accepted reason) so the Session.endReason validation passes. The summary
       // log records that this was a manual sweep.
-      const summary = await sessionService.endSession({ sessionId: s.sessionId, endReason: 'hangup' });
+      const summary = await sessionService.endSession(ctx, { sessionId: s.sessionId, endReason: 'hangup' });
       console.log(`  ended: ${tag} → billed ${summary.billedMinutes}min, ₹${summary.totalAmount}`);
     } catch (e) {
       console.log(`  FAILED: ${tag} → ${e.message}`);
@@ -57,13 +69,13 @@ async function run() {
   }
 
   if (INCLUDE_LIVE) {
-    const LiveSession = require('../models/LiveSession');
+    const LiveSession = ctx.model('LiveSession');
     const lives = await LiveSession.find({ status: 'live' }).select('_id astrologer title').lean();
     console.log(`\nLive broadcasts (status:'live'): ${lives.length}`);
     for (const l of lives) {
       if (DRY) { console.log(`  would end live: ${l._id} ${JSON.stringify(l.title)}`); continue; }
       try {
-        await liveService.endLive({ liveSessionId: String(l._id), astrologerUserId: l.astrologer, reason: 'manual' });
+        await liveService.endLive(ctx, { liveSessionId: String(l._id), astrologerUserId: l.astrologer, reason: 'manual' });
         console.log(`  ended live: ${l._id}`);
       } catch (e) {
         console.log(`  FAILED live ${l._id}: ${e.message}`);

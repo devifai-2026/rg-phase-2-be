@@ -268,7 +268,7 @@ function initSocket(httpServer) {
         // across reconnects and hard app-kills.
         if (!socket._liveRooms.has(id)) {
           socket._liveRooms.add(id);
-          require('../services/liveService').viewerJoined({ liveSessionId: id }).catch(() => {});
+          require('../services/liveService').viewerJoined(socket.ctx, { liveSessionId: id }).catch(() => {});
         }
         cb && cb({ success: true });
       } catch (e) {
@@ -331,7 +331,7 @@ function initSocket(httpServer) {
         // Proof-of-life for any active broadcast: keeps a healthy live out of the
         // server stale-sweep even if the in-memory disconnect grace timer was
         // lost (process restart/crash). No-op when they aren't live.
-        require('../services/liveService').touchHeartbeat(userId).catch(() => {});
+        require('../services/liveService').touchHeartbeat(socket.ctx, userId).catch(() => {});
       }
       if (typeof cb === 'function') cb({ ok: true, t: Date.now() }); // pong
     });
@@ -342,8 +342,8 @@ function initSocket(httpServer) {
     // without waiting for the next broadcast. Ack carries the statuses.
     socket.on('get-astrologer-statuses', async (payload, cb) => {
       try {
-        const AstrologerProfile = require('../models/AstrologerProfile');
-        const LiveSession = require('../models/LiveSession');
+        const AstrologerProfile = socket.ctx.model('AstrologerProfile');
+        const LiveSession = socket.ctx.model('LiveSession');
         const ids = Array.isArray(payload && payload.profileIds) ? payload.profileIds.slice(0, 100) : null;
         const q = ids && ids.length ? { _id: { $in: ids } } : { isOnline: true };
         const profs = await AstrologerProfile.find(q).select('_id isOnline currentCallStatus').lean();
@@ -388,7 +388,7 @@ function initSocket(httpServer) {
         await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: false });
         // Internet dropped / app killed → auto-end any active broadcast after a
         // short grace window (cancelled if they reconnect in time).
-        try { require('../services/liveService').scheduleAutoEndOnDisconnect(userId); } catch (_) { /* best-effort */ }
+        try { require('../services/liveService').scheduleAutoEndOnDisconnect(socket.ctx, userId); } catch (_) { /* best-effort */ }
       }
       logger.debug('socket disconnected', { userId, sid: socket.id });
     });

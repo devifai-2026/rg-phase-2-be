@@ -228,7 +228,7 @@ async function runFanout(ctx, log) {
   await log.save();
 
   if (!recipients.length) {
-    bqService.logBroadcast(ctx, broadcastStatRow(log, { sent: 0, delivered: 0, failed: 0, failures: {} }));
+    bqService.logBroadcast(broadcastStatRow(log, { sent: 0, delivered: 0, failed: 0, failures: {} }));
     return log;
   }
 
@@ -272,7 +272,7 @@ async function runFanout(ctx, log) {
   });
 
   // Delivery analytics → BigQuery (NOT Mongo).
-  bqService.logBroadcast(ctx, broadcastStatRow(log, totals));
+  bqService.logBroadcast(broadcastStatRow(log, totals));
 
   // Schedule an auto-retry ONLY if there were retryable failures and we're under
   // the cap. nextRetryAt drives the admin "Next retry scheduled at" badge.
@@ -359,7 +359,7 @@ async function recordClick(ctx, broadcastId, userId) {
   if (!mongoose.isValidObjectId(broadcastId)) return;
   // Without a user we can't de-dupe; fall back to logging once (best-effort).
   if (!userId) {
-    bqService.logNotification(ctx, { event: 'click', channel: 'push', ref_id: String(broadcastId) });
+    bqService.logNotification({ event: 'click', channel: 'push', ref_id: String(broadcastId) });
     return;
   }
   try {
@@ -371,7 +371,7 @@ async function recordClick(ctx, broadcastId, userId) {
     );
     const firstClick = res.upsertedCount === 1 || !!res.upsertedId;
     if (firstClick) {
-      bqService.logNotification(ctx, { event: 'click', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
+      bqService.logNotification({ event: 'click', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
       // Mirror to Mongo so the admin Logs tab shows clicks without BigQuery.
       await Broadcast.updateOne({ _id: broadcastId }, { $inc: { clickedCount: 1 } }).catch(() => {});
     }
@@ -408,7 +408,7 @@ async function recordDelivered(ctx, broadcastId, userId) {
     );
     const firstAck = res.upsertedCount === 1 || !!res.upsertedId;
     if (firstAck) {
-      bqService.logNotification(ctx, { event: 'delivered', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
+      bqService.logNotification({ event: 'delivered', channel: 'push', user_id: String(userId), ref_id: String(broadcastId) });
       // Mirror to Mongo so the admin Logs tab shows deliveries without BigQuery.
       await Broadcast.updateOne({ _id: broadcastId }, { $inc: { deliveredCount: 1 } }).catch(() => {});
     }

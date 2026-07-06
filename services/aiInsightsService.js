@@ -159,7 +159,7 @@ async function generateChatRecap(ctx, { sessionId }) {
   }
 
   // Notify the astrologer there's a recap to review.
-  await notificationService.notify(session.astrologer, {
+  await notificationService.notify(ctx, session.astrologer, {
     type: 'ai_recap_ready',
     title: 'AI recap ready to review',
     body: 'Your last chat consultation has an AI summary and product suggestions waiting.',
@@ -294,7 +294,7 @@ async function approveRecap(ctx, astrologerId, recapId, { keepSuggestionIds } = 
   }
 
   const approvedCount = recap.suggestions.filter((s) => s.status === 'approved').length;
-  await notificationService.notify(recap.user, {
+  await notificationService.notify(ctx, recap.user, {
     type: 'astrologer_suggestion',
     title: 'Your astrologer shared a summary',
     body: approvedCount
