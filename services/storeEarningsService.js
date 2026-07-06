@@ -26,7 +26,7 @@ async function creditAstrologersForOrder(ctx, order) {
       const gross = (item.priceSnapshot || 0) * (item.qty || 1);
       const share = astrologerShare(gross, product.commissionPercent);
       if (share < 1) continue;
-      const credited = await walletService.credit({
+      const credited = await walletService.credit(ctx, {
         userId: product.astrologer,
         amount: share,
         source: 'product',
@@ -35,7 +35,7 @@ async function creditAstrologersForOrder(ctx, order) {
         meta: { orderId: String(order._id), productId: String(item.product), qty: item.qty, commissionPercent: product.commissionPercent },
       });
       if (credited) {
-        emit.toUser(product.astrologer, 'wallet-updated', await walletService.getBalance(product.astrologer));
+        emit.toUser(product.astrologer, 'wallet-updated', await walletService.getBalance(ctx, product.astrologer));
         notificationService.notify(ctx, product.astrologer, {
           type: 'store_earning',
           title: 'New store sale! 💰',
@@ -62,7 +62,7 @@ async function creditAstrologerForBooking(ctx, booking) {
     if (!pooja || !pooja.astrologer) return;
     const share = astrologerShare(booking.price, pooja.commissionPercent);
     if (share < 1) return;
-    const credited = await walletService.credit({
+    const credited = await walletService.credit(ctx, {
       userId: pooja.astrologer,
       amount: share,
       source: 'pooja',
@@ -71,7 +71,7 @@ async function creditAstrologerForBooking(ctx, booking) {
       meta: { bookingId: String(booking._id), poojaId: String(booking.poojaTypeId), commissionPercent: pooja.commissionPercent },
     });
     if (credited) {
-      emit.toUser(pooja.astrologer, 'wallet-updated', await walletService.getBalance(pooja.astrologer));
+      emit.toUser(pooja.astrologer, 'wallet-updated', await walletService.getBalance(ctx, pooja.astrologer));
       notificationService.notify(ctx, pooja.astrologer, {
         type: 'store_earning',
         title: 'New pooja booking! 💰',
