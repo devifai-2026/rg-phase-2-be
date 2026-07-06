@@ -51,13 +51,18 @@ async function findByRef(ctx, refId) {
   return Transaction.findOne({ refId });
 }
 
-function maybeSession() {
-  return env.mongoTxEnabled ? mongoose.startSession() : Promise.resolve(null);
-}
-
-async function withTx(fn) {
+/**
+ * Run `fn` inside a transaction when MONGO_TX_ENABLED. The session MUST be
+ * started on the SAME connection the models live on — under multi-tenancy the
+ * wallet/ledger models come from the tenant connection (ctx.db), a different
+ * MongoClient than the global `mongoose`. Starting the session on `mongoose`
+ * and using it against tenant-connection collections throws
+ * "ClientSession must be from the same MongoClient". So we start it on ctx.db.
+ */
+async function withTx(ctx, fn) {
   if (!env.mongoTxEnabled) return fn(null);
-  const session = await mongoose.startSession();
+  const conn = (ctx && ctx.db) || mongoose.connection;
+  const session = await conn.startSession();
   try {
     let out;
     await session.withTransaction(async () => {
@@ -80,7 +85,7 @@ async function credit(ctx, { userId, amount, source, description, refId, related
 
   await getOrCreateWallet(ctx, userId);
 
-  return withTx(async (session) => {
+  return withTx(ctx, async (session) => {
     const opts = session ? { new: true, session } : { new: true };
     const wallet = await Wallet.findOneAndUpdate({ user: userId }, { $inc: { balance: amount } }, opts);
     let txn;
@@ -111,7 +116,7 @@ async function debit(ctx, { userId, amount, source, description, refId, relatedS
   const existing = await findByRef(ctx, refId);
   if (existing) return existing;
 
-  return withTx(async (session) => {
+  return withTx(ctx, async (session) => {
     const opts = session ? { new: true, session } : { new: true };
     const wallet = await Wallet.findOneAndUpdate(
       { user: userId, balance: { $gte: amount } },
@@ -182,7 +187,7 @@ async function settleLocked(ctx, { userId, amount, source, description, refId, r
   const existing = await findByRef(ctx, refId);
   if (existing) return existing;
 
-  return withTx(async (session) => {
+  return withTx(ctx, async (session) => {
     const opts = session ? { new: true, session } : { new: true };
     const wallet = await Wallet.findOneAndUpdate(
       { user: userId, balance: { $gte: amount }, lockedBalance: { $gte: amount } },
