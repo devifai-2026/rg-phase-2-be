@@ -39,6 +39,12 @@ const tenantSecretSchema = new mongoose.Schema(
 
     // Optional per-tenant LLM key; falls back to the platform key when blank.
     llmApiKey: encField,
+
+    // Per-tenant VedicAstroAPI key. The RUNTIME source of truth is the tenant
+    // DB's VedicAstroConfig (vedicAstroService reads that, DB-first). We ALSO
+    // keep it here so the PO console secrets editor can view/set it in one place;
+    // updateSecrets mirrors any change into the tenant DB's VedicAstroConfig.
+    vedicAstroApiKey: encField,
   },
   { timestamps: true }
 );

@@ -64,6 +64,11 @@ exports.getTenant = asyncHandler(async (req, res) => {
   // truth the apps read. Surfaced so the console reflects the REAL per-tenant
   // config, not just the control-plane TenantSecret. Best-effort per tenant DB.
   const config = await tenantConfigSummary(tenant);
+  // The VedicAstro key's runtime home is the tenant DB (config.vedicAstro). If
+  // the console's TenantSecret copy is blank (e.g. a tenant provisioned before
+  // this field existed), surface the tenant-DB value so the editor shows the
+  // REAL current key instead of an empty box.
+  if (!secrets.vedicAstroApiKey && config && config.vedicAstro) secrets.vedicAstroApiKey = config.vedicAstro;
   // The tenant's admin phone(s) — super_admin users in the tenant DB.
   const adminPhones = await tenantAdminPhones(tenant);
   res.json({ success: true, data: { ...tenant, subscription, secrets, config, adminPhone: adminPhones[0] || '', adminPhones, urls: tenantUrls(tenant) } });
@@ -167,10 +172,28 @@ exports.updateSecrets = asyncHandler(async (req, res) => {
   const allowed = [
     'dbUri', 'agoraAppId', 'agoraAppCertificate', 'agoraCustomerId', 'agoraCustomerSecret',
     'payuKey', 'payuSalt', 'waBridgeAppKey', 'waBridgeAuthKey', 'waBridgeDeviceId', 'waBridgeOtpTemplateId', 'llmApiKey',
+    'vedicAstroApiKey',
   ];
   const patch = { tenant: tenant._id };
   for (const k of allowed) if (req.body[k] !== undefined && req.body[k] !== '') patch[k] = req.body[k];
   await TenantSecret.findOneAndUpdate({ tenant: tenant._id }, patch, { upsert: true, new: true });
+
+  // The RUNTIME source of truth for the VedicAstro key is the tenant DB's
+  // VedicAstroConfig (vedicAstroService reads that, DB-first). Mirror any change
+  // there so the key set in the console takes effect immediately — birth chart,
+  // matching, manglik, numerology, horoscope all read from it.
+  if (req.body.vedicAstroApiKey) {
+    try {
+      const { contextForSlug } = require('../utils/tenantContext');
+      const ctx = await contextForSlug(tenant.slug);
+      const cfg = await ctx.model('VedicAstroConfig').get();
+      cfg.apiKey = encrypt(req.body.vedicAstroApiKey);
+      await cfg.save();
+    } catch (e) {
+      require('../utils/logger').warn('mirror vedicAstroApiKey to tenant DB failed', { slug: tenant.slug, error: e.message });
+    }
+  }
+
   invalidateTenant(tenant.slug); // secrets changed → drop cached ctx/creds
   res.json({ success: true });
 });
