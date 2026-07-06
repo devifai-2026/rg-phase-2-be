@@ -240,7 +240,7 @@ function initSocket(httpServer) {
         const online = await presenceService.isOnline(socket.ctx, receiverId);
         if (!online) {
           const body = doc.product ? `Shared a product: ${doc.product.name}` : (doc.message || 'Sent you an image');
-          fcmService.sendToUserTokens({ userId: receiverId, title: 'New message', body, data: { sessionId } }).catch(() => {});
+          fcmService.sendToUserTokens(socket.ctx, { userId: receiverId, title: 'New message', body, data: { sessionId } }).catch(() => {});
         }
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -292,7 +292,7 @@ function initSocket(httpServer) {
     socket.on('live-comment', async ({ liveSessionId, text } = {}, cb) => {
       try {
         const liveService = require('../services/liveService');
-        const r = await liveService.postComment({ liveSessionId, userId, text });
+        const r = await liveService.postComment(socket.ctx, { liveSessionId, userId, text });
         cb && cb({ success: true, dropped: r.dropped, masked: r.masked, reasons: r.reasons });
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -378,7 +378,7 @@ function initSocket(httpServer) {
       if (socket._liveRooms && socket._liveRooms.size) {
         const liveService = require('../services/liveService');
         for (const id of socket._liveRooms) {
-          liveService.leaveLive({ liveSessionId: id }).catch(() => {});
+          liveService.leaveLive(socket.ctx, { liveSessionId: id }).catch(() => {});
         }
         socket._liveRooms.clear();
       }

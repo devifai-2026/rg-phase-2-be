@@ -5,12 +5,13 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
-async function buildSystemPrompt(user) {
+async function buildSystemPrompt(ctx, user) {
+  ctx = ctx || defaultContext();
   let ascendant = 'unknown';
   let moonSign = 'unknown';
   if (user.birthDetails && user.birthDetails.dob) {
     try {
-      const chart = await vedicAstroService.getChart({
+      const chart = await vedicAstroService.getChart(ctx, {
         dob: user.birthDetails.dob,
         tob: user.birthDetails.time,
         lat: user.birthDetails.lat,
@@ -56,7 +57,7 @@ async function chat(ctx, { userId, conversationId, message }) {
     .limit(env.llm.maxHistoryTurns)
     .then((m) => m.reverse());
 
-  const system = await buildSystemPrompt(user);
+  const system = await buildSystemPrompt(ctx, user);
 
   let answer;
   if (!llmService.available()) {
