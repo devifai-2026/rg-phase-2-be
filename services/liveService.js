@@ -127,7 +127,7 @@ async function endLive(ctx, { liveSessionId, astrologerUserId, reason = 'manual'
   // as sessionService.endSession, so users can request consultations again.
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { currentCallStatus: 'available' } });
   try {
-    const recomputed = await require('./presenceService').recomputeAstrologerPresence(astrologerUserId, {});
+    const recomputed = await require('./presenceService').recomputeAstrologerPresence(ctx, astrologerUserId, {});
     const prof = await AstrologerProfile.findOne({ user: astrologerUserId }).select('_id').lean();
     if (recomputed && prof) {
       emit.broadcast('astrologer-status', {

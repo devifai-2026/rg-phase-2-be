@@ -573,7 +573,7 @@ async function endSession(ctx, { sessionId, endReason = 'hangup', byUserId } = {
   // directly from the fresh profile so a user's list/detail always updates even
   // if the recompute broadcast was missed.
   try {
-    const recomputed = await require('./presenceService').recomputeAstrologerPresence(finalSession.astrologer, {});
+    const recomputed = await require('./presenceService').recomputeAstrologerPresence(ctx, finalSession.astrologer, {});
     logger.info('presence re-broadcast on session end', { sessionId, astrologer: String(finalSession.astrologer), result: recomputed });
     if (recomputed) {
       const prof = await AstrologerProfile.findOne({ user: finalSession.astrologer }).select('_id').lean();
