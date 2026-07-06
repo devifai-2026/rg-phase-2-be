@@ -1,6 +1,28 @@
 require('dotenv').config();
 
 /**
+ * Parse OTP test accounts from the env string into { slug: Set<normalizedPhone> }.
+ * Input: "astrotalk:9100000001,9100000002;other:98..." — tenant slug, then a
+ * comma list of phones; ';' separates tenants. Numbers are normalized to the
+ * platform's canonical 91XXXXXXXXXX so a match works regardless of input format.
+ */
+function parseTestAccounts(raw) {
+  const out = {};
+  if (!raw) return out;
+  const norm = (p) => {
+    const last10 = String(p || '').replace(/\D/g, '').slice(-10);
+    return last10.length === 10 ? `91${last10}` : null;
+  };
+  for (const group of String(raw).split(';')) {
+    const [slug, list] = group.split(':');
+    if (!slug || !list) continue;
+    const phones = list.split(',').map(norm).filter(Boolean);
+    if (phones.length) out[slug.trim()] = new Set(phones);
+  }
+  return out;
+}
+
+/**
  * Centralized, validated environment config.
  * Every other module imports from here — never reads process.env directly.
  */
@@ -34,6 +56,15 @@ const env = {
     maxSendsPerHour: parseInt(process.env.OTP_MAX_SENDS_PER_HOUR || '5', 10),
     maxVerifyAttempts: parseInt(process.env.OTP_MAX_VERIFY_ATTEMPTS || '5', 10),
     devCode: process.env.OTP_DEV_CODE || '123456',
+    // Per-tenant TEST accounts that bypass real OTP delivery (Play Store / QA
+    // review logins). For a matching (tenant, phone) we skip the WABridge send
+    // and seed a fixed code so the normal verify path still runs (no verify
+    // special-case → stays as secure as any other login). Format:
+    //   OTP_TEST_ACCOUNTS = "astrotalk:9100000001,9100000002,9100000003"
+    //   OTP_TEST_CODE      = "123456"
+    // Multiple tenants separated by ';'. Empty by default (feature off).
+    testAccounts: parseTestAccounts(process.env.OTP_TEST_ACCOUNTS),
+    testCode: process.env.OTP_TEST_CODE || '123456',
   },
 
   agora: {

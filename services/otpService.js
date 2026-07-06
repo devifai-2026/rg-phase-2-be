@@ -14,6 +14,18 @@ function genCode() {
   return code;
 }
 
+/**
+ * Is this (tenant, phone) a configured TEST account? Test accounts skip the real
+ * WhatsApp OTP send and always accept the fixed `env.otp.testCode`. Scoped per
+ * tenant (only listed slugs), so real numbers and other tenants are unaffected.
+ */
+function isTestAccount(ctx, phone) {
+  const slug = ctx && ctx.tenant && ctx.tenant.slug;
+  if (!slug) return false;
+  const set = env.otp.testAccounts[slug];
+  return !!(set && set.has(phone));
+}
+
 /** Send (or resend) an OTP to a phone with throttling. */
 async function requestOtp(ctx, phone) {
   ctx = ctx || defaultContext();
@@ -22,13 +34,22 @@ async function requestOtp(ctx, phone) {
 
   // Rate limiting removed from the platform — no per-phone cooldown / hourly cap.
 
-  const code = genCode();
+  // TEST accounts (per-tenant, e.g. Astro Talk QA / Play-review logins) get the
+  // fixed test code and NO real WhatsApp send. We still persist the code through
+  // the normal path, so verifyOtp needs no special-casing.
+  const isTest = isTestAccount(ctx, phone);
+  const code = isTest ? env.otp.testCode : genCode();
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(now + env.otp.ttlSec * 1000);
 
   // Invalidate any still-live OTPs for this phone, then create a fresh one.
   await OtpRequest.updateMany({ phone, consumed: false }, { $set: { consumed: true } });
   await OtpRequest.create({ phone, codeHash, expiresAt, lastSentAt: new Date(), sendCount: 1 });
+
+  if (isTest) {
+    logger.info('[OTP TEST] bypass account — no WhatsApp send', { tenant: ctx.tenant.slug, phone });
+    return { message: 'OTP sent', expiresInSec: env.otp.ttlSec };
+  }
 
   // Deliver the code over WhatsApp WITHOUT blocking the HTTP response. The OTP
   // is already persisted above, so the app can proceed to the verify screen the
