@@ -13,7 +13,7 @@ function reqLang(req) {
  *
  *   await localizeFields(pooja, lang, ['name', 'description', 'category.name'])
  */
-async function localizeFields(obj, lang, fields) {
+async function localizeFields(obj, lang, fields, ctx = null) {
   if (!obj || !lang || lang === 'en') return obj;
   await Promise.all(
     fields.map(async (path) => {
@@ -21,10 +21,10 @@ async function localizeFields(obj, lang, fields) {
       if (b) {
         const child = obj[a];
         if (child && typeof child[b] === 'string' && child[b]) {
-          child[b] = await translateService.localizeText(child[b], lang);
+          child[b] = await translateService.localizeText(ctx, child[b], lang);
         }
       } else if (typeof obj[a] === 'string' && obj[a]) {
-        obj[a] = await translateService.localizeText(obj[a], lang);
+        obj[a] = await translateService.localizeText(ctx, obj[a], lang);
       }
     })
   );
@@ -32,16 +32,16 @@ async function localizeFields(obj, lang, fields) {
 }
 
 /** Localize an array of lean objects in parallel (same field list each). */
-async function localizeEach(list, lang, fields) {
+async function localizeEach(list, lang, fields, ctx = null) {
   if (!Array.isArray(list) || !lang || lang === 'en') return list;
-  await Promise.all(list.map((o) => localizeFields(o, lang, fields)));
+  await Promise.all(list.map((o) => localizeFields(o, lang, fields, ctx)));
   return list;
 }
 
 /** Localize a flat array of strings (e.g. expertise tags) in parallel. */
-async function localizeStrings(arr, lang) {
+async function localizeStrings(arr, lang, ctx = null) {
   if (!Array.isArray(arr) || !lang || lang === 'en') return arr;
-  return Promise.all(arr.map((s) => translateService.localizeText(s, lang)));
+  return Promise.all(arr.map((s) => translateService.localizeText(ctx, s, lang)));
 }
 
 module.exports = { reqLang, localizeFields, localizeEach, localizeStrings };

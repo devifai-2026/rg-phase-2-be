@@ -26,7 +26,7 @@ exports.listVideosPublic = asyncHandler(async (req, res) => {
       .select('title youtubeId youtubeUrl thumbnail').lean(),
     Video.countDocuments(q),
   ]);
-  await localizeEach(items, reqLang(req), ['title']);
+  await localizeEach(items, reqLang(req), ['title'], req.ctx);
   res.json({ success: true, data: { items, total, page, limit } });
 });
 

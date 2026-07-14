@@ -40,7 +40,7 @@ const handlers = {
   payu_payout: (ctx, payload) => payoutService.runPayout(ctx, payload),
   recording_start: (ctx, payload) => recordingService.start(ctx, payload),
   recording_stop: (ctx, payload) => recordingService.stop(ctx, payload),
-  fcm_send: (ctx, { userId, title, body, data }) => fcmService.sendToUserTokens(ctx, { userId, title, body, data }),
+  fcm_send: (ctx, { userId, title, body, data, withNotification, channelId }) => fcmService.sendToUserTokens(ctx, { userId, title, body, data, withNotification, channelId }),
   translate_backfill: (ctx, payload) => translateService.backfillMissing(ctx, payload || {}),
   // Delayed auto-retry of a broadcast's failed recipients (timer job — Mongo queue).
   broadcast_retry: (ctx, payload) => broadcastService.runScheduledRetry(ctx, payload || {}),
@@ -65,25 +65,29 @@ let subscriptionSweepTimer = null;
 let pubsubSubs = [];
 let stopped = false;
 
-// Drain one job from a single tenant's queue. `ctx` is that tenant's context;
-// the job lives in that tenant's DB, so the same ctx drives both the queue ops
-// (claim/complete/fail) and the handler.
+// Drain a single tenant's queue. `ctx` is that tenant's context; the job lives
+// in that tenant's DB, so the same ctx drives both the queue ops (claim/
+// complete/fail) and the handler. Keeps claiming until the queue is empty (or
+// a per-poll cap) — one-job-per-poll made bill_ticks lag as soon as a handful
+// of sessions ran concurrently (≤30 jobs/min/tenant at the 2s poll).
 async function drainTenant(ctx, workerId) {
-  const job = await jobService.claimNext(ctx, workerId);
-  if (!job) return;
-  const handler = handlers[job.type];
-  if (!handler) {
-    await jobService.fail(ctx, job, new Error(`No handler for job type ${job.type}`));
-    return;
-  }
-  try {
-    const result = await handler(ctx, job.payload || {});
-    await jobService.complete(ctx, job._id, result);
-  } catch (err) {
-    const outcome = await jobService.fail(ctx, job, err);
-    // Permanent payout failure -> release lock + alert.
-    if (outcome === 'failed' && job.type === 'payu_payout') {
-      await payoutService.onPayoutFailed(ctx, job.payload, err.message).catch(() => {});
+  for (let n = 0; n < 25; n += 1) {
+    const job = await jobService.claimNext(ctx, workerId);
+    if (!job) return;
+    const handler = handlers[job.type];
+    if (!handler) {
+      await jobService.fail(ctx, job, new Error(`No handler for job type ${job.type}`));
+      continue;
+    }
+    try {
+      const result = await handler(ctx, job.payload || {});
+      await jobService.complete(ctx, job._id, result);
+    } catch (err) {
+      const outcome = await jobService.fail(ctx, job, err);
+      // Permanent payout failure -> release lock + alert.
+      if (outcome === 'failed' && job.type === 'payu_payout') {
+        await payoutService.onPayoutFailed(ctx, job.payload, err.message).catch(() => {});
+      }
     }
   }
 }
@@ -133,6 +137,10 @@ function start() {
     // ~5 min, max 3 times (the per-(live,user) atomic claim self-throttles, so
     // running this every minute is safe and instance-independent).
     forEachTenant((ctx) => recordCronRun('live_nudge', ctx, workerId, () => liveNudgeService.sweepLiveNudges(ctx))).catch((e) => logger.warn('live nudge sweep failed', e.message));
+    // Backstop for consultation billing: force-end sessions whose reservation is
+    // exhausted by wall-clock and re-enqueue lost bill_ticks — so a session auto
+    // ends on empty wallet even if a tick was lost or the apps are killed.
+    forEachTenant((ctx) => recordCronRun('stale_session_sweep', ctx, workerId, () => sessionService.sweepStaleSessions(ctx))).catch((e) => logger.warn('stale-session sweep failed', e.message));
   }, 60 * 1000);
   // Run one sweep shortly after boot so a process restart promptly cleans up any
   // broadcast left 'live' by the previous (crashed/killed) process.

@@ -231,8 +231,11 @@ async function markJoined(ctx, { sessionId, byUserId }) {
   // cut) — so their call screen can show a live running earning, not just a clock.
   const astrologerPerMin = Math.max(0, (started.ratePerMin || 0) - (started.adminCutPerMin || 0));
   // session-started carries the single authoritative start time for both apps.
-  emit.toUser(started.user, 'session-started', { sessionId, type: started.type, startedAt: startedAtIso, ratePerMin: started.ratePerMin });
-  emit.toUser(started.astrologer, 'session-started', { sessionId, type: started.type, startedAt: startedAtIso, astrologerPerMin });
+  // serverNow lets clients compute their clock offset so the timer is exact
+  // regardless of device clock skew.
+  const serverNow = new Date().toISOString();
+  emit.toUser(started.user, 'session-started', { sessionId, type: started.type, startedAt: startedAtIso, serverNow, ratePerMin: started.ratePerMin });
+  emit.toUser(started.astrologer, 'session-started', { sessionId, type: started.type, startedAt: startedAtIso, serverNow, astrologerPerMin });
 
   if (started.type !== 'chat') {
     pubsubService.publish('recordings_start', { sessionId }, { dedupeKey: `rec-start:${sessionId}`, tenantSlug: ctx && ctx.tenant && ctx.tenant.slug }).catch(() => {});
@@ -431,8 +434,10 @@ async function processBillTick(ctx, sessionId, minute) {
 
   // Remaining locked funds = lockedAmount - already billed total.
   const remainingLock = session.lockedAmount - session.totalAmount;
+  logger.info('bill_tick', { sessionId, minute, remainingLock, tenant: ctx && ctx.tenant && ctx.tenant.slug });
   if (remainingLock < session.ratePerMin) {
     // Cannot afford this minute -> end gracefully.
+    logger.warn('bill_tick: funds exhausted, ending session', { sessionId, minute });
     await endSession(ctx, { sessionId, endReason: 'low_balance' });
     return;
   }
@@ -440,6 +445,7 @@ async function processBillTick(ctx, sessionId, minute) {
   try {
     await _billOneMinute(ctx, session, minute);
   } catch (e) {
+    logger.warn('bill_tick: billing failed, ending session', { sessionId, minute, error: e.message });
     await endSession(ctx, { sessionId, endReason: 'low_balance' });
     return;
   }
@@ -659,6 +665,59 @@ async function history(ctx, userId, { page = 1, limit = 20, role, type } = {}) {
   return { items: annotated, total, page, limit };
 }
 
+/** Re-emit the low-balance state to the user when they (re)join an ongoing
+ *  session — the original 'low-balance-warning' from a bill tick is lost if
+ *  their socket was down when it fired. */
+async function emitLowBalanceIfNeeded(ctx, sessionId) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const session = await Session.findOne({ sessionId });
+  if (!session || session.status !== 'ongoing' || !session.ratePerMin) return;
+  const minutesLeft = Math.floor((session.lockedAmount - session.totalAmount) / session.ratePerMin);
+  if (minutesLeft <= 2) {
+    emit.toUser(session.user, 'low-balance-warning', { sessionId, minutesLeft: Math.max(0, minutesLeft) });
+  }
+}
+
+/** Safety-net sweep (runs every ~60s from the job worker): billing and the
+ *  low_balance auto-end normally ride on bill_tick jobs — if a tick is lost or
+ *  the worker stalled, a session would run forever without billing or ending.
+ *  This sweep (a) force-ends sessions whose reservation is exhausted by
+ *  wall-clock time, and (b) re-enqueues an overdue tick (idempotent via the
+ *  bill:<id>:<minute> dedupeKey and per-minute refId — it never bills here). */
+async function sweepStaleSessions(ctx) {
+  ctx = ctx || defaultContext();
+  const Session = ctx.model('Session');
+  const sessions = await Session.find({ status: 'ongoing', startedAt: { $ne: null } }).limit(200);
+  for (const s of sessions) {
+    try {
+      const elapsedMin = Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 60000) + 1;
+      // Free chat minutes are consumed WITHOUT touching the lock — count them
+      // as affordable so a healthy free-minute chat isn't force-ended.
+      const affordableMin = Math.floor(s.lockedAmount / s.ratePerMin) + (s.freeMinutes || 0);
+      if (elapsedMin > affordableMin) {
+        logger.warn('sweep: reservation exhausted, force-ending session', { sessionId: s.sessionId, elapsedMin, affordableMin });
+        await endSession(ctx, { sessionId: s.sessionId, endReason: 'low_balance' });
+        continue;
+      }
+      // Tick overdue by >2 minutes → re-enqueue the next one (dedupe makes this
+      // a no-op when the pending job still exists).
+      if (s.lastBilledMinute < elapsedMin - 2) {
+        const nextMinute = s.lastBilledMinute + 1;
+        logger.warn('sweep: bill_tick overdue, re-enqueueing', { sessionId: s.sessionId, nextMinute, elapsedMin });
+        await jobService.enqueue(ctx, {
+          type: 'bill_tick',
+          payload: { sessionId: s.sessionId, minute: nextMinute },
+          dedupeKey: `bill:${s.sessionId}:${nextMinute}`,
+          runAt: new Date(),
+        });
+      }
+    } catch (e) {
+      logger.warn('sweep: session check failed', { sessionId: s.sessionId, error: e.message });
+    }
+  }
+}
+
 module.exports = {
   requestSession,
   acceptSession,
@@ -671,4 +730,6 @@ module.exports = {
   getToken,
   history,
   topUpSessionLock,
+  emitLowBalanceIfNeeded,
+  sweepStaleSessions,
 };

@@ -17,7 +17,7 @@ exports.list = asyncHandler(async (req, res) => {
   const rate = settings.giftTokenRupees || 1;
   const data = items.map((g) => ({ ...g.toObject(), rupeeCost: g.tokenCost * rate }));
   // Localize gift NAMES to the requester's language (user-visible in the sheet).
-  await localizeEach(data, reqLang(req), ['name']);
+  await localizeEach(data, reqLang(req), ['name'], req.ctx);
   res.json({ success: true, data });
 });
 

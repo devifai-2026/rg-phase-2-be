@@ -28,7 +28,7 @@ function availableNowMatch() {
 exports.listCategories = asyncHandler(async (req, res) => {
   const PoojaCategory = req.model('PoojaCategory');
   const items = await PoojaCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).select('name').lean();
-  await localizeEach(items, reqLang(req), ['name']);
+  await localizeEach(items, reqLang(req), ['name'], req.ctx);
   res.json({ success: true, data: items });
 });
 
@@ -46,7 +46,7 @@ exports.listTypes = asyncHandler(async (req, res) => {
   // maxPersons filter: poojas that allow AT LEAST this many people.
   if (req.query.maxPersons) filter.maxPersons = { $gte: Number(req.query.maxPersons) };
   const items = await PoojaType.find(filter).populate('category', 'name').sort({ createdAt: -1 }).lean();
-  await localizeEach(items, reqLang(req), POOJA_I18N);
+  await localizeEach(items, reqLang(req), POOJA_I18N, req.ctx);
   res.json({ success: true, data: items });
 });
 
@@ -57,7 +57,7 @@ exports.listTypes = asyncHandler(async (req, res) => {
 exports.listAll = asyncHandler(async (req, res) => {
   const PoojaType = req.model('PoojaType');
   const items = await PoojaType.find(availableNowMatch()).populate('category', 'name').sort({ createdAt: -1 }).lean();
-  await localizeEach(items, reqLang(req), POOJA_I18N);
+  await localizeEach(items, reqLang(req), POOJA_I18N, req.ctx);
   res.json({ success: true, data: items });
 });
 
@@ -66,7 +66,7 @@ exports.getType = asyncHandler(async (req, res) => {
   const PoojaType = req.model('PoojaType');
   const item = await PoojaType.findById(req.params.id).populate('category', 'name').lean();
   if (!item || !item.isActive) throw new AppError('Pooja not found', 404);
-  await localizeFields(item, reqLang(req), POOJA_I18N);
+  await localizeFields(item, reqLang(req), POOJA_I18N, req.ctx);
   res.json({ success: true, data: item });
 });
 

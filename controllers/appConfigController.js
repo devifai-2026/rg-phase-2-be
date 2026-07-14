@@ -121,6 +121,25 @@ exports.getConfig = asyncHandler(async (req, res) => {
 exports.updateConfig = asyncHandler(async (req, res) => {
   const AppConfig = req.model('AppConfig');
   const cfg = await AppConfig.get();
+  // Brand identity (super-admin "Brand" tab). In-app branding only — the
+  // Android launcher label/icon are baked at APK build from the control-plane
+  // Tenant record (owner console + rebuild).
+  if (typeof req.body.appName === 'string') cfg.appName = req.body.appName.trim();
+  if (typeof req.body.logoUrl === 'string') cfg.logoUrl = req.body.logoUrl.trim();
+  if (typeof req.body.tagline === 'string') {
+    const tagline = req.body.tagline.trim();
+    if (tagline !== cfg.tagline) {
+      cfg.tagline = tagline;
+      // Re-translate into the app languages (mirrors provisioning); on failure
+      // clear the stale translations so publicConfig falls back to the raw text.
+      try {
+        const translateService = require('../services/translateService');
+        cfg.taglineI18n = tagline ? await translateService.localize(tagline) : undefined;
+      } catch (_) {
+        cfg.taglineI18n = undefined;
+      }
+    }
+  }
   if (req.body.sections) {
     cfg.sections = { ...cfg.sections.toObject(), ...req.body.sections };
   }
@@ -182,8 +201,8 @@ exports.publicConfig = asyncHandler(async (req, res) => {
   // Localize the Home rail video/lesson TITLES to the requester's language.
   const lang = reqLang(req);
   await Promise.all([
-    localizeEach(videos, lang, ['title']),
-    localizeEach(lessons, lang, ['title']),
+    localizeEach(videos, lang, ['title'], req.ctx),
+    localizeEach(lessons, lang, ['title'], req.ctx),
   ]);
 
   // Brand name is identical in every language; the tagline is localized.

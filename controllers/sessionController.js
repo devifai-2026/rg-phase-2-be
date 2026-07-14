@@ -110,7 +110,8 @@ exports.active = asyncHandler(async (req, res) => {
   if (session.type === 'call' || session.type === 'video') {
     try { token = await sessionService.getToken(req.ctx, session.sessionId, me); } catch (_) { /* chat or token issue */ }
   }
-  res.json({ success: true, data: { session: shaped, token } });
+  // serverNow → clients compute clock offset so resumed timers stay exact.
+  res.json({ success: true, data: { session: shaped, token, serverNow: new Date().toISOString() } });
 });
 
 exports.detail = asyncHandler(async (req, res) => {
@@ -125,5 +126,8 @@ exports.detail = asyncHandler(async (req, res) => {
     throw new AppError('Not authorized', 403);
   }
   // Astrologer viewers get the aliased shape; user/admin see the full record.
-  res.json({ success: true, data: shapeSession(session, req.user._id) });
+  // serverNow → clients compute clock offset so resumed timers stay exact.
+  const shapedDetail = shapeSession(session, req.user._id);
+  shapedDetail.serverNow = new Date().toISOString();
+  res.json({ success: true, data: shapedDetail });
 });

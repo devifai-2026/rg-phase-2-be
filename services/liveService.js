@@ -412,7 +412,7 @@ async function listLive(ctx, lang) {
     .lean();
 
   const translateService = require('./translateService');
-  const L = (t) => translateService.localizeText(t || '', lang);
+  const L = (t) => translateService.localizeText(ctx, t || '', lang);
 
   return Promise.all(sessions.map(async (s) => {
     const rawName = (s.astrologerProfile && s.astrologerProfile.displayName) || 'Astrologer';

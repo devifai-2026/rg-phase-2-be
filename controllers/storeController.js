@@ -333,8 +333,8 @@ exports.publicStorefront = asyncHandler(async (req, res) => {
   const [name, bio] = await Promise.all([
     translateService.localizeText(req.ctx, rawName, lang),
     translateService.localizeText(req.ctx, profile.bio || '', lang),
-    localizeEach(products, lang, ['name', 'description']),
-    localizeEach(poojas, lang, ['name', 'description']),
+    localizeEach(products, lang, ['name', 'description'], req.ctx),
+    localizeEach(poojas, lang, ['name', 'description'], req.ctx),
   ]);
 
   res.json({

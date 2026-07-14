@@ -200,6 +200,9 @@ function initSocket(httpServer) {
       try {
         await sessionService.markJoined(socket.ctx, { sessionId, byUserId: userId });
         cb && cb({ success: true });
+        // Re-surface the low-balance warning to a (re)joining user — the tick
+        // that originally emitted it may have fired while their socket was down.
+        sessionService.emitLowBalanceIfNeeded(socket.ctx, sessionId).catch(() => {});
       } catch (e) {
         cb && cb({ success: false, message: e.message });
       }
@@ -236,11 +239,22 @@ function initSocket(httpServer) {
         // Ack to sender, flagging if we masked phone/link content.
         cb && cb({ success: true, message: payload, masked, reasons });
 
-        // Offline push.
-        const online = await presenceService.isOnline(socket.ctx, receiverId);
-        if (!online) {
+        // Offline push — gate on a LIVE SOCKET, not business presence. The FCM
+        // reachability probe keeps a killed-but-reachable astrologer "online"
+        // (isOnline true), which used to suppress this push exactly when it was
+        // needed. A user with no socket in their room can't receive the
+        // socket emit above, so they get the push instead.
+        let hasSocket = false;
+        try {
+          hasSocket = (await io.in(`user:${receiverId}`).fetchSockets()).length > 0;
+        } catch (_) {
+          hasSocket = local.has(String(receiverId)); // per-process fallback (exact on single instance)
+        }
+        if (!hasSocket) {
           const body = doc.product ? `Shared a product: ${doc.product.name}` : (doc.message || 'Sent you an image');
-          fcmService.sendToUserTokens(socket.ctx, { userId: receiverId, title: 'New message', body, data: { sessionId } }).catch(() => {});
+          // withNotification: OS-drawn banner survives force-stopped apps where
+          // the data-only background isolate never wakes.
+          fcmService.sendToUserTokens(socket.ctx, { userId: receiverId, title: 'New message', body, data: { type: 'chat_message', sessionId } , withNotification: true }).catch(() => {});
         }
       } catch (e) {
         cb && cb({ success: false, message: e.message });
@@ -283,7 +297,7 @@ function initSocket(httpServer) {
       // Clean leave: decrement exactly once. Deleting from the set first ensures
       // the disconnect backstop won't decrement a SECOND time for this join.
       if (socket._liveRooms.delete(id)) {
-        require('../services/liveService').leaveLive({ liveSessionId: id }).catch(() => {});
+        require('../services/liveService').leaveLive(socket.ctx, { liveSessionId: id }).catch(() => {});
       }
     });
 

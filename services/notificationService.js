@@ -21,8 +21,8 @@ async function localizeForUser(ctx, userId, title, body) {
     const lang = u && u.language;
     if (!lang || lang === 'en') return { title, body };
     const [t, b] = await Promise.all([
-      title ? translateService.localizeText(title, lang) : Promise.resolve(title),
-      body ? translateService.localizeText(body, lang) : Promise.resolve(body),
+      title ? translateService.localizeText(ctx, title, lang) : Promise.resolve(title),
+      body ? translateService.localizeText(ctx, body, lang) : Promise.resolve(body),
     ]);
     // localizeText returns the source on failure, so t/b are always safe.
     return { title: t || title, body: b || body };

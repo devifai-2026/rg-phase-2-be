@@ -45,7 +45,7 @@ function init() {
  * (no tokens, only dead/invalid tokens, success) never throw. Bulk broadcasts
  * pass viaBroadcast=true to suppress the throw and tally the result instead.
  */
-async function sendToUserTokens(ctx, { userId, title, body, data = {}, viaBroadcast = false }) {
+async function sendToUserTokens(ctx, { userId, title, body, data = {}, viaBroadcast = false, withNotification = false, channelId = 'rg_general' }) {
   ctx = ctx || defaultContext();
   const User = ctx.model('User');
   init();
@@ -67,6 +67,7 @@ async function sendToUserTokens(ctx, { userId, title, body, data = {}, viaBroadc
   const tokens = (user && user.fcmTokens ? user.fcmTokens.map((t) => t.token) : []).filter(Boolean);
   if (!tokens.length) {
     // Terminal: no device to deliver to. NOT retryable (a retry can't help).
+    logger.warn('fcm send: no tokens', { userId: String(userId), type: (data && (data.type || data.callType)) || null });
     logSend(false, 0, 0, 'no_tokens');
     return { sent: 0, delivered: 0, failed: 1, pruned: 0, failureReasons: { no_tokens: 1 }, retryable: false };
   }
@@ -85,21 +86,33 @@ async function sendToUserTokens(ctx, { userId, title, body, data = {}, viaBroadc
     return { sent: tokens.length, delivered: tokens.length, failed: 0, pruned: 0, failureReasons: {}, retryable: false };
   }
 
+  // Data-only by default (background isolate draws the tray banner itself).
+  // withNotification adds an OS-drawn notification block for messages that MUST
+  // surface even when the isolate can't wake (force-stopped app, aggressive
+  // OEMs) — e.g. chat messages. Never used for CallKit (callType incoming/
+  // cancel) or presence_ping, which rely on the data-only wake.
+  const message = {
+    tokens,
+    data: dataStr,
+    android: { priority: 'high' },
+    apns: {
+      headers: { 'apns-priority': '10', 'apns-push-type': 'background' },
+      payload: { aps: { 'content-available': 1 } },
+    },
+  };
+  if (withNotification) {
+    message.notification = { title: title || '', body: body || '' };
+    message.android.notification = { channelId, sound: 'default' };
+    message.apns.headers = { 'apns-priority': '10', 'apns-push-type': 'alert' };
+    message.apns.payload = { aps: { alert: { title: title || '', body: body || '' }, sound: 'default', 'content-available': 1 } };
+  }
+
   let res;
   try {
-    res = await messaging.sendEachForMulticast({
-      tokens,
-      data: dataStr,
-      // High priority + data-only → delivered promptly AND wakes the background
-      // isolate. (APNs needs content-available for the same effect on iOS.)
-      android: { priority: 'high' },
-      apns: {
-        headers: { 'apns-priority': '10', 'apns-push-type': 'background' },
-        payload: { aps: { 'content-available': 1 } },
-      },
-    });
+    res = await messaging.sendEachForMulticast(message);
   } catch (e) {
     // Transport-level failure (network/FCM down) → retryable.
+    logger.warn('fcm send transport failure', { userId: String(userId), tokens: tokens.length, error: e.message });
     logSend(false, tokens.length, 0, e.message);
     throw e; // let the job/Pub/Sub layer retry
   }
@@ -125,6 +138,15 @@ async function sendToUserTokens(ctx, { userId, title, body, data = {}, viaBroadc
   if (dead.length) {
     await User.updateOne({ _id: userId }, { $pull: { fcmTokens: { token: { $in: dead } } } });
   }
+  logger.info('fcm send', {
+    userId: String(userId),
+    type: (data && (data.type || data.callType)) || null,
+    tokens: tokens.length,
+    ok: res.successCount,
+    failed: res.failureCount,
+    pruned: dead.length,
+    ...(res.failureCount ? { reasons: failureReasons } : {}),
+  });
   logSend(res.successCount > 0, tokens.length, res.successCount, res.failureCount ? `${res.failureCount} failed` : null);
   const result = { sent: res.successCount, delivered: res.successCount, failed: res.failureCount, pruned: dead.length, failureReasons, retryable: retryableFailures > 0 };
   // Single-recipient direct sends (fcm_send job / Pub/Sub) retry ONLY on a

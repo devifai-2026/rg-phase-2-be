@@ -40,6 +40,12 @@ async function persist(ctx, { sessionId, senderId, message, mediaUrl, mediaType,
   if (String(session.user) !== String(senderId) && String(session.astrologer) !== String(senderId)) {
     throw new AppError('Not a participant', 403);
   }
+  // Only a live (billed) session accepts messages — otherwise an old sessionId
+  // is a free unlimited messaging channel until the ChatMessage TTL.
+  // 'accepted' is allowed for the brief pre-start lobby (both joining).
+  if (!['accepted', 'ongoing'].includes(session.status)) {
+    throw new AppError('Session is not active', 409);
+  }
   if (!message && !mediaUrl && !productId) throw new AppError('Message, image or product required', 400);
 
   const receiverId = String(session.user) === String(senderId) ? session.astrologer : session.user;
@@ -102,7 +108,14 @@ async function listMessages(ctx, sessionId, userId, { page = 1, limit = 50 } = {
     .sort({ timestamp: -1 })
     .skip(skip)
     .limit(limit);
-  return { items: items.reverse(), page, limit };
+  // `mine` is relative to the REQUESTER — clients (esp. the astrologer app,
+  // which never sees raw participant ids) use it to left/right-align bubbles.
+  const shaped = items.reverse().map((m) => {
+    const o = m.toObject();
+    o.mine = o.sender && String(o.sender) === String(userId);
+    return o;
+  });
+  return { items: shaped, page, limit };
 }
 
 async function markRead(ctx, sessionId, userId) {

@@ -99,6 +99,6 @@ exports.publicCoupons = asyncHandler(async (req, res) => {
     .select('code description type value maxDiscount minOrderValue scope validUntil')
     .lean();
   // Localize the user-visible coupon DESCRIPTION (not the code).
-  await localizeEach(coupons, reqLang(req), ['description']);
+  await localizeEach(coupons, reqLang(req), ['description'], req.ctx);
   res.json({ success: true, data: coupons });
 });

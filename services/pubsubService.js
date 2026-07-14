@@ -71,8 +71,13 @@ async function publish(name, payload = {}, { dedupeKey, tenantSlug } = {}) {
     }
   }
   // Fallback: enqueue on the Mongo job queue (lazy require avoids a cycle).
+  // Rebuild the tenant ctx from the slug so the job lands in the right tenant
+  // DB — same routing the Pub/Sub subscriber does on receive.
   const jobService = require('./jobService');
-  const job = await jobService.enqueue({ type: jobType, payload, dedupeKey, tenantSlug });
+  const { contextForSlug } = require('../utils/tenantContext');
+  const ctx = await contextForSlug(tenantSlug || null);
+  const job = await jobService.enqueue(ctx, { type: jobType, payload, dedupeKey });
+  logger.info('pubsub fallback → mongo queue', { jobType, tenantSlug: tenantSlug || null, id: job && String(job._id) });
   return { via: 'mongo', id: job && String(job._id) };
 }
 
@@ -108,12 +113,21 @@ function startSubscribers(handlers, names = Object.keys(TOPICS)) {
           msg.ack();
           return;
         }
+        // Rebuild the tenant context from the message so the handler writes to
+        // the right tenant DB (default context in single-tenant mode). An
+        // unknown/inactive tenant is PERMANENT — ack and drop, else the message
+        // redelivers forever and clogs the shared flow-control window.
+        let ctx;
         try {
-          // Rebuild the tenant context from the message so the handler writes to
-          // the right tenant DB (default context in single-tenant mode).
           const slug = (msg.attributes && msg.attributes.tenantSlug) || body.tenantSlug || null;
           const { contextForSlug } = require('../utils/tenantContext');
-          const ctx = await contextForSlug(slug);
+          ctx = await contextForSlug(slug);
+        } catch (err) {
+          logger.warn('pubsub: tenant unresolvable, dropping message', { type, error: err.message });
+          msg.ack();
+          return;
+        }
+        try {
           await handler(ctx, body.payload || {});
           msg.ack();
         } catch (err) {

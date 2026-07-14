@@ -7,7 +7,7 @@ exports.list = asyncHandler(async (req, res) => {
   const q = req.query.all === 'true' ? {} : { isActive: true };
   // .lean() so names can be localized in place for the requester's language.
   const items = await Category.find(q).sort({ name: 1 }).lean();
-  await localizeEach(items, reqLang(req), ['name']);
+  await localizeEach(items, reqLang(req), ['name'], req.ctx);
   res.json({ success: true, data: items });
 });
 
