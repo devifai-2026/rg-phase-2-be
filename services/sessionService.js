@@ -426,6 +426,10 @@ async function _billOneMinute(ctx, session, minute) {
     description: await _sessionLabel(ctx, session),
     refId: billRefId(session.sessionId, minute),
     relatedSession: session._id,
+    // One row per SESSION (not per minute), accumulating as each minute bills.
+    rollupRefId: `session:${session.sessionId}`,
+    // Surfaced in the app's wallet row: "2 min · ₹50/min".
+    meta: { sessionId: session.sessionId, type: session.type, ratePerMin: session.ratePerMin, minutes: minute },
   });
 
   // Update money captured on the session.

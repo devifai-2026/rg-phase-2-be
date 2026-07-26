@@ -194,13 +194,20 @@ async function releaseLock(ctx, { userId, amount }) {
  * Settle part of a reservation: deduct from BOTH balance and lockedBalance and
  * write a debit ledger row. Used by the per-minute billing tick.
  */
-async function settleLocked(ctx, { userId, amount, source, description, refId, relatedSession, meta }) {
+async function settleLocked(ctx, { userId, amount, source, description, refId, relatedSession, meta, rollupRefId }) {
   ctx = ctx || defaultContext();
   const Wallet = ctx.model('Wallet');
   const Transaction = ctx.model('Transaction');
   if (!amount || amount < 1) throw new AppError('Invalid settle amount', 400);
   const existing = await findByRef(ctx, refId);
   if (existing) return existing;
+  // Under roll-up the row is keyed by rollupRefId, so the findByRef above can't
+  // see an already-billed minute. Check the recorded minute refs too, or a
+  // replayed bill_tick would charge that minute twice.
+  if (rollupRefId) {
+    const already = await Transaction.findOne({ refId: rollupRefId, user: userId, 'meta.minuteRefs': refId }).lean();
+    if (already) return already;
+  }
 
   return withTx(ctx, async (session) => {
     const opts = session ? { new: true, session } : { new: true };
@@ -211,10 +218,46 @@ async function settleLocked(ctx, { userId, amount, source, description, refId, r
     );
     if (!wallet) throw new AppError('Insufficient locked funds', 402);
 
+    // ROLL-UP: consultations bill once a MINUTE, which used to write one ledger
+    // row per minute — a 2-minute chat showed as two identical "− ₹50" lines.
+    // When rollupRefId is given, accumulate into that single per-session row so
+    // the user sees one entry with the running total. `refId` stays per-minute
+    // (in meta.minuteRefs) so an idempotent replay is still detectable.
+    if (rollupRefId) {
+      // Dot-path each meta key so $set updates fields individually instead of
+      // replacing the whole object (which would drop meta.minuteRefs).
+      const metaSet = Object.fromEntries(Object.entries(meta || {}).map(([k, v]) => [`meta.${k}`, v]));
+      const rolled = await Transaction.findOneAndUpdate(
+        { refId: rollupRefId, user: userId, type: 'debit' },
+        {
+          $inc: { amount },
+          // Refresh meta (minutes/rate/type) so the row's "N min · ₹R/min"
+          // detail tracks the session as it runs, without clobbering minuteRefs.
+          $set: { balanceAfter: wallet.balance, description, status: 'completed', ...metaSet },
+          $addToSet: { 'meta.minuteRefs': refId },
+        },
+        session ? { new: true, session } : { new: true }
+      );
+      if (rolled) return rolled;
+      // First minute of this session — fall through and create the row below,
+      // keyed by rollupRefId so subsequent minutes find and extend it.
+    }
+
     let txn;
     try {
       const created = await Transaction.create(
-        [{ user: userId, type: 'debit', source, amount, status: 'completed', description, refId, relatedSession, balanceAfter: wallet.balance, meta }],
+        [{
+          user: userId,
+          type: 'debit',
+          source,
+          amount,
+          status: 'completed',
+          description,
+          refId: rollupRefId || refId,
+          relatedSession,
+          balanceAfter: wallet.balance,
+          meta: rollupRefId ? { ...(meta || {}), minuteRefs: [refId] } : meta,
+        }],
         session ? { session } : {}
       );
       txn = created[0];
