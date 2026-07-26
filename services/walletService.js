@@ -217,7 +217,11 @@ async function settleLocked(ctx, { userId, amount, source, description, refId, r
 async function listTransactions(ctx, userId, { page = 1, limit = 20, type, source, days } = {}) {
   ctx = ctx || defaultContext();
   const Transaction = ctx.model('Transaction');
-  const q = { user: userId };
+  // Hide un-settled money from the user's history. A recharge writes a
+  // `pending` intent BEFORE the gateway confirms, so listing it made an
+  // unpaid (or failed) attempt look like a credit that had landed.
+  // Only settled rows belong in a statement.
+  const q = { user: userId, status: { $nin: ['pending', 'failed'] } };
   if (type) q.type = type;
   if (source) q.source = source;
   // Optional rolling window (e.g. last 7/14/30 days).
