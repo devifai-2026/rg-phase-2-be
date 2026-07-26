@@ -329,6 +329,20 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       // one, so a recharge shows as a single ledger entry.
       promoteRefId: `pending:${txnid}`,
     });
+    // Tax invoice for the recharge → rendered to PDF and uploaded to GCS by the
+    // invoice_pdf job, then downloadable from the app's wallet history.
+    // Fire-and-forget + idempotent on txnid, so a webhook/return_url double
+    // delivery cannot produce two invoices and a failure here never blocks the
+    // credit the user already paid for.
+    require('../services/invoiceService').createForRecharge(req.ctx, {
+      userId,
+      txnid,
+      tokens: credited,
+      // What the gateway actually CHARGED (bonus packs credit more than they
+      // cost). Recorded on the intent at checkout.
+      paidRupees: (pending && pending.meta && pending.meta.paidRupees) || undefined,
+      packName: (pending && pending.meta && pending.meta.packName) || undefined,
+    }).catch((e) => logger.warn('recharge invoice failed', { txnid, err: e.message }));
     // Referral: reward both sides on the referee's first recharge (idempotent).
     require('../services/referralService').onFirstRecharge(req.ctx, userId).catch(() => {});
     // If the user recharged DURING a live session, extend its reservation so

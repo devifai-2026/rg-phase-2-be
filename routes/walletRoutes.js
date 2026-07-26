@@ -17,6 +17,8 @@ const router = express.Router();
  */
 router.get('/balance', protect, ctrl.getBalance);
 router.get('/transactions', protect, ctrl.listTransactions);
+// Tax invoice for one of my recharges (backfills on first request).
+router.get('/transactions/:id/invoice', protect, ctrl.getTransactionInvoice);
 // App "Add money" screen — predefined recharge packs.
 router.get('/recharge-templates', protect, ctrl.listRechargeTemplates);
 

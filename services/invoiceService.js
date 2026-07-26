@@ -109,6 +109,61 @@ async function createForPooja(ctx, booking) {
   }
 }
 
+/**
+ * Create an invoice for a completed wallet recharge (idempotent per payment).
+ *
+ * Keyed on the gateway txnid, not the wallet row, so a webhook + return_url
+ * double-delivery of the same payment produces ONE invoice.
+ *
+ * The money and the credit differ on a bonus pack: the user is charged
+ * `paidRupees` (₹99) and receives `tokens` (₹110) of balance. The invoice must
+ * show what was actually CHARGED — that is the tax document — with the bonus as
+ * a zero-priced line so the balance still reconciles.
+ */
+async function createForRecharge(ctx, { userId, txnid, tokens, paidRupees, packName, billTo }) {
+  ctx = ctx || defaultContext();
+  const Invoice = ctx.model('Invoice');
+  const existing = await Invoice.findOne({ refType: 'recharge', paymentId: txnid });
+  if (existing) return existing;
+
+  // Charged amount is the invoice total. Fall back to the credited figure for
+  // legacy/no-bonus rows where paidRupees was never recorded.
+  const charged = Number(paidRupees) > 0 ? Number(paidRupees) : Number(tokens) || 0;
+  const bonus = Math.max(0, (Number(tokens) || 0) - charged);
+  const items = [{
+    name: packName ? `Wallet recharge — ${packName}` : 'Wallet recharge',
+    qty: 1,
+    unitPrice: charged,
+    lineTotal: charged,
+  }];
+  if (bonus > 0) {
+    items.push({ name: `Bonus credit (+₹${bonus})`, qty: 1, unitPrice: 0, lineTotal: 0 });
+  }
+
+  const tpl = await defaultTemplate(ctx);
+  try {
+    const invoice = await Invoice.create({
+      invoiceNo: await nextInvoiceNo(ctx),
+      refType: 'recharge',
+      user: userId,
+      billTo: billTo || {},
+      items,
+      subtotal: charged,
+      discount: 0,
+      total: charged,
+      paymentId: txnid,
+      template: tpl && tpl._id ? tpl._id : undefined,
+      pdfStatus: 'pending',
+    });
+    logger.info('Invoice generated (recharge)', { invoiceNo: invoice.invoiceNo, txnid });
+    enqueuePdf(ctx, invoice._id);
+    return invoice;
+  } catch (e) {
+    if (e.code === 11000) return Invoice.findOne({ refType: 'recharge', paymentId: txnid });
+    throw e;
+  }
+}
+
 /** The active/default invoice template (or a sane built-in fallback). */
 async function defaultTemplate(ctx) {
   ctx = ctx || defaultContext();
@@ -159,4 +214,4 @@ async function getByOrder(ctx, orderId) {
   return Invoice.findOne({ order: orderId });
 }
 
-module.exports = { createForOrder, createForPooja, generatePdf, defaultTemplate, getByOrder, nextInvoiceNo };
+module.exports = { createForOrder, createForPooja, createForRecharge, generatePdf, defaultTemplate, getByOrder, nextInvoiceNo };

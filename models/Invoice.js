@@ -21,7 +21,7 @@ const invoiceSchema = new mongoose.Schema(
     // `order` kept (sparse-unique) for existing order invoices; new invoices use
     // refType + refId so orders AND pooja bookings both fit one model.
     order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', index: true },
-    refType: { type: String, enum: ['order', 'pooja'], index: true },
+    refType: { type: String, enum: ['order', 'pooja', 'recharge'], index: true },
     refId: { type: mongoose.Schema.Types.ObjectId, index: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     billTo: {

@@ -252,6 +252,36 @@ async function seedTenantDb(ctx, branding = {}, config = {}) {
   } catch (e) {
     logger.warn('legal content seed failed', e.message);
   }
+
+  // ── Default invoice template ──
+  // Every paid recharge / order / pooja issues an invoice, and the renderer needs
+  // a template. Without one it falls back to a hardcoded "Rudraganga" identity —
+  // i.e. a new tenant's invoices would carry ANOTHER brand's name. Seed one
+  // marked isDefault so the very first invoice is correctly branded; the admin
+  // can edit it or add more under Invoices → Templates.
+  // $setOnInsert so re-provisioning never overwrites an edited template.
+  try {
+    const InvoiceTemplate = ctx.model('InvoiceTemplate');
+    const brand = branding.displayName || 'Your brand';
+    await InvoiceTemplate.updateOne(
+      { isDefault: true },
+      {
+        $setOnInsert: {
+          name: 'Default invoice',
+          design: 1,
+          businessName: brand,
+          logoUrl: branding.logoUrl || undefined,
+          footerNote: `Thank you for choosing ${brand} 🙏`,
+          isDefault: true,
+          isActive: true,
+        },
+      },
+      { upsert: true },
+    );
+    logger.info('Seeded default invoice template', { brand });
+  } catch (e) {
+    logger.warn('invoice template seed failed', e.message);
+  }
 }
 
 // Normalize a color to 8-digit ARGB hex (#AARRGGBB). Accepts #RGB, #RRGGBB, or
