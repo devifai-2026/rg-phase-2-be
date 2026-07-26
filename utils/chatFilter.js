@@ -91,14 +91,37 @@ function numeraliseWordDigits(text) {
   return out;
 }
 
+// TLDs common in off-platform contact links. Deliberately a list rather than
+// "any dotted token": matching every dot would eat prices ("Rs 1.5"), decimals,
+// abbreviations and file names. These cover the realistic evasion set.
+const LINKISH_TLD = [
+  'com', 'net', 'org', 'in', 'co', 'io', 'me', 'app', 'link', 'live', 'site',
+  'online', 'shop', 'store', 'xyz', 'info', 'biz', 'ly', 'gg', 'to', 'cc', 'tv',
+  'us', 'uk', 'ru', 'pk', 'bd', 'np',
+].join('|');
+
 function maskLinks(text) {
   let masked = false;
-  // http(s) links and bare www. domains.
-  const url = /\b(?:https?:\/\/|www\.)\S+/gi;
-  const out = text.replace(url, () => {
-    masked = true;
-    return MASK;
-  });
+  const hit = () => { masked = true; return MASK; };
+
+  // 1) Explicit schemes and www. — the obvious case.
+  let out = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, hit);
+
+  // 2) BARE domains, which the scheme-only pattern missed entirely: "t.me/room",
+  //    "bit.ly/3abc", "instagram.com/handle", "foo.co.in". These are how people
+  //    actually share contact links once they learn "http" is blocked.
+  //    Requires a known TLD, optionally followed by a path.
+  out = out.replace(
+    new RegExp(`\\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9-]+)*\\.(?:${LINKISH_TLD})\\b(?:\\/\\S*)?`, 'gi'),
+    hit,
+  );
+
+  // 3) Obfuscated dots — "example dot com", "t (dot) me".
+  out = out.replace(
+    new RegExp(`\\b[a-z0-9-]+\\s*(?:\\(|\\[)?\\s*(?:dot|\\.)\\s*(?:\\)|\\])?\\s*(?:${LINKISH_TLD})\\b`, 'gi'),
+    hit,
+  );
+
   return { out, masked };
 }
 

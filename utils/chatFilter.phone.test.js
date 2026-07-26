@@ -59,6 +59,38 @@ describe('spelled-out digits', () => {
   });
 });
 
+describe('links', () => {
+  it.each([
+    'https://evil.com',
+    'http://x.co/abc',
+    'www.foo.com',
+    // Bare domains — these all leaked before: once someone learns "http" is
+    // blocked, this is exactly what they send instead.
+    'telegram.me/xyz',
+    'join t.me/room',
+    'instagram.com/handle',
+    'bit.ly/3abc',
+    'my site is foo.co.in',
+    // Obfuscated dots.
+    'example dot com',
+    't (dot) me',
+  ])('masks %s', (text) => {
+    expect(filterMessage(text).masked).toBe(true);
+  });
+
+  it.each([
+    'Rs 1.5 lakh',
+    'my rating is 4.5',
+    'born 15.08.1995',
+    'Mr. Sharma called',
+    'see para 3.2',
+    'I am 25.5 years old',
+    'thank you so much',
+  ])('does NOT mask %s', (text) => {
+    expect(filterMessage(text).masked).toBe(false);
+  });
+});
+
 describe('cross-message split guard', () => {
   it('trips on the message that completes the number (4 + 3 + 3)', () => {
     let acc = '';
