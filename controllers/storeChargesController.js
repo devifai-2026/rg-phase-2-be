@@ -1,7 +1,18 @@
 const asyncHandler = require('../utils/asyncHandler');
 
 /** The singleton charges doc (created with safe defaults on first access). */
+/**
+ * The singleton store-charges doc for a tenant, created on first read.
+ *
+ * `StoreCharges` MUST be the tenant-bound model (`req.model('StoreCharges')`).
+ * A caller that forgot it used to blow up with the opaque "Cannot read
+ * properties of undefined (reading 'findOne')" — which is exactly how every
+ * wallet checkout started 500ing. Name the real problem instead.
+ */
 async function getOrCreate(StoreCharges) {
+  if (!StoreCharges) {
+    throw new Error('storeCharges.getOrCreate: pass the tenant-bound model, e.g. req.model(\'StoreCharges\')');
+  }
   let doc = await StoreCharges.findOne({ key: 'store' });
   if (!doc) doc = await StoreCharges.create({ key: 'store' });
   return doc;

@@ -236,7 +236,8 @@ async function markJoined(ctx, { sessionId, byUserId }) {
     type: 'bill_tick',
     payload: { sessionId, minute: 2 },
     dedupeKey: `bill:${sessionId}:2`,
-    runAt: new Date(Date.now() + 60 * 1000),
+    // Absolute (startedAt + 60s), matching every later tick — see minuteDueAt.
+    runAt: minuteDueAt(started, 2),
   });
 
   const startedAtIso = startedAt.toISOString();
@@ -477,11 +478,25 @@ async function _billOneMinute(ctx, session, minute) {
   }
 }
 
+/**
+ * When minute N of a session becomes due, as an ABSOLUTE time.
+ *
+ * Minute 1 is billed at startedAt, so minute N starts at startedAt+(N-1)×60s.
+ * Every tick is scheduled off this, never off `Date.now()`: an interval chain
+ * accumulates each tick's own processing time plus the job queue's 2s poll, so
+ * the boundaries drifted seconds away from the clock the apps display (observed:
+ * one session's minute-5 tick firing at 3:26 instead of 4:00). Absolute
+ * scheduling cannot drift no matter how many minutes elapse.
+ */
+function minuteDueAt(session, minute) {
+  const start = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
+  return new Date(start + (minute - 1) * 60 * 1000);
+}
+
 /** STEP 3 (recurring) — process a scheduled billing tick. */
 async function processBillTick(ctx, sessionId, minute) {
   ctx = ctx || defaultContext();
   const Session = ctx.model('Session');
-  const AdminSettings = ctx.model('AdminSettings');
   const session = await Session.findOne({ sessionId });
   if (!session || session.status !== 'ongoing') return; // ended already
 
@@ -489,7 +504,23 @@ async function processBillTick(ctx, sessionId, minute) {
   const remainingLock = session.lockedAmount - session.totalAmount;
   logger.info('bill_tick', { sessionId, minute, remainingLock, tenant: ctx && ctx.tenant && ctx.tenant.slug });
   if (remainingLock < session.ratePerMin) {
-    // Cannot afford this minute -> end gracefully.
+    // Funds exhausted. The user has ALREADY PAID for the minute now running, so
+    // ending here would cut the session short mid-paid-minute — the reported
+    // "ended at 3:26 when I paid for 4 minutes". Wait until the paid time is
+    // genuinely used up, then end.
+    const paidUntil = minuteDueAt(session, minute).getTime(); // = end of minute (minute-1)
+    const msLeft = paidUntil - Date.now();
+    if (msLeft > 1000) {
+      logger.info('bill_tick: funds exhausted, letting the paid minute finish', { sessionId, minute, msLeft });
+      await jobService.enqueue(ctx, {
+        type: 'bill_tick',
+        payload: { sessionId, minute },
+        // Distinct key from the original tick, else the dedupe drops the re-run.
+        dedupeKey: `bill:${sessionId}:${minute}:grace`,
+        runAt: new Date(paidUntil),
+      });
+      return;
+    }
     logger.warn('bill_tick: funds exhausted, ending session', { sessionId, minute });
     await endSession(ctx, { sessionId, endReason: 'low_balance' });
     return;
@@ -510,12 +541,12 @@ async function processBillTick(ctx, sessionId, minute) {
     return;
   }
 
-  // Schedule the next tick.
+  // Schedule the next tick on the ABSOLUTE minute boundary (see minuteDueAt).
   await jobService.enqueue(ctx, {
     type: 'bill_tick',
     payload: { sessionId, minute: minute + 1 },
     dedupeKey: `bill:${sessionId}:${minute + 1}`,
-    runAt: new Date(Date.now() + 60 * 1000),
+    runAt: minuteDueAt(session, minute + 1),
   });
 }
 
@@ -756,6 +787,12 @@ async function sweepStaleSessions(ctx) {
       // Free chat minutes are consumed WITHOUT touching the lock — count them
       // as affordable so a healthy free-minute chat isn't force-ended.
       const affordableMin = Math.floor(s.lockedAmount / s.ratePerMin) + (s.freeMinutes || 0);
+      // `elapsedMin` is the 1-based minute currently RUNNING, so it exceeding
+      // affordableMin means the paid time has fully elapsed — not merely that the
+      // last paid minute has started. (A session at 3:10 of 4 paid minutes has
+      // elapsedMin 4, which is affordable and must be left alone; this only fires
+      // from 4:00, once minute 5 begins.) Keeps the sweep consistent with
+      // processBillTick, which now lets a paid minute finish.
       if (elapsedMin > affordableMin) {
         logger.warn('sweep: reservation exhausted, force-ending session', { sessionId: s.sessionId, elapsedMin, affordableMin });
         await endSession(ctx, { sessionId: s.sessionId, endReason: 'low_balance' });

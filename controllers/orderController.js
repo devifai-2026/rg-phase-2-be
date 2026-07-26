@@ -49,8 +49,11 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
   const cartCtrl = require('./cartController');
   let cart = null;
   if (!items || !items.length) {
-    cart = await cartCtrl.getOrCreate(req.user._id);
-    const view = await cartCtrl.hydrate(cart);
+    // Pass the tenant-bound model. Without it getOrCreate falls back to the
+    // DEFAULT context's Cart — reading and writing the wrong tenant's database
+    // instead of failing loudly.
+    cart = await cartCtrl.getOrCreate(req.user._id, req.model('Cart'));
+    const view = await cartCtrl.hydrate(cart, Product);
     if (!view.items.length) throw new AppError('Your cart is empty', 400);
     items = view.items.map((i) => ({ productId: i.product, qty: i.qty }));
   }
@@ -79,7 +82,10 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
 
   // Apply admin-configured store charges (delivery/gst/shipping/platform) on
   // the item subtotal. All default off → no charges until an admin enables them.
-  const charges = await require('./storeChargesController').getOrCreate();
+  // getOrCreate takes the TENANT-BOUND model. Calling it bare made
+  // `StoreCharges` undefined → "Cannot read properties of undefined (reading
+  // 'findOne')" → every wallet checkout 500'd.
+  const charges = await require('./storeChargesController').getOrCreate(req.model('StoreCharges'));
   const { lines, total: chargesTotal } = charges.computeFor(subtotal);
   const total = Math.max(1, subtotal - discount + chargesTotal);
 

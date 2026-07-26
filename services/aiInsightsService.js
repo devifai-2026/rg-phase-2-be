@@ -115,6 +115,11 @@ async function generateChatRecap(ctx, { sessionId }) {
   // the two reasons `suggestions` came back empty.
   for (const sp of sharedProducts) validIds.add(sp.productId);
   const astroProfile = await AstrologerProfile.findOne({ user: session.astrologer }).select('displayName').lean();
+  // The seeker's chosen app language, passed to the prompt as a hint for the
+  // "write in the seeker's language" rule. Best-effort — detection from the
+  // transcript is the authority either way.
+  const seekerDoc = await ctx.model('User').findById(session.user).select('language').lean().catch(() => null);
+  const seekerLang = (seekerDoc && seekerDoc.language) || '';
 
   let ai;
   let generatedByMock = false;
@@ -129,6 +134,11 @@ async function generateChatRecap(ctx, { sessionId }) {
           // Tell the model what was ALREADY recommended in the chat, so the
           // summary can mention it and the suggestions don't just repeat it.
           sharedProducts,
+          // The seeker's app language, as a HINT for the language rule. The
+          // transcript still decides (someone running the app in English may
+          // chat in Banglish), but this anchors the choice when a short chat
+          // gives the detector little to work with.
+          seekerLang,
         }) }],
         schema: chatRecapPrompt.RECAP_SCHEMA,
         // Gemini 2.5 spends output budget on hidden "thinking" before the JSON,

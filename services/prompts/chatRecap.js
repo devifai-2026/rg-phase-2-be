@@ -87,7 +87,7 @@ const SYSTEM = (
  * @param {string} [p.astrologerId]    astrologer id (context only)
  * @param {string} [p.astrologerName]  astrologer display name (context)
  */
-function buildUserMessage({ transcript, catalogue, todayISO, userId, astrologerId, astrologerName, sharedProducts = [] }) {
+function buildUserMessage({ transcript, catalogue, todayISO, userId, astrologerId, astrologerName, sharedProducts = [], seekerLang = '' }) {
   const catLines = catalogue
     .map((pr) => `- ${pr.productId} | ${pr.name} | ₹${pr.price} | ${pr.category || 'general'} | ${pr.source || 'store'} | ${(pr.description || '').slice(0, 120)}`)
     .join('\n');
@@ -107,6 +107,20 @@ function buildUserMessage({ transcript, catalogue, todayISO, userId, astrologerI
       : '') +
     '=== PRODUCT CATALOGUE (suggest ONLY from these productIds; source = storefront|rudramaal) ===\n' +
     `${catLines || '(none available)'}\n\n` +
+    // The language rule is repeated HERE, at the very end, because that is the
+    // last thing the model reads before generating. Stating it only in the system
+    // prompt was not enough — recaps of Banglish and Bengali chats came back in
+    // English, i.e. silently translated. The transcript is the authority (the app
+    // language is only a hint: someone with the app in English may well chat in
+    // Banglish), so detection still wins; this just stops the default drift to
+    // English.
+    (seekerLang ? `The seeker's app language is "${seekerLang}" — a HINT only.\n` : '') +
+    'LANGUAGE (critical): re-read how the SEEKER actually writes in the transcript ' +
+    'above and mirror it EXACTLY in `summary`, every `notifyText`, and `keyTopics` — ' +
+    'same language AND same script. Romanised stays romanised: a Banglish chat gets ' +
+    'a Banglish summary, a Hinglish chat a Hinglish one, Bengali script stays in ' +
+    'Bengali script. Do NOT translate their words into English, and do not switch ' +
+    'script. Only `sentiment`, `area` and productIds stay English machine keys.\n\n' +
     'Analyse and produce the recap JSON now (summary, keyTopics, sentiment, suggestions, followUps, reminders).'
   );
 }
