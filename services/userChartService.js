@@ -69,8 +69,18 @@ function extractFacts(chart) {
             .map(([k, v]) => ({ name: v.name || k, ...v }))
         : []);
 
+  // The provider labels planets with two-letter abbreviations (As, Su, Mo, Ma, Me,
+  // Ju, Ve, Sa, Ra, Ke), so expand them: "Ju: in Pisces" is not something an
+  // astrologer would say, and the prompt is told to cite these verbatim.
+  const FULL = {
+    As: 'Ascendant', Su: 'Sun', Mo: 'Moon', Ma: 'Mars', Me: 'Mercury',
+    Ju: 'Jupiter', Ve: 'Venus', Sa: 'Saturn', Ra: 'Rahu', Ke: 'Ketu',
+    Ur: 'Uranus', Ne: 'Neptune', Pl: 'Pluto',
+  };
+
   for (const p of rows) {
-    const name = tidy(p.name || p.planet);
+    const rawName = String(p.name || p.planet || '').trim();
+    const name = FULL[rawName] || tidy(p.full_name) || tidy(rawName);
     if (!name) continue;
     facts.planets.push({
       name,
@@ -78,6 +88,24 @@ function extractFacts(chart) {
       house: p.house != null ? Number(p.house) : null,
       retro: p.retro === true || p.is_retro === true || p.isRetro === true || String(p.retro || '').toLowerCase() === 'true',
     });
+  }
+
+  // Derive the headline signs from the planet table when the provider does not
+  // supply them as separate keys, which is the case for planet-details: the
+  // ascendant and Moon sign are rows in the table, not top-level fields. Without
+  // this the two most important facts in a Vedic reading were both null while the
+  // data was sitting right there.
+  if (!facts.ascendant) {
+    const asc = facts.planets.find((x) => x.name === 'Ascendant');
+    if (asc && asc.sign) facts.ascendant = asc.sign;
+  }
+  if (!facts.moonSign) {
+    const moon = facts.planets.find((x) => x.name === 'Moon');
+    if (moon && moon.sign) facts.moonSign = moon.sign;
+  }
+  if (!facts.sunSign) {
+    const sun = facts.planets.find((x) => x.name === 'Sun');
+    if (sun && sun.sign) facts.sunSign = sun.sign;
   }
 
   return facts;
