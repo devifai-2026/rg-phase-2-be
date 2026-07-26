@@ -364,6 +364,33 @@ async function postChatJoinSystemMessages(ctx, session) {
   }
 }
 
+/**
+ * Human label for a session in the USER's wallet history — "Chat with Ravi".
+ * Falls back to the session type alone if the astrologer can't be resolved, so
+ * a lookup failure never blocks billing.
+ */
+const _TYPE_LABEL = { chat: 'Chat', call: 'Call', video: 'Video call' };
+async function _sessionLabel(ctx, session) {
+  const kind = _TYPE_LABEL[session.type] || session.type;
+  try {
+    const AstrologerProfile = ctx.model('AstrologerProfile');
+    const User = ctx.model('User');
+    let name = '';
+    if (session.astrologerProfile) {
+      const p = await AstrologerProfile.findById(session.astrologerProfile).select('displayName').lean();
+      name = (p && p.displayName) || '';
+    }
+    if (!name && session.astrologer) {
+      const u = await User.findById(session.astrologer).select('name').lean();
+      name = (u && u.name) || '';
+    }
+    return name ? `${kind} with ${name}` : kind;
+  } catch (e) {
+    logger.debug('session label lookup failed', e.message);
+    return kind;
+  }
+}
+
 /** Charge exactly one minute against the locked reservation. */
 async function _billOneMinute(ctx, session, minute) {
   ctx = ctx || defaultContext();
@@ -393,7 +420,10 @@ async function _billOneMinute(ctx, session, minute) {
     userId: session.user,
     amount: split.total,
     source: session.type,
-    description: `${session.type} ${session.sessionId} min ${minute}`,
+    // User-facing wallet history line. Never put the sessionId here — it was
+    // rendering as "chat 36c32328-4690-…" in the app, which means nothing to
+    // the user. Name the astrologer they spoke to instead.
+    description: await _sessionLabel(ctx, session),
     refId: billRefId(session.sessionId, minute),
     relatedSession: session._id,
   });
@@ -546,7 +576,9 @@ async function endSession(ctx, { sessionId, endReason = 'hangup', byUserId } = {
       userId: finalSession.astrologer,
       amount: finalSession.astrologerEarning,
       source: 'earning',
-      description: `Earnings: ${finalSession.type} ${sessionId}`,
+      // Astrologer-facing line. Name the seeker by their per-session alias
+      // (their real identity is never exposed) rather than the raw sessionId.
+      description: `${_TYPE_LABEL[finalSession.type] || finalSession.type} with ${finalSession.seekerAlias || 'a seeker'}`,
       refId: `${sessionId}:earning`,
       relatedSession: finalSession._id,
     });

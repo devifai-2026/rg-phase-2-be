@@ -104,6 +104,21 @@ exports.active = asyncHandler(async (req, res) => {
 
   if (!session) return res.json({ success: true, data: null });
 
+  // GUARD: never resume a session the seeker can no longer pay for. The
+  // bill_tick normally ends it, but a lost tick / worker restart could leave an
+  // `ongoing` row funded for 0 more minutes — and BOTH apps would happily rejoin
+  // and keep consulting for free. End it here (idempotent) and report "nothing
+  // active", which is what the sweep would have concluded anyway.
+  if (session.status === 'ongoing') {
+    const remainingLock = (session.lockedAmount || 0) - (session.totalAmount || 0);
+    if (remainingLock < (session.ratePerMin || 0)) {
+      await sessionService
+        .endSession(req.ctx, { sessionId: session.sessionId, endReason: 'low_balance' })
+        .catch(() => {});
+      return res.json({ success: true, data: null });
+    }
+  }
+
   const shaped = shapeSession(session, me);
   // Re-mint a token for media sessions so the app can rejoin the channel.
   let token = null;
