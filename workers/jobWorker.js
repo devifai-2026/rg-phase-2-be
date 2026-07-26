@@ -13,6 +13,7 @@ const translateService = require('../services/translateService');
 const broadcastService = require('../services/broadcastService');
 const invoiceService = require('../services/invoiceService');
 const aiInsightsService = require('../services/aiInsightsService');
+const aiChatService = require('../services/aiChatService');
 const reengagementService = require('../services/reengagementService');
 const reminderService = require('../services/reminderService');
 const marketingService = require('../services/marketingService');
@@ -49,6 +50,11 @@ const handlers = {
   // AI recap of a finished chat session (Feature 1). Idempotent: a unique
   // SessionRecap per session + an existence check make redelivery a no-op.
   chat_recap: (ctx, { sessionId }) => aiInsightsService.generateChatRecap(ctx, { sessionId }),
+  // Per-minute billing for an AI astrology chat. A DISTINCT job type from
+  // bill_tick so the two engines can never share a dedupeKey (that index is
+  // globally unique, and a collision would silently drop a real consultation's
+  // tick). See services/aiChatService.processBillTick.
+  ai_bill_tick: (ctx, { aiSessionId, minute }) => aiChatService.processBillTick(ctx, aiSessionId, minute),
 };
 
 
@@ -141,6 +147,10 @@ function start() {
     // exhausted by wall-clock and re-enqueue lost bill_ticks — so a session auto
     // ends on empty wallet even if a tick was lost or the apps are killed.
     forEachTenant((ctx) => recordCronRun('stale_session_sweep', ctx, workerId, () => sessionService.sweepStaleSessions(ctx))).catch((e) => logger.warn('stale-session sweep failed', e.message));
+    // Backstop for AI chats: the billing tick normally ends an idle session, but
+    // a lost job (queue drain, restart mid-flight) would otherwise leave it
+    // ongoing with the seeker's funds locked indefinitely.
+    forEachTenant((ctx) => recordCronRun('ai_idle_sweep', ctx, workerId, () => aiChatService.sweepIdleSessions(ctx))).catch((e) => logger.warn('ai idle sweep failed', e.message));
   }, 60 * 1000);
   // Run one sweep shortly after boot so a process restart promptly cleans up any
   // broadcast left 'live' by the previous (crashed/killed) process.

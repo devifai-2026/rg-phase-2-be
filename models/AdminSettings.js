@@ -21,6 +21,17 @@ const adminSettingsSchema = new mongoose.Schema(
     callMaxMinutes: { type: Number, default: 120 },
     ringTimeoutSec: { type: Number, default: 60 }, // 60s incoming window
 
+    // ── AI astrologer chat ──────────────────────────────────────────────
+    // Chat-only, billed per minute from the seeker's wallet with no payout leg.
+    aiChatEnabled: { type: Boolean, default: true },
+    aiChatRatePerMin: { type: Number, default: 15 }, // tenant default; AiPersona may override
+    // How long a seeker may go silent before the session auto-ends. Kept BELOW
+    // 60s so an abandoned chat can never be charged a second minute: the tick
+    // fires on absolute minute boundaries, so a shorter idle window than the
+    // billing period guarantees the check trips first.
+    aiChatIdleTimeoutSec: { type: Number, default: 45 },
+    aiChatMaxMinutes: { type: Number, default: 30 },
+
     // Escalation: N missed/rejected within the rolling window triggers an alert.
     escalationMissThreshold: { type: Number, default: 3 },
     escalationWindowMinutes: { type: Number, default: 60 },

@@ -166,7 +166,17 @@ const enquiryLimiter = build('enquiry', {
   message: 'Too many enquiries. Please try again later.',
 });
 
+// Every AI message is a paid LLM call, and there was no limiter on /ai at all.
+// Generous enough for a real conversation (a seeker types every few seconds), tight
+// enough that a script cannot run up a Vertex bill or drain a wallet.
+const aiLimiter = build('ai', {
+  windowMs: 60 * 1000,
+  max: parseInt(process.env.RL_AI_MAX || '20', 10),
+  message: 'You are sending messages very quickly. Please wait a moment.',
+});
+
 module.exports = {
+  aiLimiter,
   otpRequestLimiter,
   otpVerifyLimiter,
   paymentLimiter,

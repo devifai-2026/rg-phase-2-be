@@ -1585,3 +1585,46 @@ exports.translationRuns = asyncHandler(async (req, res) => {
   const runs = await TranslationRun.find({}).sort({ createdAt: -1 }).limit(limit).lean();
   res.json({ success: true, data: runs });
 });
+
+
+// ── AI astrologer chats (read-only) ─────────────────────────────────────────
+// The admin funds the AI platform, so they can read every AI transcript. Read
+// only: there is no astrologer to moderate and no recap to approve.
+
+/** GET /admin/ai-chats — list AI consultations, newest first. */
+exports.listAiChats = asyncHandler(async (req, res) => {
+  const AiChatSession = req.model('AiChatSession');
+  const { status, needsReview, topic, page = 1, limit = 50 } = req.query;
+  const q = {};
+  if (status) q.status = status;
+  // Crisis-flagged chats must be findable in one click.
+  if (needsReview === 'true' || needsReview === '1') q.needsReview = true;
+  if (topic) q.topic = topic;
+  const lim = Math.min(parseInt(limit, 10) || 50, 200);
+  const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * lim;
+  const [items, total] = await Promise.all([
+    AiChatSession.find(q)
+      .populate('user', 'name phone')
+      .populate('persona', 'name')
+      .sort({ createdAt: -1 }).skip(skip).limit(lim).lean(),
+    AiChatSession.countDocuments(q),
+  ]);
+  res.json({ success: true, data: { items, total, page: Number(page), limit: lim } });
+});
+
+/** GET /admin/ai-chats/:id — full transcript of one AI consultation. */
+exports.getAiChat = asyncHandler(async (req, res) => {
+  const AiChatSession = req.model('AiChatSession');
+  const s = await AiChatSession.findOne({ aiSessionId: req.params.id })
+    .populate('user', 'name phone')
+    .populate('persona', 'name avatar')
+    .lean();
+  if (!s) throw new AppError('AI chat not found', 404);
+  let messages = [];
+  if (s.conversation) {
+    messages = await req.model('AiMessage')
+      .find({ conversation: s.conversation, role: { $ne: 'system' } })
+      .select('role content createdAt').sort({ createdAt: 1 }).lean();
+  }
+  res.json({ success: true, data: { session: s, messages } });
+});

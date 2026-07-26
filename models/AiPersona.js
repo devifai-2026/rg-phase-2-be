@@ -14,6 +14,13 @@ const aiPersonaSchema = new mongoose.Schema(
     languages: [{ type: String }],
     systemPrompt: { type: String, maxlength: 4000 }, // hidden persona instructions
     tagline: { type: String },
+    /** Per-persona rate override. null/undefined = inherit
+     *  AdminSettings.aiChatRatePerMin. */
+    chatRatePerMin: { type: Number, default: null },
+    /** Which topic prompt to compose in (career|marriage|finance|health|
+     *  education|travel). Empty = general reading. Lets an admin create a
+     *  "Marriage specialist" persona that reuses the PO-managed topic prompt. */
+    topic: { type: String, default: '' },
     isActive: { type: Boolean, default: true, index: true },
     sortOrder: { type: Number, default: 0 },
   },

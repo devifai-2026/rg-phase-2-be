@@ -5,10 +5,24 @@ const validate = require('../middlewares/validate');
 const v = require('../utils/validators');
 const { protect } = require('../middlewares/auth');
 const { astrologerOnly } = require('../middlewares/role');
+const { aiLimiter } = require('../middlewares/rateLimit');
 
 const router = express.Router();
 
-// AI astrologer chat
+// ── AI astrologer (chart-grounded, billed per minute, chat only) ──────────
+// Personas the seeker can pick in the AI Astro tab. systemPrompt is never sent.
+router.get('/personas', protect, ctrl.listPersonas);
+// Opening a chat is FREE; the first message starts the meter (aiChatService).
+router.post('/chat/sessions', protect, ctrl.startChat);
+router.post('/chat/sessions/:id/messages', protect, aiLimiter, ctrl.sendChatMessage);
+router.post('/chat/sessions/:id/end', protect, ctrl.endChat);
+router.get('/chat/sessions', protect, ctrl.listChatSessions);
+router.get('/chat/sessions/:id', protect, ctrl.getChatSession);
+// One-shot life-area reading behind the home icons (Career, Marriage, ...).
+// Not billed: a single generation, not a metered conversation.
+router.post('/reading', protect, aiLimiter, ctrl.topicReading);
+
+// Legacy single-shot AI chat (kept for the older app build; unbilled).
 router.post('/chat', protect, validate(v.aiChat), ctrl.chat);
 router.get('/conversations', protect, ctrl.listConversations);
 router.get('/conversations/:id', protect, ctrl.getConversation);

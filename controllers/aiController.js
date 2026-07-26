@@ -1,4 +1,5 @@
 const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 const aiService = require('../services/aiService');
 const aiInsights = require('../services/aiInsightsService');
 
@@ -75,4 +76,177 @@ exports.optimizeProfile = asyncHandler(async (req, res) => {
 exports.optimizerUsage = asyncHandler(async (req, res) => {
   const usage = await aiInsights.optimizerUsage(req.ctx, req.user._id);
   res.json({ success: true, data: usage });
+});
+
+// ── AI astrologer: personas, billed chat, topic readings ────────────────────
+
+const aiChatService = require('../services/aiChatService');
+const aiAstrologerService = require('../services/aiAstrologerService');
+const userChartService = require('../services/userChartService');
+
+/**
+ * GET /ai/personas — the selectable AI astrologers.
+ * Public-ish (protected) because the app's AI Astro tab renders it. `systemPrompt`
+ * is NEVER returned: it is the persona's hidden instruction set.
+ */
+exports.listPersonas = asyncHandler(async (req, res) => {
+  const AiPersona = req.model('AiPersona');
+  const AdminSettings = req.model('AdminSettings');
+  const [rows, cfg] = await Promise.all([
+    AiPersona.find({ isActive: true })
+      .select('name avatar description expertise languages tagline chatRatePerMin topic sortOrder')
+      .sort({ sortOrder: 1, createdAt: 1 })
+      .lean(),
+    AdminSettings.get(),
+  ]);
+  const fallbackRate = cfg.aiChatRatePerMin != null ? cfg.aiChatRatePerMin : 15;
+  res.json({
+    success: true,
+    data: {
+      enabled: cfg.aiChatEnabled !== false,
+      items: rows.map((p) => ({
+        id: String(p._id),
+        name: p.name,
+        avatar: p.avatar,
+        description: p.description,
+        expertise: p.expertise || [],
+        languages: p.languages || [],
+        tagline: p.tagline,
+        topic: p.topic || '',
+        // Resolve the rate for the app so it never has to know about inheritance.
+        chatRatePerMin: p.chatRatePerMin != null ? p.chatRatePerMin : fallbackRate,
+      })),
+    },
+  });
+});
+
+/** POST /ai/chat/sessions — open a chat. Free: does not start billing. */
+exports.startChat = asyncHandler(async (req, res) => {
+  const { personaId, topic, lang } = req.body || {};
+  const data = await aiChatService.startSession(req.ctx, {
+    userId: req.user._id, personaId, topic, lang,
+  });
+  res.status(201).json({ success: true, data });
+});
+
+/** POST /ai/chat/sessions/:id/messages — the first message starts the meter. */
+exports.sendChatMessage = asyncHandler(async (req, res) => {
+  const { message } = req.body || {};
+  if (!message || !String(message).trim()) throw new AppError('Message is required', 400);
+  const data = await aiChatService.sendMessage(req.ctx, {
+    userId: req.user._id,
+    aiSessionId: req.params.id,
+    message: String(message).slice(0, 2000),
+  });
+  res.json({ success: true, data });
+});
+
+/** POST /ai/chat/sessions/:id/end — explicit end (also called on app background). */
+exports.endChat = asyncHandler(async (req, res) => {
+  const AiChatSession = req.model('AiChatSession');
+  // Ownership check: the service ends by aiSessionId alone, so verify here.
+  const own = await AiChatSession.exists({ aiSessionId: req.params.id, user: req.user._id });
+  if (!own) throw new AppError('Chat not found', 404);
+  const data = await aiChatService.endSession(req.ctx, {
+    aiSessionId: req.params.id, endReason: 'user_ended',
+  });
+  res.json({ success: true, data: data || { alreadyEnded: true } });
+});
+
+/** GET /ai/chat/sessions — my AI consultations. */
+exports.listChatSessions = asyncHandler(async (req, res) => {
+  const AiChatSession = req.model('AiChatSession');
+  const items = await AiChatSession.find({ user: req.user._id })
+    .select('aiSessionId topic lang status startedAt endedAt endReason ratePerMin billedMinutes totalAmount messageCount')
+    .populate('persona', 'name avatar')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  res.json({ success: true, data: { items } });
+});
+
+/** GET /ai/chat/sessions/:id — transcript of one of my AI consultations. */
+exports.getChatSession = asyncHandler(async (req, res) => {
+  const AiChatSession = req.model('AiChatSession');
+  const s = await AiChatSession.findOne({ aiSessionId: req.params.id, user: req.user._id })
+    .populate('persona', 'name avatar').lean();
+  if (!s) throw new AppError('Chat not found', 404);
+  let messages = [];
+  if (s.conversation) {
+    messages = await req.model('AiMessage').find({ conversation: s.conversation, role: { $ne: 'system' } })
+      .select('role content createdAt').sort({ createdAt: 1 }).lean();
+  }
+  res.json({ success: true, data: { session: s, messages } });
+});
+
+/**
+ * POST /ai/reading — a one-shot topic reading for a life area.
+ *
+ * This is what the home icons (Career, Marriage, …) open. NOT billed: it is a
+ * single generation, and charging per minute for a one-shot report would be
+ * indefensible. Accepts inline birth details so a seeker with an incomplete
+ * profile can still get a reading, and saves them so the next one is instant.
+ */
+exports.topicReading = asyncHandler(async (req, res) => {
+  const { topic, dob, tob, lat, lng, place, timeKnown, lang, question } = req.body || {};
+  if (!aiAstrologerService.TOPICS.includes(String(topic || '').toLowerCase())) {
+    throw new AppError(`topic must be one of: ${aiAstrologerService.TOPICS.join(', ')}`, 400);
+  }
+  const User = req.model('User');
+
+  // Persist supplied birth details so the seeker is asked once, not every time.
+  if (dob) {
+    const patch = { 'birthDetails.dob': new Date(dob) };
+    if (tob) patch['birthDetails.time'] = tob;
+    if (timeKnown !== undefined) patch['birthDetails.timeKnown'] = timeKnown !== false;
+    if (lat != null) patch['birthDetails.lat'] = Number(lat);
+    if (lng != null) patch['birthDetails.lng'] = Number(lng);
+    if (place) patch['birthDetails.place'] = place;
+    await User.updateOne({ _id: req.user._id }, { $set: patch });
+  }
+
+  const chart = await userChartService.getOrBuild(req.ctx, req.user._id,
+    dob ? { dob, tob, timeKnown, lat, lng } : undefined);
+
+  // Without birth data there is nothing to read: ask, don't invent.
+  if (chart.missing) {
+    return res.status(200).json({
+      success: true,
+      data: { needsBirthDetails: true, reading: null, svg: null, mantras: [], products: [] },
+    });
+  }
+
+  const user = await User.findById(req.user._id).select('name').lean();
+  const [catalogue, prior] = await Promise.all([
+    aiChatService.catalogueFor(req.ctx),
+    aiChatService.priorSummaries(req.ctx, req.user._id),
+  ]);
+
+  const out = await aiAstrologerService.generate(req.ctx, {
+    userId: req.user._id,
+    question: question && String(question).trim()
+      ? String(question).slice(0, 500)
+      : `Give me a reading about my ${topic}.`,
+    topic: String(topic).toLowerCase(),
+    lang: lang || 'en',
+    catalogue,
+    priorSummaries: prior,
+    seekerName: user && user.name,
+    chart,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      needsBirthDetails: false,
+      topic: String(topic).toLowerCase(),
+      reading: out.reply,
+      mantras: out.mantras,
+      products: out.products,
+      keyTopics: out.keyTopics,
+      svg: chart.svg || null,
+      timeKnown: chart.timeKnown,
+      degraded: out.degraded,
+    },
+  });
 });

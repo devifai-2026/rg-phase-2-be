@@ -131,6 +131,10 @@ router.post('/vedic-astro/request-otp', admin.requestVedicAstroOtp);
 router.put('/vedic-astro', admin.updateVedicAstroConfig);
 router.post('/vedic-astro/reveal', admin.revealVedicAstroSecret);
 
+// ── AI astrologer chats (read-only transcripts + crisis review) ──
+router.get('/ai-chats', admin.listAiChats);
+router.get('/ai-chats/:id', admin.getAiChat);
+
 router.get('/invoice-templates', admin.listInvoiceTemplates);
 router.get('/invoice-templates/preview', admin.previewInvoiceTemplate); // sample PDF
 router.post('/invoice-templates/preview', admin.previewInvoiceTemplate);
