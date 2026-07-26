@@ -50,6 +50,60 @@ function onlineSetKey(ctx) {
   return `${env.cache.keyPrefix}:${slug}:presence:online-astrologers`;
 }
 
+// Short-lived marker set when a session/live ends. See markPostSessionGrace.
+function graceKey(ctx, userId) {
+  const slug = slugOf(ctx);
+  if (!slug) return null;
+  return `${env.cache.keyPrefix}:${slug}:sockgrace:${userId}`;
+}
+
+/**
+ * Protect an astrologer's derived presence for a few seconds after a session
+ * ends. Media teardown (Agora) can stall the socket long enough for the lease to
+ * lapse, and the post-session recompute would then derive OFFLINE and broadcast
+ * it — the seeker saw the astrologer go dark the moment the call ended.
+ *
+ * Expires on its own (like the lease), so a genuinely-gone astrologer still flips
+ * offline a few seconds later. Best-effort: a Redis hiccup just means no grace.
+ */
+async function markPostSessionGrace(ctx, userId) {
+  const key = graceKey(ctx, userId);
+  if (!key) return false;
+  try {
+    const c = await cacheService.raw();
+    if (!c) return false;
+    await c.set(key, '1', { EX: Math.max(1, env.presence.postSessionGraceSec || 12) });
+    return true;
+  } catch (e) {
+    logger.debug('presenceRegistry.markPostSessionGrace failed', e.message);
+    return false;
+  }
+}
+
+/** Is this user inside the post-session grace window? null when unknown. */
+async function inPostSessionGrace(ctx, userId) {
+  const key = graceKey(ctx, userId);
+  if (!key) return null;
+  try {
+    const c = await cacheService.raw();
+    if (!c) return null;
+    return (await c.exists(key)) > 0;
+  } catch (e) {
+    logger.debug('presenceRegistry.inPostSessionGrace failed', e.message);
+    return null;
+  }
+}
+
+/** Drop the grace marker (e.g. an explicit going-away should not be masked). */
+async function clearPostSessionGrace(ctx, userId) {
+  const key = graceKey(ctx, userId);
+  if (!key) return;
+  try {
+    const c = await cacheService.raw();
+    if (c) await c.del(key);
+  } catch (_) {/* best-effort */}
+}
+
 const TTL = () => env.socket.leaseTtlSec;
 
 /** Register a live socket for a user. Idempotent. */
@@ -191,6 +245,9 @@ module.exports = {
   touch,
   unregister,
   isConnected,
+  markPostSessionGrace,
+  inPostSessionGrace,
+  clearPostSessionGrace,
   socketCount,
   socketsOf,
   clearInstance,

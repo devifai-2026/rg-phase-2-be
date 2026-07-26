@@ -125,15 +125,25 @@ async function isOnline(ctx, userId) {
 }
 
 /**
- * The device just PROVED it has working connectivity (a live socket heartbeat or
- * an FCM presence-ping ACK from a killed/backgrounded app). Refresh reachability
- * and re-derive presence through the single writer so an astrologer whose socket
- * dropped but whose phone still has internet stays online. Cheap + idempotent;
- * recompute only broadcasts on an actual status change.
+ * The device just PROVED it has working connectivity — a socket heartbeat, or an
+ * FCM presence-ping ACK from a backgrounded/killed app.
+ *
+ * IMPORTANT: reachable is NOT the same as consultable. An ACK proves the phone
+ * has internet; it does NOT prove there is a socket to deliver `incoming-request`
+ * on. This used to pass `connected: true`, which made a force-killed app that
+ * ACK'd a ping flip back to `isOnline: true` — a seeker saw green, paid to
+ * request, and the emit went into an empty room. So we refresh reachability
+ * (which is what selects probe targets and drives the reconcile sweep) and let
+ * `live` come from the socket lease.
+ *
+ * The ping's real job is to WAKE the app so it rebuilds its socket; the client
+ * handles that on ACK. Reachability then becomes true presence a moment later,
+ * via the socket's own connect handler.
  */
 async function markReachable(ctx, userId) {
   ctx = ctx || defaultContext();
-  return recomputeAstrologerPresence(ctx, userId, { connected: true });
+  const strict = env.presence.strictLive !== false;
+  return recomputeAstrologerPresence(ctx, userId, strict ? { reachable: true } : { connected: true });
 }
 
 /**
@@ -191,9 +201,19 @@ async function probeReachability(ctx) {
  *        availability intent (toggle). Omit to keep the stored preference.
  * @param {boolean} [opts.connected]   override live-connection signal. Omit to
  *        derive it from the presence store (socketCount > 0).
+ *
+ *        CONTRACT: `connected` may ONLY be passed by code that is holding the
+ *        socket whose lifecycle it describes — i.e. the websockets/index.js
+ *        connect / set-online / going-away / disconnect handlers — plus the
+ *        sweeps, which only ever pass `false` (that can only reduce visibility,
+ *        so it is always safe). Asserting it from an HTTP request or an FCM ACK
+ *        publishes a green dot for an astrologer no one can actually reach.
+ * @param {boolean} [opts.reachable]   the device proved internet connectivity
+ *        (FCM ping ACK) but NOT a socket. Refreshes lastReachableAt only; it
+ *        never makes the astrologer appear online on its own.
  * @returns {{isOnline:boolean,currentCallStatus:string}|null}
  */
-async function recomputeAstrologerPresence(ctx, userId, { preference, connected } = {}) {
+async function recomputeAstrologerPresence(ctx, userId, { preference, connected, reachable: provedReachable } = {}) {
   ctx = ctx || defaultContext();
   const AstrologerProfile = ctx.model('AstrologerProfile');
   const Presence = ctx.model('Presence');
@@ -230,8 +250,21 @@ async function recomputeAstrologerPresence(ctx, userId, { preference, connected 
       const doc = await Presence.findOne({ user: userId }).select('online socketCount').lean();
       live = !!(doc && doc.online && doc.socketCount > 0);
     }
+    // POST-SESSION GRACE. Tearing down the Agora engine is heavy and can stall
+    // the socket for a moment, so a recompute landing right after a session ended
+    // could read "no lease" and broadcast offline — the seeker watched the
+    // astrologer go dark the instant the call finished. Within the grace window we
+    // hold the previous truth instead. Deliberately only in this derive-from-lease
+    // branch: an EXPLICIT `connected: false` (a real disconnect / going-away) is
+    // authoritative and must still win, or a killed app would stay green.
+    if (!live) {
+      const inGrace = await presenceRegistry.inPostSessionGrace(ctx, userId);
+      if (inGrace === true) live = true;
+    }
   }
-  if (live) profile.lastReachableAt = new Date();
+  // `reachable: true` (FCM ping ACK) refreshes the reachability clock WITHOUT
+  // claiming a socket — see markReachable.
+  if (live || provedReachable) profile.lastReachableAt = new Date();
 
   // 3) Derive the public truth. Online = the astrologer's availability TOGGLE
   //    AND the device is REACHABLE — i.e. it proved connectivity (socket beat or
@@ -385,9 +418,11 @@ async function setAstrologerBreak(ctx, userId, minutes) {
   }
   await profile.save();
 
-  // Re-derive + broadcast (break now factors into busy). A live socket is the
-  // common case here (the astro app just called this), so assert connected.
-  const result = await recomputeAstrologerPresence(ctx, userId, { connected: true });
+  // Re-derive + broadcast (break now factors into busy). Do NOT assert connected:
+  // "the astro app just called this" says nothing about whether a socket exists —
+  // this can arrive over HTTP. Let the socket lease decide, same as every other
+  // non-socket caller.
+  const result = await recomputeAstrologerPresence(ctx, userId, {});
   return { ok: true, breakUntil: profile.breakUntil ? profile.breakUntil.toISOString() : null, ...result };
 }
 

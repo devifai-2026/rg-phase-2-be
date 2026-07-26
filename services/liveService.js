@@ -127,6 +127,10 @@ async function endLive(ctx, { liveSessionId, astrologerUserId, reason = 'manual'
   // as sessionService.endSession, so users can request consultations again.
   await AstrologerProfile.updateOne({ user: astrologerUserId }, { $set: { currentCallStatus: 'available' } });
   try {
+    // Same post-session grace as endSession: tearing down the Agora broadcast can
+    // stall the socket, and without this the recompute could derive offline right
+    // as the astrologer returns to their dashboard.
+    await require('./presenceRegistry').markPostSessionGrace(ctx, astrologerUserId).catch(() => {});
     const recomputed = await require('./presenceService').recomputeAstrologerPresence(ctx, astrologerUserId, {});
     const prof = await AstrologerProfile.findOne({ user: astrologerUserId }).select('_id').lean();
     if (recomputed && prof) {

@@ -274,6 +274,12 @@ async function rejectSession(ctx, { sessionId, astrologerUserId }) {
   await jobService.cancelByDedupe(ctx, `ring:${sessionId}`);
 
   emit.toUser(session.user, 'request-rejected', { sessionId });
+  // Tear down the astrologer's OWN ring surfaces. A decline can arrive from the
+  // native CallKit screen while the in-app full-screen ring is also up (or vice
+  // versa); this silent push is what dismisses whichever one didn't originate the
+  // decline. cancelSession/handleRingTimeout already do this — reject did not,
+  // which is why one surface stayed on screen counting down a dead session.
+  pushCallCancel(ctx, astrologerUserId, sessionId);
   await notificationService.notify(ctx, session.user, {
     type: 'missed_call',
     title: 'Request declined',
@@ -628,6 +634,12 @@ async function endSession(ctx, { sessionId, endReason = 'hangup', byUserId } = {
   // directly from the fresh profile so a user's list/detail always updates even
   // if the recompute broadcast was missed.
   try {
+    // Set the grace marker BEFORE recomputing. Media teardown can stall the
+    // socket, so without this the recompute two lines down could read "no lease"
+    // and broadcast offline — the astrologer went dark the instant the call
+    // ended, which is the mismatch seekers reported. The marker expires on its
+    // own (env.presence.postSessionGraceSec).
+    await require('./presenceRegistry').markPostSessionGrace(ctx, finalSession.astrologer).catch(() => {});
     const recomputed = await require('./presenceService').recomputeAstrologerPresence(ctx, finalSession.astrologer, {});
     logger.info('presence re-broadcast on session end', { sessionId, astrologer: String(finalSession.astrologer), result: recomputed });
     if (recomputed) {

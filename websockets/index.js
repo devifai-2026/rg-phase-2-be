@@ -314,7 +314,15 @@ async function initSocket(httpServer) {
           hasSocket = local.has(String(receiverId)); // per-process fallback (exact on single instance)
         }
         if (!hasSocket) {
-          const body = doc.product ? `Shared a product: ${doc.product.name}` : (doc.message || 'Sent you an image');
+          // Test productId, NOT `doc.product`. Mongoose materialises a nested
+          // path as a truthy `{}` even when nothing was set, so `doc.product ?`
+          // was true for EVERY message — a plain text message rendered
+          // "Shared a product: undefined" instead of its own text. The emit
+          // above already guards correctly; this is the same test.
+          const sharedProduct = doc.product && doc.product.productId ? doc.product : null;
+          const body = sharedProduct
+            ? `Shared a product: ${sharedProduct.name || 'a product'}`
+            : (doc.message || 'Sent you an image');
           // withNotification: OS-drawn banner survives force-stopped apps where
           // the data-only background isolate never wakes.
           fcmService.sendToUserTokens(socket.ctx, { userId: receiverId, title: 'New message', body, data: { type: 'chat_message', sessionId } , withNotification: true }).catch(() => {});
@@ -464,6 +472,10 @@ async function initSocket(httpServer) {
           ? (local.get(userId) || new Set()).size <= 1
           : leasesLeft === 0;
         if (noneLeft && socket.role === 'astrologer') {
+          // A deliberate going-away must not be softened by a post-session grace
+          // marker left over from a call that just ended — the astrologer is
+          // genuinely leaving, so drop it before deriving.
+          await presenceRegistry.clearPostSessionGrace(socket.ctx, userId).catch(() => {});
           await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: false });
         }
         logger.debug('socket going-away', { userId, sid: socket.id, reason, leasesLeft });

@@ -208,6 +208,19 @@ const env = {
     // astrologer flapping online/offline sends at most ONE follower alert per
     // this window (default 5 min), no matter how many times they toggle.
     followerAlertCooldownMs: parseInt(process.env.PRESENCE_FOLLOWER_ALERT_COOLDOWN_MS || '300000', 10), // 5 min
+    // When true (default), `isOnline` requires a LIVE SOCKET and no HTTP caller
+    // may assert one. Set PRESENCE_STRICT_LIVE=false to restore the old
+    // "HTTP toggle asserts connected" behaviour — an escape hatch for rolling
+    // back without a deploy if astrologers on an OLD app build (which relied on
+    // that assertion) are still in the field.
+    strictLive: process.env.PRESENCE_STRICT_LIVE !== 'false',
+    // How long after a session/live ends the astrologer keeps their derived
+    // presence even if the socket lease momentarily lapses. Tearing down the
+    // Agora engine can stall the socket, and without this the post-session
+    // recompute derived "offline" and broadcast it — the seeker saw the
+    // astrologer go dark the instant a call ended. Expires on its own, so a
+    // genuinely-gone astrologer still flips offline just after.
+    postSessionGraceSec: parseInt(process.env.PRESENCE_POST_SESSION_GRACE_SEC || '12', 10),
   },
 
   notifyMe: {

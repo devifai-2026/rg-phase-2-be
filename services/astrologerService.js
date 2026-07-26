@@ -1,5 +1,6 @@
 const notificationService = require('./notificationService');
 const cacheService = require('./cacheService');
+const env = require('../config/env');
 const { toRupees } = require('../utils/money');
 const AppError = require('../utils/AppError');
 const { defaultContext } = require('../utils/tenantContext');
@@ -645,15 +646,24 @@ async function setOnline(ctx, userId, online) {
     const inSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
     if (inSession) throw new AppError('You are in a consultation. End it before going offline.', 409);
   }
-  // Going online: the authenticated app making THIS call is itself a live client,
-  // so assert connected:true rather than racing a Presence-store lookup (debug
-  // sockets reconnect constantly; a momentary socketCount=0 must not flip them
-  // back to offline and clobber the socket path's correct result). Going offline:
-  // intent forces offline regardless, so leave the connection signal to derive.
+  // This endpoint records INTENT. It must NOT assert `connected` — an HTTP
+  // request proves nothing about whether a websocket exists, and asserting it
+  // published `isOnline: true` to every seeker while the astrologer's own app was
+  // still showing "Connecting…". Seekers then requested an unreachable
+  // astrologer: wallet locked, incoming-request emitted into an empty room, ring
+  // timing out. `live` is derived from the Redis socket lease, which is the only
+  // thing that actually knows.
+  //
+  // Consequence, and it is the correct one: toggling online with no socket yet
+  // returns isOnline:false. The socket's own connect handler recomputes with
+  // connected:true moments later and the astrologer goes green then.
+  const strict = env.presence.strictLive !== false;
   const result = await require('./presenceService').recomputeAstrologerPresence(
     ctx,
     userId,
-    online ? { preference: true, connected: true } : { preference: false }
+    online
+      ? (strict ? { preference: true } : { preference: true, connected: true })
+      : { preference: false }
   );
   return { isOnline: result.isOnline, currentCallStatus: result.currentCallStatus };
 }
