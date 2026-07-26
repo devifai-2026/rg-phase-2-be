@@ -68,17 +68,26 @@ function evictOldestIfNeeded() {
  */
 function getTenantDb(tenant, secretDbUri) {
   const key = tenant.dbName;
+  const uri = uriForTenant(tenant, secretDbUri);
   const existing = cache.get(key);
   if (existing) {
-    // refresh LRU position
+    // The cache is keyed on dbName, but the SAME dbName can live on a different
+    // cluster after a migration (dbOnDefaultCluster flipped, or a new dbUri).
+    // Reusing the old socket would keep serving the pre-migration database, so
+    // only reuse when the resolved URI still matches; otherwise reconnect.
+    if (existing.uri === uri) {
+      // refresh LRU position
+      cache.delete(key);
+      cache.set(key, existing);
+      return existing.conn;
+    }
+    logger.info('Tenant DB URI changed — reconnecting', { dbName: key });
     cache.delete(key);
-    cache.set(key, existing);
-    return existing.conn;
+    existing.conn.close().catch((e) => logger.warn('Stale tenant conn close failed', e.message));
   }
 
   evictOldestIfNeeded();
 
-  const uri = uriForTenant(tenant, secretDbUri);
   const conn = mongoose.createConnection(uri, {
     serverSelectionTimeoutMS: 10000,
     maxPoolSize: 10,
