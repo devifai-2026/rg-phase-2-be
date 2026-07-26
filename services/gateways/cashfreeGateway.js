@@ -55,6 +55,15 @@ function apiCall(cfg, method, path, payload) {
   });
 }
 
+// Append a query string with the RIGHT separator. `surl` may already carry a
+// query — PAYU_SURL/PAYU_FURL overrides get "?tenant=<slug>" bolted on by
+// withTenant() — and hardcoding "?" produced ".../callback?tenant=rg?txnid=…".
+// The second "?" is not a separator, so `tenant` parsed as "rg?txnid=…" and the
+// resolver rejected it with "Unknown or inactive tenant".
+function appendQuery(url, qs) {
+  return `${url}${String(url).includes('?') ? '&' : '?'}${qs}`;
+}
+
 async function buildCheckout({ cfg, txnid, amountRupees, productinfo, customer = {}, udf = [], surl }) {
   if (!isConfigured(cfg)) return { mock: true };
   const order = await apiCall(cfg, 'POST', '/pg/orders', {
@@ -67,7 +76,12 @@ async function buildCheckout({ cfg, txnid, amountRupees, productinfo, customer =
       customer_email: customer.email || 'user@example.com',
       customer_phone: customer.phone || '0000000000',
     },
-    order_meta: { return_url: `${surl}?txnid=${txnid}&gateway=cashfree&udf1=${udf[0] || ''}&udf2=${udf[1] || ''}` },
+    order_meta: {
+      return_url: appendQuery(
+        surl,
+        `txnid=${encodeURIComponent(txnid)}&gateway=cashfree&udf1=${encodeURIComponent(udf[0] || '')}&udf2=${encodeURIComponent(udf[1] || '')}`,
+      ),
+    },
     // Same udf pair as the return_url, but persisted ON the order so the
     // server-to-server webhook (which gets no query string) can still tell a
     // wallet recharge from a shop order. Cashfree echoes these back to us.
