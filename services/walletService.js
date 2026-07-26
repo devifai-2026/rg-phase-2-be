@@ -254,6 +254,7 @@ async function listTransactions(ctx, userId, { page = 1, limit = 20, type, sourc
 module.exports = {
   getOrCreateWallet,
   getBalance,
+  findByRef,
   credit,
   debit,
   lock,

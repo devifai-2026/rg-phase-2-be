@@ -209,16 +209,26 @@ exports.initiateRecharge = asyncHandler(async (req, res) => {
   const amountRupees = toRupees(req.body.amountRupees);
   const txnid = gateways.newTxnId('rchg');
 
+  // A pack may credit MORE than it charges ("Pay ₹99, get 110"). Resolve the
+  // active template for this price so the bonus is honoured; without this the
+  // user was credited only what they paid and silently lost the extra.
+  // Amounts are server-resolved (never taken from the client) so the payload
+  // can't inflate the credit.
+  const RechargeTemplate = req.model('RechargeTemplate');
+  const pack = await RechargeTemplate.findOne({ amount: amountRupees, isActive: true }).lean();
+  const tokens = pack && pack.tokens > amountRupees ? pack.tokens : amountRupees;
+
   // Record a pending ledger intent (no balance change yet) keyed by txnid.
+  // `amount` is what we will CREDIT; meta.paidRupees is what the gateway charges.
   await Transaction.create({
     user: req.user._id,
     type: 'credit',
     source: 'recharge',
-    amount: amountRupees,
+    amount: tokens,
     status: 'pending',
     description: 'Wallet recharge',
     refId: `pending:${txnid}`,
-    meta: { txnid },
+    meta: { txnid, paidRupees: amountRupees, packId: pack ? String(pack._id) : undefined },
   });
 
   // The app only needs the txnid — it opens the gateway-agnostic redirect URL
@@ -258,6 +268,15 @@ exports.payuCallback = asyncHandler(async (req, res) => {
   const udf1 = result.udf1 ?? body.udf1;
   const udf2 = result.udf2 ?? body.udf2;
 
+  // A payment we ALREADY settled is success, whatever this particular event
+  // says. Cashfree fires several event types per order (payment success, then
+  // settlement/TDS ones); the later events aren't "PAID" re-queries, so they
+  // verified as failed and the browser — arriving last — was redirected to
+  // status=failed even though the wallet had been credited. That produced a
+  // "payment was not completed" toast on a successful recharge.
+  const settled = txnid ? await walletService.findByRef(req.ctx, txnid) : null;
+  if (settled) return res.redirect(resultUrl('success', req));
+
   if (!ok) {
     logger.warn(`${gwId} callback verify failed`, { txnid });
     return res.redirect(resultUrl('failed', req));
@@ -277,14 +296,19 @@ exports.payuCallback = asyncHandler(async (req, res) => {
   if (udf1 === 'wallet') {
     const userId = udf2;
     const pending = await Transaction.findOne({ refId: `pending:${txnid}` });
-    // The pending intent is the trusted amount. If the gateway reported an
-    // amount (PayU), reject mismatches (anti-tampering); otherwise (Razorpay/
-    // Cashfree return no amount) use the intent's amount.
-    if (amountRupees != null && pending && pending.amount !== amountRupees) {
-      logger.warn('Recharge amount tampering detected', { txnid, expected: pending.amount, got: amountRupees });
+    // Compare the gateway's figure against what the user was CHARGED
+    // (meta.paidRupees), not against pending.amount — those differ whenever a
+    // pack grants a bonus ("Pay ₹99, get 110"), and comparing the wrong one
+    // would flag every bonus pack as tampering. Older intents predate
+    // paidRupees, so fall back to amount for them.
+    const paid = (pending && pending.meta && pending.meta.paidRupees) || (pending ? pending.amount : 0);
+    if (amountRupees != null && pending && paid !== amountRupees) {
+      logger.warn('Recharge amount tampering detected', { txnid, expected: paid, got: amountRupees });
       return res.redirect(resultUrl('failed', req));
     }
-    const credited = amountRupees != null ? amountRupees : (pending ? pending.amount : 0);
+    // Credit the INTENT's amount (tokens incl. bonus). The gateway only ever
+    // reports what it charged, so it must not be used as the credit figure.
+    const credited = pending ? pending.amount : amountRupees || 0;
     if (!credited) return res.redirect(resultUrl('failed', req));
     await walletService.credit(req.ctx, {
       userId,
