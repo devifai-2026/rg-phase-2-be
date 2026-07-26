@@ -29,6 +29,10 @@ function makeStore(prefix) {
     const { RedisStore } = require('rate-limit-redis');
     const cacheService = require('../services/cacheService');
     return new RedisStore({
+      // The tenant segment comes from keyGenerator, so the full key is
+      // rg:rl:<limiter>:<tenant>:<ip>. Kept in this order (rather than
+      // rg:<tenant>:rl:…) so every rate-limit key shares one SCAN-able prefix —
+      // handy for `KEYS rg:rl:*` when debugging a throttled user.
       prefix: `${env.cache.keyPrefix}:rl:${prefix}:`,
       // rate-limit-redis calls sendCommand for every hit; route it through the
       // shared client so we don't open a second connection pool per limiter.

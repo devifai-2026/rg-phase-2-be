@@ -450,6 +450,26 @@ async function initSocket(httpServer) {
       }
     });
 
+    // Client is closing the socket deliberately (logout, or backgrounded past its
+    // grace window). Drop the presence lease NOW rather than waiting out
+    // pingInterval+pingTimeout, so seekers stop seeing a green dot within ~1s
+    // instead of ~16s. The disconnect handler below still runs and is idempotent.
+    socket.on('going-away', async ({ reason } = {}) => {
+      try {
+        const leasesLeft = await presenceRegistry.unregister(socket.ctx, userId, socket.id);
+        // Only derive offline when this was the LAST socket anywhere. A seeker on
+        // two devices (or an astrologer mid-reconnect) must not be marked offline
+        // because one of their sockets went away.
+        const noneLeft = leasesLeft === null
+          ? (local.get(userId) || new Set()).size <= 1
+          : leasesLeft === 0;
+        if (noneLeft && socket.role === 'astrologer') {
+          await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: false });
+        }
+        logger.debug('socket going-away', { userId, sid: socket.id, reason, leasesLeft });
+      } catch (_) {/* best-effort */}
+    });
+
     // ── Disconnect ──
     // Losing the last socket means no live connection → derive offline at once
     // (preference is preserved for the next reconnect) and broadcast it, so
