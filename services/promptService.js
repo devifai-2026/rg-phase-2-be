@@ -66,6 +66,52 @@ const REGISTRY = {
     description: 'Safety + style rules auto-appended to EVERY other prompt (no em/en dash, no hallucination, product boundary, no offensive content). Edit once, applies everywhere.',
     module: require('./prompts/guardrails'),
   },
+
+  // ── AI astrologer ────────────────────────────────────────────────────────
+  // Composed in layers by aiAstrologerService: base voice + domain safety + the
+  // topic prompt (+ AiPersona.systemPrompt last, as tone colour only). Editing
+  // the base or the safety block changes EVERY astrology surface at once, which
+  // is the point: the voice and the safety rules live in one place each.
+  aiAstrologerBase: {
+    label: 'AI Astrologer: Voice & Method',
+    description: 'The shared astrologer voice for AI chat and every topic reading: how to read the chart, how to speak, the language-mirroring rule, and the mantra + product boundaries. Applies to ALL AI astrology surfaces.',
+    module: require('./prompts/aiAstrologerBase'),
+  },
+  aiAstrologerSafety: {
+    label: 'AI Astrologer: Safety Rules',
+    description: 'Domain guardrails for astrology guidance: no death/lifespan predictions, crisis escalation with helplines, no diagnosis, no legal or investment advice, no fear selling. Kept separate from Global Guardrails so these rules reach only the astrology prompts.',
+    module: require('./prompts/aiAstrologerSafety'),
+  },
+  aiTopicCareer: {
+    label: 'AI Reading: Career',
+    description: 'Career and work reading (home "Career" icon): 10th/6th house, Saturn, Jupiter, dasha timing.',
+    module: require('./prompts/aiTopicCareer'),
+  },
+  aiTopicMarriage: {
+    label: 'AI Reading: Marriage',
+    description: 'Marriage and relationship reading (home "Marriage" icon): 7th house, Venus, Mars, Manglik handled calmly.',
+    module: require('./prompts/aiTopicMarriage'),
+  },
+  aiTopicFinance: {
+    label: 'AI Reading: Finance',
+    description: 'Money reading (home "Finance" icon): 2nd/11th/12th house, wealth yogas. Never names a specific investment.',
+    module: require('./prompts/aiTopicFinance'),
+  },
+  aiTopicHealth: {
+    label: 'AI Reading: Health',
+    description: 'Health reading (home "Health" icon): constitution and vitality only. Never diagnoses, never predicts lifespan.',
+    module: require('./prompts/aiTopicHealth'),
+  },
+  aiTopicEducation: {
+    label: 'AI Reading: Education',
+    description: 'Study reading (home "Education" icon): 4th/5th/9th house, Mercury, Jupiter, exam timing.',
+    module: require('./prompts/aiTopicEducation'),
+  },
+  aiTopicTravel: {
+    label: 'AI Reading: Travel',
+    description: 'Travel and relocation reading (home "Travel" icon): 3rd/9th/12th house, Rahu, foreign settlement.',
+    module: require('./prompts/aiTopicTravel'),
+  },
 };
 
 const _cache = new Map(); // key → { system, at }
