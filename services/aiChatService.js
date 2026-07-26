@@ -155,6 +155,40 @@ async function sendMessage(ctx, { userId, aiSessionId, message }) {
 
   const { idleSec, maxMinutes } = await settings(ctx);
 
+  // ── CRISIS CHECK BEFORE ANY MONEY MOVES ─────────────────────────────────
+  // This has to come before the meter starts, not inside generate(). A seeker
+  // whose FIRST message is a crisis disclosure would otherwise be charged for
+  // minute 1 before the check ran, which is exactly what we refuse to do. Caught
+  // by the e2e test: "NOT billed for the crisis turn" failed with a ₹15 debit.
+  if (aiAstrologerService.detectCrisis(message)) {
+    logger.warn('ai chat: crisis on inbound message, no billing', { aiSessionId });
+    await AiChatSession.updateOne({ _id: s._id }, { $set: { needsReview: true } });
+
+    // Still record the exchange: an admin reviewing the flag must see what was
+    // said, and the fixed reply is what the seeker actually received.
+    const reply = aiAstrologerService.crisisReply();
+    try {
+      let convo = s.conversation ? await AiConversation.findById(s.conversation) : null;
+      if (!convo) {
+        convo = await AiConversation.create({ user: userId, title: 'Support', lastMessageAt: new Date() });
+        await AiChatSession.updateOne({ _id: s._id }, { $set: { conversation: convo._id } });
+      }
+      await AiMessage.create({ conversation: convo._id, role: 'user', content: message });
+      await AiMessage.create({ conversation: convo._id, role: 'assistant', content: reply });
+    } catch (e) {
+      logger.warn('ai chat: could not persist crisis transcript', e.message);
+    }
+
+    // End it. If the meter had already started on an earlier turn, this settles
+    // what was genuinely used and releases the rest; this turn itself is free.
+    await endSession(ctx, { aiSessionId, endReason: 'crisis' });
+    return {
+      reply, mantras: [], products: [], keyTopics: [],
+      language: s.lang || 'en', crisis: true, degraded: false,
+      ended: true, minutesLeft: 0,
+    };
+  }
+
   // ── First message: start the meter ──────────────────────────────────────
   if (s.status === 'open') {
     if (s.ratePerMin > 0) {
@@ -228,8 +262,9 @@ async function sendMessage(ctx, { userId, aiSessionId, message }) {
   await AiMessage.create({ conversation: convo._id, role: 'assistant', content: out.reply });
   await AiConversation.updateOne({ _id: convo._id }, { $set: { lastMessageAt: new Date() } });
 
-  // CRISIS: stop the meter immediately. Billing someone by the minute through a
-  // suicide disclosure is indefensible, so the session ends and admins review.
+  // Crisis is handled up-front (before any billing), so generate() cannot return
+  // crisis:true here. Kept as a defensive net in case the model itself surfaces a
+  // disclosure mid-reading.
   if (out.crisis) {
     await AiChatSession.updateOne({ _id: s._id }, { $set: { needsReview: true } });
     await endSession(ctx, { aiSessionId, endReason: 'crisis' });

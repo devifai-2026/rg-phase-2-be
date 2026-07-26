@@ -51,6 +51,24 @@ function normalizeBirth({ dob, tob, lat, lon, tz }) {
   };
 }
 
+/**
+ * VedicAstroAPI wants DD/MM/YYYY on EVERY endpoint, including the ones reached
+ * through cachedFetch.
+ *
+ * `normalizeBirth` produces YYYY-MM-DD, which the provider rejects with
+ * `{"status":400,"response":"Invalid parameter Date of birth- dob"}` — and since it
+ * returns that as HTTP 200, it was cached as if it were a real chart. Verified
+ * against the live API: `1998-08-19` -> 400, `19/08/1998` -> a full planet table.
+ *
+ * Converted at the REQUEST boundary rather than inside normalizeBirth so cache
+ * keys (hashed from the normalised params) keep their existing ISO shape and
+ * previously cached rows stay addressable.
+ */
+function toProviderDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 async function cachedFetch(ctx, endpoint, params) {
   ctx = ctx || defaultContext();
   const AstroCache = ctx.model('AstroCache');
@@ -72,7 +90,7 @@ async function cachedFetch(ctx, endpoint, params) {
     const { data } = await axios.get(url, {
       params: {
         api_key: apiKey,
-        dob: norm.dob,
+        dob: toProviderDate(norm.dob), // DD/MM/YYYY — see toProviderDate
         tob: norm.tob,
         lat: norm.lat,
         lon: norm.lon,
@@ -81,6 +99,15 @@ async function cachedFetch(ctx, endpoint, params) {
       },
       timeout: 15000,
     });
+    // NEVER cache an error body. The provider signals failure as HTTP 200 with an
+    // in-body status and a STRING `response`, so without this an outage (or a bad
+    // parameter) was frozen into AstroCache for a full year.
+    const okStatus = !data.status || Number(data.status) === 200;
+    if (!okStatus || typeof data.response === 'string') {
+      logger.warn('VedicAstroAPI in-body error; not caching', { endpoint, status: data.status, detail: String(data.response).slice(0, 120) });
+      const prior = await AstroCache.findOne({ cacheKey });
+      return prior ? prior.payload : localCompute(endpoint, norm);
+    }
     const expiresAt = new Date(Date.now() + cacheTtlDays * 24 * 60 * 60 * 1000);
     await AstroCache.create({ cacheKey, endpoint, params: norm, payload: data, fetchedAt: new Date(), expiresAt });
     return data;
