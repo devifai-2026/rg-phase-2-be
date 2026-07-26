@@ -68,6 +68,10 @@ async function buildCheckout({ cfg, txnid, amountRupees, productinfo, customer =
       customer_phone: customer.phone || '0000000000',
     },
     order_meta: { return_url: `${surl}?txnid=${txnid}&gateway=cashfree&udf1=${udf[0] || ''}&udf2=${udf[1] || ''}` },
+    // Same udf pair as the return_url, but persisted ON the order so the
+    // server-to-server webhook (which gets no query string) can still tell a
+    // wallet recharge from a shop order. Cashfree echoes these back to us.
+    order_tags: { udf1: String(udf[0] || ''), udf2: String(udf[1] || ''), gateway: 'cashfree' },
     order_note: productinfo || 'Rudraganga',
   });
 
@@ -92,6 +96,16 @@ async function verifyOrder(cfg, txnid) {
   } catch (e) { logger.warn('Cashfree verifyOrder failed', e.message); return false; }
 }
 
+// The order id arrives in two DIFFERENT shapes and both must work:
+//  - browser return_url (GET): flat query — ?txnid=<id>
+//  - server webhook (POST):    nested JSON — { data: { order: { order_id } } }
+// Reading only the flat form made every webhook fail the `!txnid` guard below,
+// so a paid recharge was never credited and its intent stayed `pending`.
+function orderIdFrom(body) {
+  const d = (body && body.data) || {};
+  return body.txnid || body.order_id || (d.order && d.order.order_id) || d.order_id || null;
+}
+
 // Sync verify for the controller's interface; the controller awaits this.
 async function verifyCallback(cfg, body) {
   // FAIL CLOSED — public route; never trust a client-supplied status field.
@@ -99,13 +113,25 @@ async function verifyCallback(cfg, body) {
     logger.error('cashfree verifyCallback rejected — gateway not configured');
     return false;
   }
-  const txnid = body.txnid || body.order_id;
-  if (!txnid) return false;
+  const txnid = orderIdFrom(body);
+  if (!txnid) {
+    logger.warn('cashfree callback carried no order id', { keys: Object.keys(body || {}).join(',') });
+    return false;
+  }
   return verifyOrder(cfg, txnid);
 }
 
 function extractResult(body) {
-  return { txnid: body.txnid || body.order_id, status: 'success', amountRupees: null, udf1: body.udf1, udf2: body.udf2 };
+  // udf1/udf2 ride the return_url query on the browser hop, but a webhook has
+  // neither — recover them from order_tags, which we set when creating the order.
+  const tags = (body && body.data && body.data.order && body.data.order.order_tags) || {};
+  return {
+    txnid: orderIdFrom(body),
+    status: 'success',
+    amountRupees: null,
+    udf1: body.udf1 || tags.udf1,
+    udf2: body.udf2 || tags.udf2,
+  };
 }
 
 module.exports = { id, isConfigured, buildCheckout, verifyCallback, extractResult, _verifyOrder: verifyOrder };
