@@ -320,7 +320,11 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       source: 'recharge',
       description: 'Wallet recharge',
       refId: txnid, // idempotent: replays do not double-credit
-      meta: { txnid },
+      // Carry the intent's meta forward. Promotion $sets meta wholesale, so
+      // passing a bare { txnid } here ERASED paidRupees/packId — leaving no
+      // record of what the user was actually charged (₹99) on a row whose
+      // amount is the credited tokens (₹110).
+      meta: { ...((pending && pending.meta) || {}), txnid },
       // Turn the pending intent INTO the credit row rather than adding a second
       // one, so a recharge shows as a single ledger entry.
       promoteRefId: `pending:${txnid}`,
