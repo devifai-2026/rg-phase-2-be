@@ -1372,9 +1372,11 @@ exports.listReminders = asyncHandler(async (req, res) => {
 // what the AI produced and what the astrologer published.
 exports.listRecaps = asyncHandler(async (req, res) => {
   const SessionRecap = req.model('SessionRecap');
-  const { status, page = '1', limit = '50' } = req.query;
+  const { status, sessionId, page = '1', limit = '50' } = req.query;
   const q = {};
   if (status) q.status = status;
+  // Lets the chat monitor pull the recap for one specific session.
+  if (sessionId) q.sessionId = sessionId;
   const p = parseInt(page, 10);
   const l = Math.min(parseInt(limit, 10), 200);
   const [items, total] = await Promise.all([

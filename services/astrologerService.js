@@ -5,6 +5,14 @@ const AppError = require('../utils/AppError');
 const { defaultContext } = require('../utils/tenantContext');
 
 // Cache namespace for public astrologer reads. Invalidated on any write below.
+// Aggregation $match performs no schema casting, so ids must be real ObjectIds
+// (a string matches nothing). Pass through anything that isn't a valid id.
+const mongoose = require('mongoose');
+function toObjectId(id) {
+  if (id instanceof mongoose.Types.ObjectId) return id;
+  return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(String(id)) : id;
+}
+
 const CACHE_NS = 'astro';
 // Online status flips often, so the list TTL is short; profiles change rarely.
 const LIST_TTL = 20; // seconds
@@ -581,9 +589,14 @@ async function myStats(ctx, userId) {
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
+  // $match inside an aggregation does NOT apply schema casting the way find()
+  // does, so a string id silently matches zero documents — the astrologer's
+  // home tab showed ₹0 even with completed, credited sessions. Cast explicitly.
+  const astroId = toObjectId(userId);
+
   // Per-service totals over all completed sessions for this astrologer.
   const byService = await Session.aggregate([
-    { $match: { astrologer: userId, status: 'completed' } },
+    { $match: { astrologer: astroId, status: 'completed' } },
     {
       $group: {
         _id: '$type',
@@ -604,7 +617,7 @@ async function myStats(ctx, userId) {
 
   // This-month earnings (completed sessions ended this month).
   const monthAgg = await Session.aggregate([
-    { $match: { astrologer: userId, status: 'completed', endedAt: { $gte: monthStart } } },
+    { $match: { astrologer: astroId, status: 'completed', endedAt: { $gte: monthStart } } },
     { $group: { _id: null, earnings: { $sum: '$astrologerEarning' } } },
   ]);
   const thisMonthEarnings = monthAgg.length ? monthAgg[0].earnings : 0;

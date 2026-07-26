@@ -45,7 +45,7 @@ async function localizeForUser(ctx, userId, title, body) {
  *   pushOnly  when true, skip the in-app record + socket event and ONLY send a
  *             push (used by bulk broadcasts the admin marks "push-only").
  */
-async function notify(ctx, userId, { type = 'system', title, body, data = {}, pushOnly = false } = {}) {
+async function notify(ctx, userId, { type = 'system', title, body, data = {}, pushOnly = false, withNotification = false, channelId } = {}) {
   ctx = ctx || defaultContext();
   const Notification = ctx.model('Notification');
   const Broadcast = ctx.model('Broadcast');
@@ -93,7 +93,16 @@ async function notify(ctx, userId, { type = 'system', title, body, data = {}, pu
 
   // Queue push (offline delivery) — Pub/Sub fan-out, falls back to Mongo queue.
   // tenantSlug rides along so the fcm_send job resolves the right tenant DB for tokens.
-  await pubsubService.publish('notifications', { userId: String(userId), title: locTitle, body: locBody, data: payload }, { tenantSlug: ctx && ctx.tenant && ctx.tenant.slug });
+  // `withNotification` must survive this hop: a DATA-ONLY push relies on the
+  // app's background isolate to draw the tray notification, and Android does
+  // NOT run it once the app is force-stopped or swiped out of RAM. Carrying the
+  // flag lets critical pushes (incoming consultation, accepted) include an
+  // OS-drawn notification block that the system shows regardless of app state.
+  await pubsubService.publish(
+    'notifications',
+    { userId: String(userId), title: locTitle, body: locBody, data: payload, withNotification, channelId },
+    { tenantSlug: ctx && ctx.tenant && ctx.tenant.slug },
+  );
 
   // Record that a notification was TRIGGERED (BigQuery; no-op when disabled).
   bqService.logNotification({ event: 'triggered', channel: pushOnly ? 'push' : 'inapp', user_id: String(userId), type, title });

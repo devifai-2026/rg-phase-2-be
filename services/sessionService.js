@@ -128,6 +128,14 @@ async function requestSession(ctx, { userId, astrologerUserId, type }) {
       ratePerMin: String(ratePerMin),
       expiresInSec: String(ringTimeoutSec),
     },
+    // A data-only push is drawn by the app's background isolate, which Android
+    // does NOT run after a force-stop / swipe-from-recents. Attach an OS-drawn
+    // notification so a fully-closed astrologer still sees the request; the
+    // CallKit screen still comes from the data payload when the app can run.
+    withNotification: true,
+    // Must match a channel the app actually creates (local_notifs.dart), else
+    // Android drops it into a low-importance default that never heads-up.
+    channelId: 'rg_general',
   });
 
   // Schedule the no-answer timeout via the job queue (survives restarts).
@@ -183,6 +191,10 @@ async function acceptSession(ctx, { sessionId, astrologerUserId }) {
     title: 'Astrologer connected',
     body: `Your ${session.type} consultation is ready.`,
     data: { sessionId, type: session.type },
+    // Time-critical: the seeker is waiting and billing starts on join. Must
+    // arrive even if their app was swiped out of RAM (data-only would not).
+    withNotification: true,
+    channelId: 'rg_general',
   }).catch(() => {});
 
   // The astrologer reaching accept counts as their join.
