@@ -65,11 +65,38 @@ async function generateChatRecap(ctx, { sessionId }) {
   if (existing) return { recapId: String(existing._id), skipped: 'exists' };
 
   const messages = await ChatMessage.find({ sessionId }).sort({ timestamp: 1 }).lean();
-  const userMsgs = messages.filter((m) => m.kind === 'user' && m.message);
+  // Keep any message with CONTENT, not just text. The old `&& m.message` filter
+  // silently dropped every product share and image (a share carries only a
+  // productId), so the model never learned the astrologer had already recommended
+  // something — it couldn't mention it in the summary and had no signal to avoid
+  // re-suggesting it.
+  const userMsgs = messages.filter(
+    (m) => m.kind === 'user' && (m.message || m.mediaUrl || (m.product && m.product.productId)),
+  );
   if (userMsgs.length === 0) return { skipped: 'empty-transcript' };
 
+  // Products the astrologer actually shared in this chat, so the prompt can say
+  // so explicitly and the recap can carry them through.
+  const sharedProducts = [];
+  for (const m of userMsgs) {
+    if (m.product && m.product.productId) {
+      sharedProducts.push({
+        productId: String(m.product.productId),
+        name: m.product.name || 'Product',
+        price: m.product.price,
+      });
+    }
+  }
+
+  const speaker = (m) => (String(m.sender) === String(session.astrologer) ? 'Astrologer' : 'Seeker');
   const transcript = userMsgs
-    .map((m) => `${String(m.sender) === String(session.astrologer) ? 'Astrologer' : 'Seeker'}: ${m.message}`)
+    .map((m) => {
+      if (m.product && m.product.productId) {
+        return `${speaker(m)}: [shared product: ${m.product.name || 'Product'}${m.product.price != null ? ` — ₹${m.product.price}` : ''}]`;
+      }
+      if (!m.message && m.mediaUrl) return `${speaker(m)}: [sent an image]`;
+      return `${speaker(m)}: ${m.message}`;
+    })
     .join('\n');
 
   const catalogue = await candidateProducts(ctx, session.astrologer);
@@ -81,6 +108,12 @@ async function generateChatRecap(ctx, { sessionId }) {
     description: p.description,
   }));
   const validIds = new Set(catForPrompt.map((p) => p.productId));
+  // A product the astrologer legitimately shared IN THIS CHAT is always a valid
+  // suggestion id. candidateProducts requires stock > 0 while resolveSharedProduct
+  // does not, so a shared-but-out-of-stock item was absent from the catalogue and
+  // its id got filtered out below as though the model had hallucinated it — one of
+  // the two reasons `suggestions` came back empty.
+  for (const sp of sharedProducts) validIds.add(sp.productId);
   const astroProfile = await AstrologerProfile.findOne({ user: session.astrologer }).select('displayName').lean();
 
   let ai;
@@ -93,6 +126,9 @@ async function generateChatRecap(ctx, { sessionId }) {
           transcript, catalogue: catForPrompt, todayISO: new Date().toISOString().slice(0, 10),
           userId: String(session.user), astrologerId: String(session.astrologer),
           astrologerName: astroProfile?.displayName,
+          // Tell the model what was ALREADY recommended in the chat, so the
+          // summary can mention it and the suggestions don't just repeat it.
+          sharedProducts,
         }) }],
         schema: chatRecapPrompt.RECAP_SCHEMA,
         // Gemini 2.5 spends output budget on hidden "thinking" before the JSON,
@@ -106,7 +142,7 @@ async function generateChatRecap(ctx, { sessionId }) {
     }
   }
   if (!ai) {
-    ai = fallbackRecap(userMsgs, session);
+    ai = fallbackRecap(userMsgs, session, sharedProducts);
     generatedByMock = true;
   }
 
@@ -171,15 +207,28 @@ async function generateChatRecap(ctx, { sessionId }) {
 }
 
 /** Deterministic, content-free recap used when no LLM is configured. */
-function fallbackRecap(userMsgs, session) {
-  const firstSeeker = userMsgs.find((m) => String(m.sender) === String(session.user));
+function fallbackRecap(userMsgs, session, sharedProducts = []) {
+  // Must find a message with TEXT: the transcript now includes product/image
+  // messages, and those have no `message` (String(undefined) would render the
+  // literal "undefined" in the astrologer's recap).
+  const firstSeeker = userMsgs.find((m) => String(m.sender) === String(session.user) && m.message);
+  const shared = sharedProducts.length
+    ? ` The astrologer shared: ${sharedProducts.map((p) => p.name).join(', ')}.`
+    : '';
   return {
     summary:
       'A chat consultation took place. (AI summary unavailable — configure the LLM provider for a full recap.) ' +
-      (firstSeeker ? `The seeker opened with: "${String(firstSeeker.message).slice(0, 140)}".` : ''),
+      (firstSeeker ? `The seeker opened with: "${String(firstSeeker.message).slice(0, 140)}".` : '') +
+      shared,
     keyTopics: [],
     sentiment: '',
-    suggestions: [],
+    // Carry the products the astrologer actually shared, so even without an LLM
+    // the recap isn't empty — this was hardcoded [] regardless of the chat.
+    suggestions: sharedProducts.map((p) => ({
+      productId: p.productId,
+      title: p.name,
+      reason: 'Shared during the consultation',
+    })),
     followUps: [],
   };
 }

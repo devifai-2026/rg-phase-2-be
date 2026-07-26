@@ -163,6 +163,8 @@ router.delete('/bundles/:id', offers.deleteBundle);
 router.get('/monitor/chats', admin.liveChats);
 router.get('/monitor/calls', admin.activeCalls);
 router.get('/monitor/call-logs', admin.callLogs);
+// Consultations that never happened (missed / cancelled / rejected), all types.
+router.get('/monitor/unanswered', admin.unansweredSessions);
 // Chat history + analytics (filters: user, astrologer, q, from, to).
 router.get('/monitor/chat-logs', admin.chatLogs);
 router.get('/monitor/chat-analytics', admin.chatAnalytics);

@@ -87,14 +87,24 @@ const SYSTEM = (
  * @param {string} [p.astrologerId]    astrologer id (context only)
  * @param {string} [p.astrologerName]  astrologer display name (context)
  */
-function buildUserMessage({ transcript, catalogue, todayISO, userId, astrologerId, astrologerName }) {
+function buildUserMessage({ transcript, catalogue, todayISO, userId, astrologerId, astrologerName, sharedProducts = [] }) {
   const catLines = catalogue
     .map((pr) => `- ${pr.productId} | ${pr.name} | ₹${pr.price} | ${pr.category || 'general'} | ${pr.source || 'store'} | ${(pr.description || '').slice(0, 120)}`)
+    .join('\n');
+  // Products the astrologer ALREADY recommended in this chat. Without this the
+  // model had no idea a recommendation had been made, so the summary omitted it
+  // entirely — the astrologer's actual advice went missing from their own recap.
+  const sharedLines = sharedProducts
+    .map((pr) => `- ${pr.productId} | ${pr.name}${pr.price != null ? ` | ₹${pr.price}` : ''}`)
     .join('\n');
   return (
     `Today is ${todayISO}.\n` +
     `Seeker id: ${userId || 'n/a'} | Astrologer: ${astrologerName || 'n/a'} (id: ${astrologerId || 'n/a'}).\n\n` +
     `=== CONSULTATION TRANSCRIPT ===\n${transcript}\n\n` +
+    (sharedLines
+      ? '=== ALREADY SHARED IN THIS CHAT (mention these in the summary; do not re-suggest them as if new) ===\n' +
+        `${sharedLines}\n\n`
+      : '') +
     '=== PRODUCT CATALOGUE (suggest ONLY from these productIds; source = storefront|rudramaal) ===\n' +
     `${catLines || '(none available)'}\n\n` +
     'Analyse and produce the recap JSON now (summary, keyTopics, sentiment, suggestions, followUps, reminders).'

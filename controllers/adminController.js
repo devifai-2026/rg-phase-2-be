@@ -651,6 +651,48 @@ exports.activeCalls = asyncHandler(async (req, res) => {
   res.json({ success: true, data: items });
 });
 
+/**
+ * Consultations that never happened — missed (ring timeout), cancelled (by the
+ * seeker) or rejected (by the astrologer), across ALL three service types.
+ *
+ * `callLogs` cannot serve this: it hardcodes type call|video (so chats are
+ * invisible) and supports no status filter. Note startedAt/durationSec/earnings
+ * are always null here because billing never began, so the UI must not reuse the
+ * call-log columns.
+ */
+exports.unansweredSessions = asyncHandler(async (req, res) => {
+  const Session = req.model('Session');
+  const UNANSWERED = ['missed', 'cancelled', 'rejected'];
+  const status = String(req.query.status || '').trim();
+  const type = String(req.query.type || '').trim();
+
+  const q = { status: { $in: UNANSWERED } };
+  if (status && UNANSWERED.includes(status)) q.status = status;
+  if (['chat', 'call', 'video'].includes(type)) q.type = type;
+  if (req.query.astrologer) q.astrologer = req.query.astrologer;
+  if (req.query.user) q.user = req.query.user;
+  if (req.query.from || req.query.to) {
+    q.requestedAt = {};
+    if (req.query.from) q.requestedAt.$gte = new Date(req.query.from);
+    if (req.query.to) q.requestedAt.$lte = new Date(req.query.to);
+  }
+
+  const page = parseInt(req.query.page || '1', 10);
+  const limit = Math.min(parseInt(req.query.limit || '25', 10), 200);
+  const [items, total] = await Promise.all([
+    Session.find(q)
+      .sort({ requestedAt: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .select('sessionId type status endReason requestedAt endedAt ratePerMin lockedAmount seekerAlias user astrologer createdAt')
+      .populate('user', 'name phone')
+      .populate('astrologer', 'name')
+      .lean(),
+    Session.countDocuments(q),
+  ]);
+  res.json({ success: true, data: { items, total, page, limit } });
+});
+
 exports.callLogs = asyncHandler(async (req, res) => {
   const Session = req.model('Session');
   const q = { type: { $in: ['call', 'video'] } };
