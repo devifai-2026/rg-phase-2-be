@@ -11,10 +11,38 @@ const logger = require('../utils/logger');
 // Append ?tenant=<slug> to a URL so the tenant survives browser/WebView hops that
 // carry no X-Tenant header or bearer token (the PayU redirect → gateway → surl/furl
 // callback → result-page chain). Multi-tenant only; single-tenant leaves URLs as-is.
+//
+// Retained for the legacy `?tenant=` alias paths. New URLs should use
+// tenantPath() below, which puts the slug in the PATH — the only carrier a
+// gateway callback is guaranteed to preserve.
 function withTenant(url, req) {
   const slug = req && req.tenant && req.tenant.slug;
   if (!slug || !env.saas.enabled || !url) return url;
   return url + (url.includes('?') ? '&' : '?') + 'tenant=' + encodeURIComponent(slug);
+}
+
+/**
+ * Build an absolute, tenant-scoped payment URL.
+ *   multi-tenant → <publicBaseUrl>/api/payments/t/<slug>/<suffix>
+ *   single-tenant → <publicBaseUrl>/api/payments/<suffix>
+ * Absolute (not relative) because gateways fetch these from their own servers.
+ */
+function tenantPath(suffix, req) {
+  const slug = req && req.tenant && req.tenant.slug;
+  const base = `${env.publicBaseUrl}/api/payments`;
+  const tail = String(suffix || '').replace(/^\/+/, '');
+  if (!env.saas.enabled || !slug || slug === 'default') return `${base}/${tail}`;
+  return `${base}/t/${encodeURIComponent(slug)}/${tail}`;
+}
+
+/**
+ * surl/furl for a checkout. Explicit PAYU_SURL/PAYU_FURL overrides win (so an
+ * existing deployment can pin them); otherwise derive the tenant-scoped path.
+ */
+function callbackUrls(req) {
+  const surl = process.env.PAYU_SURL ? withTenant(process.env.PAYU_SURL, req) : tenantPath('callback', req);
+  const furl = process.env.PAYU_FURL ? withTenant(process.env.PAYU_FURL, req) : tenantPath('callback', req);
+  return { surl, furl };
 }
 
 /**
@@ -127,7 +155,7 @@ exports.payuRedirect = asyncHandler(async (req, res) => {
     phone: booking.contactPhone || user?.phone,
     udf: ['pooja', String(booking._id)],
     // Tenant-scoped callback URLs so the s2s callback can resolve the tenant DB.
-    surl: withTenant(env.payu.surl, req), furl: withTenant(env.payu.furl, req),
+    ...callbackUrls(req),
   });
   // LIVE app: never mark a booking paid without real payment. If the active
   // gateway has no keys, fail cleanly instead of confirming for free.
@@ -163,7 +191,7 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
     udf: ['wallet', String(pending.user)],
     // Carry the tenant on the gateway callback URLs so the s2s callback (which
     // has no header/token) can resolve the tenant DB.
-    surl: withTenant(env.payu.surl, req), furl: withTenant(env.payu.furl, req),
+    ...callbackUrls(req),
   });
   if (checkout.mock) {
     // LIVE app: never fake-credit. If the active gateway has no keys configured,
@@ -206,6 +234,11 @@ exports.initiateRecharge = asyncHandler(async (req, res) => {
 // Terminal callback responses redirect the browser/webview to a tiny RESULT
 // page at /payments/payu/result?status=… so the in-app WebView can detect it
 // (by URL) and close. The status is the single source of truth for the app.
+//
+// NOTE: deliberately kept on the legacy `/payu/result` path with ?tenant=.
+// Shipped Flutter builds match this exact URL to know payment finished and close
+// the WebView; moving it to /t/<slug>/result would break payment completion in
+// every APK already in the field. Change only alongside a coordinated app release.
 const resultUrl = (status, req) => withTenant(`/api/payments/payu/result?status=${encodeURIComponent(status)}`, req);
 
 exports.payuCallback = asyncHandler(async (req, res) => {

@@ -50,7 +50,8 @@ async function buildCheckout({ cfg, txnid, amountRupees, productinfo, customer =
 }
 
 function verifyCallback(cfg, body) {
-  if (!isConfigured(cfg)) { logger.warn('[PayU MOCK] verifyCallback bypassed'); return body.status === 'success'; }
+  // FAIL CLOSED — public route; never trust a client-supplied status field.
+  if (!isConfigured(cfg)) { logger.error('payu verifyCallback rejected — gateway not configured (no key/salt)'); return false; }
   const { status, firstname, email, productinfo, amount, txnid, hash } = body;
   const u = [1, 2, 3, 4, 5].map((i) => body[`udf${i}`] || '');
   const seq = [cfg.salt, status, '', '', '', '', '', u[4], u[3], u[2], u[1], u[0], email, firstname, productinfo, amount, txnid, cfg.key];

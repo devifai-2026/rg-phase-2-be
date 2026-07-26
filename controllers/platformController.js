@@ -101,9 +101,24 @@ async function tenantConfigSummary(tenant) {
       logoUrl: app.logoUrl || '',
       payments: {
         active: pg.active || 'payu',
-        payu: { key: set(pg.payu && pg.payu.key), salt: set(pg.payu && pg.payu.salt) },
-        razorpay: { keyId: set(pg.razorpay && pg.razorpay.keyId), keySecret: set(pg.razorpay && pg.razorpay.keySecret) },
-        cashfree: { appId: set(pg.cashfree && pg.cashfree.appId), secretKey: set(pg.cashfree && pg.cashfree.secretKey) },
+        payu: {
+          key: set(pg.payu && pg.payu.key), salt: set(pg.payu && pg.payu.salt),
+          webhookSecret: set(pg.payu && pg.payu.webhookSecret),
+          webhookRegisteredAt: (pg.payu && pg.payu.webhookRegisteredAt) || null,
+        },
+        razorpay: {
+          keyId: set(pg.razorpay && pg.razorpay.keyId), keySecret: set(pg.razorpay && pg.razorpay.keySecret),
+          webhookSecret: set(pg.razorpay && pg.razorpay.webhookSecret),
+          webhookRegisteredAt: (pg.razorpay && pg.razorpay.webhookRegisteredAt) || null,
+        },
+        cashfree: {
+          appId: set(pg.cashfree && pg.cashfree.appId), secretKey: set(pg.cashfree && pg.cashfree.secretKey),
+          webhookSecret: set(pg.cashfree && pg.cashfree.webhookSecret),
+          webhookRegisteredAt: (pg.cashfree && pg.cashfree.webhookRegisteredAt) || null,
+        },
+        // The exact URL an operator must register in each gateway's dashboard.
+        // Tenant-scoped by PATH so it survives query-string stripping.
+        webhookUrl: `${env.publicBaseUrl}/api/payments/t/${tenant.slug}/callback`,
       },
       vedicAstro: set(va.apiKey ? decrypt(va.apiKey) : ''),
       agora: { appId: ag.appId || '', appCertificate: set(ag.appCertificate ? decrypt(ag.appCertificate) : '') },

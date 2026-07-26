@@ -112,12 +112,20 @@ const env = {
     },
   },
 
+  // Public origin this backend is reachable at from the internet (no trailing
+  // slash). Gateways POST their callbacks here, so it must be the externally
+  // resolvable host — never localhost in a deployed environment.
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'http://localhost:5050').replace(/\/+$/, ''),
+
   payu: {
     key: process.env.PAYU_KEY || '',
     salt: process.env.PAYU_SALT || '',
     baseUrl: process.env.PAYU_BASE_URL || 'https://test.payu.in', // sandbox default
-    surl: process.env.PAYU_SURL || 'http://localhost:5000/api/payments/payu/callback',
-    furl: process.env.PAYU_FURL || 'http://localhost:5000/api/payments/payu/callback',
+    // Fallback callback URLs for single-tenant mode. In multi-tenant mode the
+    // per-tenant path form (/api/payments/t/<slug>/callback) is used instead —
+    // see callbackUrls() in controllers/paymentController.js.
+    surl: process.env.PAYU_SURL || `${(process.env.PUBLIC_BASE_URL || 'http://localhost:5050').replace(/\/+$/, '')}/api/payments/callback`,
+    furl: process.env.PAYU_FURL || `${(process.env.PUBLIC_BASE_URL || 'http://localhost:5050').replace(/\/+$/, '')}/api/payments/callback`,
     payout: {
       baseUrl: process.env.PAYU_PAYOUT_BASE_URL || 'https://uatoneapi.payu.in',
       clientId: process.env.PAYU_PAYOUT_CLIENT_ID || '',

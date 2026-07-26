@@ -22,7 +22,8 @@ const { defaultContext, tenantContext } = require('../utils/tenantContext');
  * default-bound models — so single-tenant behavior is byte-for-byte unchanged
  * and the app boots without a control-plane DB.
  *
- * Resolution order (multi-tenant mode): X-Tenant header → subdomain → JWT claim.
+ * Resolution order (multi-tenant mode): /payments/t/<slug> path → X-Tenant
+ * header → subdomain → JWT claim → ?tenant= query.
  */
 
 // ── Single-tenant fallback ─────────────────────────────────────────────────
@@ -84,7 +85,24 @@ function slugFromToken(req) {
   }
 }
 
+// Canonical tenant-scoped gateway callback path: /api/payments/t/<slug>/...
+// Matched off req.path because this middleware is mounted at the app level
+// (app.use('/api', tenantResolver, routes)), so router-level req.params is not
+// populated yet — the :tenantSlug param only binds once paymentRoutes runs.
+const PATH_TENANT_RE = /^\/payments\/t\/([a-z0-9][a-z0-9-]*)(?:\/|$)/i;
+
+function slugFromPath(req) {
+  const p = req.path || '';
+  const m = PATH_TENANT_RE.exec(p);
+  return m ? m[1].toLowerCase() : null;
+}
+
 function extractSlug(req) {
+  // 0) tenant baked into the URL path — highest priority because it is the only
+  //    signal a gateway server-to-server callback is guaranteed to preserve
+  //    (no header, no token, and query strings can be stripped by proxies).
+  const fromPath = slugFromPath(req);
+  if (fromPath) return fromPath;
   // 1) explicit header (set by admin SPA / mobile app dart-define TENANT).
   const header = req.headers['x-tenant'];
   if (header) return String(header).toLowerCase().trim();

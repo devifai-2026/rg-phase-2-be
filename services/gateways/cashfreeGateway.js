@@ -94,7 +94,11 @@ async function verifyOrder(cfg, txnid) {
 
 // Sync verify for the controller's interface; the controller awaits this.
 async function verifyCallback(cfg, body) {
-  if (!isConfigured(cfg)) return body.status === 'success';
+  // FAIL CLOSED — public route; never trust a client-supplied status field.
+  if (!isConfigured(cfg)) {
+    logger.error('cashfree verifyCallback rejected — gateway not configured');
+    return false;
+  }
   const txnid = body.txnid || body.order_id;
   if (!txnid) return false;
   return verifyOrder(cfg, txnid);

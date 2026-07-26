@@ -93,12 +93,34 @@ async function buildCheckout({ cfg, txnid, amountRupees, productinfo, customer =
 
 // On Razorpay success the body has order_id/payment_id/signature.
 function verifyCallback(cfg, body) {
-  if (!isConfigured(cfg)) return body.status === 'success';
+  // FAIL CLOSED. This is a public, unauthenticated route: trusting body.status
+  // when keys are absent lets anyone POST status=success to credit a wallet.
+  if (!isConfigured(cfg)) {
+    logger.error('razorpay verifyCallback rejected — gateway not configured');
+    return false;
+  }
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
   if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) return false;
+  // Dashboard-registered server-to-server webhooks are signed with the separate
+  // webhook secret over the raw body; the browser redirect handoff is signed with
+  // keySecret over order|payment. Prefer the webhook secret when this looks like
+  // a webhook delivery (raw body captured by the express.json verify hook).
+  if (cfg.webhookSecret && body.__rawBody && body.__webhookSignature) {
+    const expectedHook = crypto.createHmac('sha256', cfg.webhookSecret)
+      .update(body.__rawBody).digest('hex');
+    return timingSafeEqualHex(expectedHook, body.__webhookSignature);
+  }
   const expected = crypto.createHmac('sha256', cfg.keySecret)
     .update(`${razorpay_order_id}|${razorpay_payment_id}`).digest('hex');
-  return expected === razorpay_signature;
+  return timingSafeEqualHex(expected, razorpay_signature);
+}
+
+// Constant-time hex compare — avoids leaking the signature via timing.
+function timingSafeEqualHex(a, b) {
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 function extractResult(body) {
