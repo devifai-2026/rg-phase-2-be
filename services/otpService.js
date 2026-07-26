@@ -114,4 +114,6 @@ async function verifyOtp(ctx, phone, code) {
   return true;
 }
 
-module.exports = { requestOtp, verifyOtp };
+// isTestAccount is exported so the OTP rate limiters can exempt configured test
+// numbers (QA + Play Store review) — a reviewer retrying a login must never hit a 429.
+module.exports = { requestOtp, verifyOtp, isTestAccount };
