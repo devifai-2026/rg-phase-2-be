@@ -128,22 +128,17 @@ async function isOnline(ctx, userId) {
  * The device just PROVED it has working connectivity — a socket heartbeat, or an
  * FCM presence-ping ACK from a backgrounded/killed app.
  *
- * IMPORTANT: reachable is NOT the same as consultable. An ACK proves the phone
- * has internet; it does NOT prove there is a socket to deliver `incoming-request`
- * on. This used to pass `connected: true`, which made a force-killed app that
- * ACK'd a ping flip back to `isOnline: true` — a seeker saw green, paid to
- * request, and the emit went into an empty room. So we refresh reachability
- * (which is what selects probe targets and drives the reconcile sweep) and let
- * `live` come from the socket lease.
- *
- * The ping's real job is to WAKE the app so it rebuilds its socket; the client
- * handles that on ACK. Reachability then becomes true presence a moment later,
- * via the socket's own connect handler.
+ * An ACK proves the phone has internet, which under the reachability (WhatsApp)
+ * model is exactly what keeps the astrologer green — the app does NOT have to be
+ * running. It still does not assert `connected` (that means "a socket lease
+ * exists" and belongs to the socket layer alone); a killed-but-reachable
+ * astrologer is reached via the FCM/CallKit incoming-call path instead of a
+ * socket emit. A phone with no internet cannot ACK, so its reachability window
+ * lapses and reconcile() flips it offline.
  */
 async function markReachable(ctx, userId) {
   ctx = ctx || defaultContext();
-  const strict = env.presence.strictLive !== false;
-  return recomputeAstrologerPresence(ctx, userId, strict ? { reachable: true } : { connected: true });
+  return recomputeAstrologerPresence(ctx, userId, { reachable: true });
 }
 
 /**
@@ -280,25 +275,37 @@ async function recomputeAstrologerPresence(ctx, userId, { preference, connected,
   //    though the session already ended → users saw "busy" for a few seconds).
   //    So we only keep busy when an ongoing session exists for this astrologer.
   //
-  //    CHANGED: a LIVE SOCKET is now required, not merely "reachable within
-  //    reachableTtlMs". The old rule let the FCM reachability probe keep a
-  //    force-killed astrologer `isOnline: true` for up to 5 minutes — a seeker saw
-  //    a green dot, requested a consultation, had their wallet locked, and the
-  //    incoming-request emit went to an empty room until the ring timed out. An
-  //    app-killed astrologer genuinely cannot answer; the FCM ping's job is now to
-  //    WAKE THE APP so it re-establishes a socket, not to stand in for one.
+  //    REACHABILITY, NOT A SOCKET, IS THE RULE — the WhatsApp model.
   //
-  //    `reachable` is still computed and persisted because the reconcile sweep and
-  //    the FCM probe target selection both use lastReachableAt.
+  //    An astrologer will NOT keep the app in RAM for hours. They mark themselves
+  //    available and swipe the app away, exactly like someone who is "callable on
+  //    WhatsApp" whenever their phone has internet, whether or not the app is
+  //    open. Requiring a live socket here made that astrologer go grey seconds
+  //    after they killed the app, so seekers could not start a consultation with
+  //    someone who was genuinely available — the worst possible outcome for a
+  //    marketplace, and far worse than the alternative below.
+  //
+  //    So: online = availability TOGGLE ON *and* the device proved connectivity
+  //    within env.presence.reachableTtlMs, where proof is EITHER a socket
+  //    heartbeat OR an ACK of the silent FCM ping (see markReachable + the
+  //    presence probe in workers/jobWorker.js). A phone that loses internet stops
+  //    ACKing, its window lapses, and the reconcile sweep flips it offline.
+  //
+  //    The trade-off we accept: a killed-but-reachable astrologer has no socket,
+  //    so the incoming-request emit alone cannot reach them. That is handled on
+  //    the delivery side, not by lying about presence — the request also goes out
+  //    as a high-priority FCM push that raises the native CallKit screen from a
+  //    fully-killed state (see sessionService.pushIncomingCall +
+  //    CallKitService.showIncoming). Presence answers "can this person be
+  //    reached", and FCM is what reaches them.
   const reachable = !!(profile.lastReachableAt &&
     (Date.now() - profile.lastReachableAt.getTime()) < env.presence.reachableTtlMs);
-  const wantOnline = !!profile.availabilityPreference && !!live;
-  // Divergence signal: the device answers FCM pings but has no socket. Under the
-  // OLD rule this astrologer would have been shown ONLINE and un-callable — the
-  // exact bug this change fixes. Logged (not acted on) so the frequency is
-  // observable, and so a regression is visible in the logs rather than silent.
+  const wantOnline = !!profile.availabilityPreference && reachable;
+  // Observability for the accepted trade-off above: toggled on and reachable, but
+  // with no live socket. These astrologers are shown ONLINE and are reached via
+  // the FCM/CallKit path rather than a socket emit.
   if (reachable && !live && profile.availabilityPreference) {
-    logger.debug('presence: reachable but no live socket → offline', {
+    logger.debug('presence: online via FCM reachability (no live socket)', {
       astrologer: String(userId), tenant: (ctx.tenant && ctx.tenant.slug) || 'default',
     });
   }

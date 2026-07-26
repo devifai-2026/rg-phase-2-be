@@ -101,15 +101,15 @@ describe('the `connected: true` contract', () => {
         const rel = path.relative(root, full).split(path.sep).join('/');
         if (ALLOWED.has(rel)) continue;
         const src = fs.readFileSync(full, 'utf8');
-        // Match `connected: true` in a recompute call, ignoring the escape-hatch
-        // branch that only runs when PRESENCE_STRICT_LIVE=false.
+        // `connected: true` means "a socket lease exists" and may only be
+        // asserted by the socket layer. Presence itself is derived from
+        // REACHABILITY (toggle + socket beat or FCM ACK), so no HTTP/service
+        // caller ever needs to claim a socket — and a caller that does would
+        // resurrect the bug where a seeker saw green with nothing behind it.
         src.split('\n').forEach((line, i) => {
           const code = line.replace(/\/\/.*$/, '').trim();
           if (code.startsWith('*') || code.startsWith('/*')) return; // doc block
           if (!/connected:\s*true/.test(code)) return;
-          // The PRESENCE_STRICT_LIVE=false escape hatch is allowed to assert it;
-          // that branch exists precisely to roll back this behaviour.
-          if (/strict\s*\?/.test(code)) return;
           offenders.push(`${rel}:${i + 1}`);
         });
       }

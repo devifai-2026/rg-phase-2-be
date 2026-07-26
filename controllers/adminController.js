@@ -1471,14 +1471,23 @@ exports.listAiNotifications = asyncHandler(async (req, res) => {
       title: r.title, reason: r.reason, notifyText: r.notifyText,
       schedule: r.type === 'mantra' ? `Daily ${r.timeOfDay || ''} · ${r.firedCount || 0}/${r.totalOccurrences || 14}` : (r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—'),
       nextRunAt: r.nextRunAt, status: r.status, user: r.user, astrologer: r.astrologer,
-      sessionId: r.sessionId, createdAt: r.createdAt,
+      // `sessionId` is the legacy string field; `session` is the ObjectId ref.
+      // Older reminders only carry one of the two, so fall back rather than
+      // rendering a disabled "No chat linked" button on a row that has one.
+      sessionId: r.sessionId || (r.session ? String(r.session) : undefined),
+      createdAt: r.createdAt,
     })),
     ...cues.map((c) => ({
       _id: String(c._id), kind: 'followup',
       title: c.topic, reason: 'Future-prediction check-in', notifyText: c.notifyText,
       schedule: c.dueDate ? new Date(c.dueDate).toLocaleDateString('en-IN') : '—',
       nextRunAt: c.dueDate, status: c.status, user: c.user, astrologer: c.astrologer,
-      sessionId: undefined, createdAt: c.createdAt,
+      // A cue is EXTRACTED from a chat consultation and stores it as
+      // `sourceSession` — this used to be hardcoded `undefined`, so every
+      // follow-up row showed a dead "No chat linked" button even though the
+      // originating transcript was right there.
+      sessionId: c.sourceSession ? String(c.sourceSession) : undefined,
+      createdAt: c.createdAt,
     })),
   ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   res.json({ success: true, data: { items, total: items.length } });

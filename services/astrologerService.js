@@ -646,24 +646,16 @@ async function setOnline(ctx, userId, online) {
     const inSession = await Session.exists({ astrologer: userId, status: { $in: ['accepted', 'ongoing'] } });
     if (inSession) throw new AppError('You are in a consultation. End it before going offline.', 409);
   }
-  // This endpoint records INTENT. It must NOT assert `connected` — an HTTP
-  // request proves nothing about whether a websocket exists, and asserting it
-  // published `isOnline: true` to every seeker while the astrologer's own app was
-  // still showing "Connecting…". Seekers then requested an unreachable
-  // astrologer: wallet locked, incoming-request emitted into an empty room, ring
-  // timing out. `live` is derived from the Redis socket lease, which is the only
-  // thing that actually knows.
-  //
-  // Consequence, and it is the correct one: toggling online with no socket yet
-  // returns isOnline:false. The socket's own connect handler recomputes with
-  // connected:true moments later and the astrologer goes green then.
-  const strict = env.presence.strictLive !== false;
+  // Records INTENT, and — under the reachability (WhatsApp) model — also counts
+  // as PROOF OF REACHABILITY. The request itself arrived over the astrologer's
+  // internet connection, which is exactly what `reachable` asserts: the device
+  // can be reached right now. It deliberately does NOT claim `connected` (that
+  // means "a websocket lease exists" and only the socket layer may assert it), so
+  // toggling online goes green immediately without pretending a socket exists.
   const result = await require('./presenceService').recomputeAstrologerPresence(
     ctx,
     userId,
-    online
-      ? (strict ? { preference: true } : { preference: true, connected: true })
-      : { preference: false }
+    online ? { preference: true, reachable: true } : { preference: false }
   );
   return { isOnline: result.isOnline, currentCallStatus: result.currentCallStatus };
 }
