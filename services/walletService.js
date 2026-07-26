@@ -75,7 +75,7 @@ async function withTx(ctx, fn) {
 }
 
 /** Credit funds into a wallet (recharge / refund / bonus / earnings / gift-receive). */
-async function credit(ctx, { userId, amount, source, description, refId, relatedSession, meta }) {
+async function credit(ctx, { userId, amount, source, description, refId, relatedSession, meta, promoteRefId }) {
   ctx = ctx || defaultContext();
   const Wallet = ctx.model('Wallet');
   const Transaction = ctx.model('Transaction');
@@ -90,6 +90,21 @@ async function credit(ctx, { userId, amount, source, description, refId, related
     const wallet = await Wallet.findOneAndUpdate({ user: userId }, { $inc: { balance: amount } }, opts);
     let txn;
     try {
+      // `promoteRefId` names a pending INTENT row for this same payment (e.g.
+      // "pending:<txnid>"). Promote it in place instead of inserting a second
+      // document, so one payment is one ledger row. Without this a recharge
+      // left two rows both reading "completed / credit / ₹99" — indistinguishable
+      // from a double credit unless you noticed only one had balanceAfter.
+      if (promoteRefId) {
+        const promoted = await Transaction.findOneAndUpdate(
+          { refId: promoteRefId, status: 'pending' },
+          { $set: { refId, status: 'completed', balanceAfter: wallet.balance, source, description, amount, meta } },
+          session ? { new: true, session } : { new: true }
+        );
+        if (promoted) return promoted;
+        // No pending row (already promoted, or none written) — fall through and
+        // insert; the refId unique index still prevents a duplicate credit.
+      }
       const created = await Transaction.create(
         [{ user: userId, type: 'credit', source, amount, status: 'completed', description, refId, relatedSession, balanceAfter: wallet.balance, meta }],
         session ? { session } : {}

@@ -293,8 +293,10 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       description: 'Wallet recharge',
       refId: txnid, // idempotent: replays do not double-credit
       meta: { txnid },
+      // Turn the pending intent INTO the credit row rather than adding a second
+      // one, so a recharge shows as a single ledger entry.
+      promoteRefId: `pending:${txnid}`,
     });
-    if (pending) await Transaction.updateOne({ _id: pending._id }, { $set: { status: 'completed' } });
     // Referral: reward both sides on the referee's first recharge (idempotent).
     require('../services/referralService').onFirstRecharge(req.ctx, userId).catch(() => {});
     // If the user recharged DURING a live session, extend its reservation so
