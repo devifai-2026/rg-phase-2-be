@@ -4,6 +4,7 @@ const { tenantContext } = require('../../utils/tenantContext');
 const atlasService = require('./atlasService');
 const subscriptionService = require('./subscriptionService');
 const firebaseAppService = require('./firebaseAppService');
+const legalTemplates = require('./legalTemplates');
 const translateService = require('../translateService');
 const logger = require('../../utils/logger');
 const AppError = require('../../utils/AppError');
@@ -230,6 +231,26 @@ async function seedTenantDb(ctx, branding = {}, config = {}) {
     }
   } catch (e) {
     logger.warn('agora seed failed', e.message);
+  }
+
+  // ── Legal content (terms / privacy / refund, per audience) ──
+  // Both apps FETCH these by key and fall back to bundled generic copy when the
+  // key is missing — so an unseeded tenant silently shows another brand's text.
+  // Seed editable, brand-correct defaults; the tenant admin can rewrite them.
+  // upsert-on-insert only: never clobber copy an admin has already edited.
+  try {
+    const SiteContent = ctx.model('SiteContent');
+    const brand = branding.displayName || '';
+    for (const doc of legalTemplates.defaultsFor(brand)) {
+      await SiteContent.updateOne(
+        { key: doc.key },
+        { $setOnInsert: { ...doc, isPublished: true } },
+        { upsert: true },
+      );
+    }
+    logger.info('Seeded default legal content', { brand });
+  } catch (e) {
+    logger.warn('legal content seed failed', e.message);
   }
 }
 

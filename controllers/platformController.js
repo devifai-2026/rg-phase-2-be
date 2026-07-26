@@ -187,7 +187,7 @@ exports.updateSecrets = asyncHandler(async (req, res) => {
   const allowed = [
     'dbUri', 'agoraAppId', 'agoraAppCertificate', 'agoraCustomerId', 'agoraCustomerSecret',
     'payuKey', 'payuSalt', 'waBridgeAppKey', 'waBridgeAuthKey', 'waBridgeDeviceId', 'waBridgeOtpTemplateId', 'llmApiKey',
-    'vedicAstroApiKey',
+    'vedicAstroApiKey', 'cashfreeWebhookSecret',
   ];
   const patch = { tenant: tenant._id };
   for (const k of allowed) if (req.body[k] !== undefined && req.body[k] !== '') patch[k] = req.body[k];
@@ -206,6 +206,21 @@ exports.updateSecrets = asyncHandler(async (req, res) => {
       await cfg.save();
     } catch (e) {
       require('../utils/logger').warn('mirror vedicAstroApiKey to tenant DB failed', { slug: tenant.slug, error: e.message });
+    }
+  }
+
+  // Cashfree's webhook secret lives in the tenant DB's PaymentGatewayConfig —
+  // that's what the callback reads to verify a webhook signature. Mirror it so
+  // setting it here takes effect without a tenant-admin round-trip.
+  if (req.body.cashfreeWebhookSecret) {
+    try {
+      const { contextForSlug } = require('../utils/tenantContext');
+      const ctx = await contextForSlug(tenant.slug);
+      const gw = await ctx.model('PaymentGatewayConfig').get();
+      gw.cashfree = { ...(gw.cashfree?.toObject?.() || gw.cashfree || {}), webhookSecret: req.body.cashfreeWebhookSecret };
+      await gw.save();
+    } catch (e) {
+      require('../utils/logger').warn('mirror cashfreeWebhookSecret to tenant DB failed', { slug: tenant.slug, error: e.message });
     }
   }
 

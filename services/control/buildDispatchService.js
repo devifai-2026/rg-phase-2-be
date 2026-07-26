@@ -31,6 +31,27 @@ async function dispatch(job) {
     logger.warn('build dispatch skipped — GITHUB_TOKEN not set; job stays queued', { job: String(job._id) });
     return false;
   }
+
+  // Make sure THIS applicationId exists in the shared Firebase project before
+  // the workflow runs. Registration also happens at tenant-create, but an
+  // applicationId edited afterwards (or a package that predates that step)
+  // would otherwise reach Gradle's processGoogleServices task with no matching
+  // client and fail the whole build. Idempotent: a no-op when already present.
+  //
+  // Best-effort — a Firebase hiccup must not block a dispatch. The workflow
+  // still fails loudly with a clear message if the app really isn't registered.
+  if (job.applicationId) {
+    try {
+      const firebaseAppService = require('./firebaseAppService');
+      const res = await firebaseAppService.ensureAndroidApp(job.applicationId, job.appLabel || job.tenantSlug);
+      if (res && res.created) {
+        logger.info('Registered Firebase Android app for build', { packageName: job.applicationId, appId: res.appId });
+      }
+    } catch (e) {
+      logger.warn('Firebase app ensure failed before dispatch (continuing)', { packageName: job.applicationId, error: e.message });
+    }
+  }
+
   const repo = repoFor(job.app);
   const workflow = (env.github.buildWorkflow || 'tenant-build.yml');
   const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`;
