@@ -25,6 +25,21 @@ async function requestWithdrawal(ctx, { astrologerUserId, amount, bankAccountDet
     throw new AppError(`Minimum withdrawal is ₹${settings.withdrawalThreshold}`, 400);
   }
 
+  // ONE open request at a time. Each request LOCKS the amount (below), so without
+  // this an astrologer could stack requests until their whole balance was locked,
+  // and the admin would be working through a queue of overlapping payouts for the
+  // same earnings. 'approved' counts as open too — the money is still in flight.
+  const open = await WithdrawalRequest.findOne({
+    astrologer: astrologerUserId,
+    status: { $in: ['pending', 'approved'] },
+  }).select('_id amount status').lean();
+  if (open) {
+    throw new AppError(
+      `You already have a withdrawal of ₹${open.amount} awaiting processing. Please wait for it to complete.`,
+      409,
+    );
+  }
+
   // Resolve the payout target: explicit details, else the saved profile ones.
   let bank = bankAccountDetails;
   if (!bank || (!bank.accountNumber && !bank.upi)) {

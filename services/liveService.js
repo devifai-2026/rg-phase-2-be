@@ -5,6 +5,7 @@ const emit = require('../websockets/emit');
 const { randomToken } = require('../utils/hash');
 const { filterMessage, containsAbuse } = require('../utils/chatFilter');
 const AppError = require('../utils/AppError');
+const env = require('../config/env');
 const logger = require('../utils/logger');
 const llmService = require('./llmService');
 const aiInsightsService = require('./aiInsightsService');
@@ -525,7 +526,32 @@ async function postComment(ctx, { liveSessionId, userId, text }) {
 
   // Always-on moderation (the "AI moderator" — no toggle).
   // Tier 1 (sync, regex): mask phones/links; drop contact-only comments.
-  const { clean, masked, reasons } = filterMessage(raw);
+  let { clean, masked, reasons } = filterMessage(raw);
+
+  // Tier 1.2: cross-COMMENT split guard. Numbers dictated a few digits at a time
+  // across separate comments never reach the single-message threshold, so keep a
+  // short rolling digit run per commenter per broadcast and DROP the comment that
+  // completes a phone number. Best-effort — a Redis hiccup must not block chat.
+  if (!masked) {
+    try {
+      const { phoneRunTripped } = require('../utils/chatFilter');
+      const c = await require('./cacheService').raw();
+      if (c) {
+        const key = `${env.cache.keyPrefix}:${(ctx.tenant && ctx.tenant.slug) || 'default'}:digitrun:live:${ls._id}:${userId}`;
+        const prior = (await c.get(key)) || '';
+        const run = phoneRunTripped(prior, raw);
+        if (run.tripped) {
+          await c.del(key);
+          await LiveSession.updateOne({ _id: ls._id }, { $inc: { blockedCount: 1 } }).catch(() => {});
+          return { dropped: true, reasons: [...reasons, 'phone_split'] };
+        }
+        if (run.digits) await c.set(key, run.digits, { EX: 300 });
+      }
+    } catch (e) {
+      logger.debug('live digit-run guard skipped', e.message);
+    }
+  }
+
   const finalText = (clean || '').trim();
   // Drop comments that were entirely contact info / links (Tier-1 block).
   if (!finalText || finalText.replace(/\*/g, '').trim() === '') {

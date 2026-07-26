@@ -268,7 +268,23 @@ exports.getPayoutDetails = asyncHandler(async (req, res) => {
   const AstrologerProfile = req.model('AstrologerProfile');
   const profile = await AstrologerProfile.findOne({ user: req.user._id }).select('payoutDetails').lean();
   if (!profile) throw new AppError('No astrologer profile', 404);
-  res.json({ success: true, data: profile.payoutDetails || {} });
+  // Carry the admin-configured payout floor and any OPEN request so the app can
+  // validate before submitting and explain a blocked button, instead of the
+  // astrologer tapping into a 400/409.
+  const settings = await require('../services/cacheService').config(req.ctx, 'AdminSettings');
+  const WithdrawalRequest = req.model('WithdrawalRequest');
+  const open = await WithdrawalRequest.findOne({
+    astrologer: req.user._id,
+    status: { $in: ['pending', 'approved'] },
+  }).select('amount status createdAt').lean();
+  res.json({
+    success: true,
+    data: {
+      ...(profile.payoutDetails || {}),
+      minWithdrawal: settings.withdrawalThreshold,
+      openRequest: open ? { amount: open.amount, status: open.status, createdAt: open.createdAt } : null,
+    },
+  });
 });
 
 /**

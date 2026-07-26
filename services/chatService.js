@@ -51,7 +51,36 @@ async function persist(ctx, { sessionId, senderId, message, mediaUrl, mediaType,
   const receiverId = String(session.user) === String(senderId) ? session.astrologer : session.user;
 
   // Moderate text content (mask phones/links). Images + product cards pass through.
-  const { clean, masked, reasons } = filterMessage(message);
+  let { clean, masked, reasons } = filterMessage(message);
+
+  // CROSS-MESSAGE SPLIT GUARD. A seeker can defeat the single-message digit
+  // threshold by sending a number in pieces ("4477", "889", "012"). Keep a short
+  // rolling digit run PER SENDER PER SESSION and mask once it completes a phone
+  // number. Redis-backed so it survives across sockets, with a TTL so an old
+  // partial run can't combine with an unrelated number much later.
+  if (!masked && message) {
+    try {
+      const { phoneRunTripped } = require('../utils/chatFilter');
+      const cache = require('./cacheService');
+      const c = await cache.raw();
+      if (c) {
+        const key = `${require('../config/env').cache.keyPrefix}:${(ctx.tenant && ctx.tenant.slug) || 'default'}:digitrun:${sessionId}:${senderId}`;
+        const prior = (await c.get(key)) || '';
+        const run = phoneRunTripped(prior, message);
+        if (run.tripped) {
+          clean = require('../utils/chatFilter').MASK;
+          masked = true;
+          reasons = [...reasons, 'phone_split'];
+          await c.del(key); // start a fresh run after masking
+        } else if (run.digits) {
+          await c.set(key, run.digits, { EX: 300 }); // 5 min of context
+        }
+      }
+    } catch (e) {
+      // Never block a legitimate message because the accumulator was unavailable.
+      require('../utils/logger').debug('digit-run guard skipped', e.message);
+    }
+  }
 
   const product = productId ? await resolveSharedProduct(ctx, productId, senderId, session) : undefined;
 
