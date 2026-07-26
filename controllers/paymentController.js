@@ -183,9 +183,13 @@ exports.payuRechargeRedirect = asyncHandler(async (req, res) => {
   }
   const user = await User.findById(pending.user).select('name email phone');
   const { adapter, cfg } = await gateways.active(req.ctx);
+  // CHARGE what the pack costs (meta.paidRupees), not pending.amount — that
+  // field holds the TOKENS to credit, which is higher on a bonus pack
+  // ("Pay ₹99, get 110"). Older intents predate paidRupees, so fall back.
+  const chargeRupees = (pending.meta && pending.meta.paidRupees) || pending.amount;
   const checkout = await adapter.buildCheckout({
     cfg, txnid,
-    amountRupees: pending.amount,
+    amountRupees: chargeRupees,
     productinfo: 'Wallet Recharge',
     customer: { name: user?.name, email: user?.email, phone: user?.phone },
     udf: ['wallet', String(pending.user)],
