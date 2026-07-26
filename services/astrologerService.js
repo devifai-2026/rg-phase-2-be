@@ -19,8 +19,8 @@ const LIST_TTL = 20; // seconds
 const PROFILE_TTL = 120; // seconds
 
 /** Drop all cached public astrologer reads (list variants + profiles). */
-async function invalidateAstroCache() {
-  await cacheService.delNamespace(CACHE_NS);
+async function invalidateAstroCache(ctx) {
+  await cacheService.delNamespace(ctx, CACHE_NS);
 }
 
 /**
@@ -112,7 +112,7 @@ async function broadcastStatus(ctx, profileId, { isOnline, currentCallStatus, li
     // Join affordance. The profile's currentCallStatus stays 'busy' so 1-on-1
     // consultation gating is unaffected — `live` is purely a display signal.
     if (live) { payload.live = true; payload.liveSessionId = liveSessionId ? String(liveSessionId) : undefined; }
-    require('../websockets/emit').broadcast('astrologer-status', payload);
+    require('../websockets/emit').toTenant(ctx, 'astrologer-status', payload);
   } catch (e) {
     require('../utils/logger').warn('broadcastStatus failed', e.message);
   }
@@ -207,7 +207,7 @@ async function submitApplication(ctx, { name, phone, email, expertise, languages
 
   // Live admin-console badge + bell (new astrologer registration to review).
   // Routes to the Applications page in the admin.
-  require('../websockets/emit').adminActivity('astrologer_registration', {
+  require('../websockets/emit').adminActivity(ctx, 'astrologer_registration', {
     id: profile._id,
     title: `New astrologer registration: ${name || phone}`,
   });
@@ -308,7 +308,7 @@ async function adminUpdate(ctx, profileId, body, adminId) {
   // Re-translate bio / re-transliterate name if they changed.
   if (bioChanged) await translateBio(ctx, profile);
   if (nameChanged) await translateName(ctx, profile);
-  await invalidateAstroCache();
+  await invalidateAstroCache(ctx);
   return profile;
 }
 
@@ -355,7 +355,7 @@ async function adminCreate(ctx, body, adminId) {
   // languages at insert-time so the user app renders them localized immediately.
   await translateBio(ctx, profile);
   await translateName(ctx, profile);
-  await invalidateAstroCache();
+  await invalidateAstroCache(ctx);
   // System template: welcome notification for the new astrologer (if enabled).
   require('./broadcastService').fireEvent(ctx, 'astrologer_signup', { userId: user._id, vars: { name: name || 'there' } });
   return profile;
@@ -410,7 +410,7 @@ async function adminDelete(ctx, profileId, adminId) {
   profile.currentCallStatus = 'offline';
   await profile.save();
   await User.updateOne({ _id: profile.user }, { $set: { role: 'user' } });
-  await invalidateAstroCache();
+  await invalidateAstroCache(ctx);
   await broadcastStatus(ctx, profile._id, { isOnline: false, currentCallStatus: 'offline' });
 }
 
@@ -441,7 +441,7 @@ async function adminDeleteApplication(ctx, profileId) {
     // Keep the user (they're a real account); just unlink the profile.
     await User.updateOne({ _id: userId }, { $unset: { astrologerProfile: '' } });
   }
-  await invalidateAstroCache();
+  await invalidateAstroCache(ctx);
 }
 
 // Fields hidden from public reads (heavy/private sub-docs).
@@ -514,13 +514,13 @@ async function listPublic(ctx, { q: search, expertise, language, online, feature
   if (isRandom) return runRandom();
   if (term) return run();
   const cacheKey = `list:${expertise || '-'}:${language || '-'}:${online || '-'}:${featured || '-'}:${cityTerm.toLowerCase() || '-'}:${page}:${limit}`;
-  return cacheService.withCache(CACHE_NS, cacheKey, LIST_TTL, run);
+  return cacheService.withCache(ctx, CACHE_NS, cacheKey, LIST_TTL, run);
 }
 
 async function getPublic(ctx, profileId) {
   ctx = ctx || defaultContext();
   const AstrologerProfile = ctx.model('AstrologerProfile');
-  const cached = await cacheService.withCache(CACHE_NS, `profile:${profileId}`, PROFILE_TTL, async () => {
+  const cached = await cacheService.withCache(ctx, CACHE_NS, `profile:${profileId}`, PROFILE_TTL, async () => {
     const profile = await AstrologerProfile.findById(profileId)
       .select('-recentMisses -kycDocuments -payoutDetails -adminNote')
       .populate('user', 'name')
@@ -573,7 +573,7 @@ async function updateMyProfile(ctx, userId, body) {
   if (profileCompleted !== undefined) userSet.profileCompleted = profileCompleted;
   if (Object.keys(userSet).length) await User.updateOne({ _id: userId }, { $set: userSet });
 
-  await invalidateAstroCache();
+  await invalidateAstroCache(ctx);
   return profile;
 }
 

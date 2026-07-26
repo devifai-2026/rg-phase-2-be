@@ -168,11 +168,28 @@ const env = {
   },
 
   socket: {
-    adapter: process.env.SOCKET_ADAPTER || 'redis', // redis | mongo | memory (falls back to memory if unreachable)
+    adapter: process.env.SOCKET_ADAPTER || 'redis', // redis | mongo | memory
     redisUrl: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
-    pingInterval: parseInt(process.env.SOCKET_PING_INTERVAL || '25000', 10),
-    pingTimeout: parseInt(process.env.SOCKET_PING_TIMEOUT || '20000', 10),
-    maxSocketsPerUser: parseInt(process.env.MAX_SOCKETS_PER_USER || '5', 10),
+    // When true (default), a requested redis/mongo adapter that fails to connect
+    // CRASHES the boot instead of silently degrading to the in-memory adapter.
+    // Degrading looks healthy but partitions every room across instances — see
+    // the comment in websockets/index.js. Only set false for single-instance dev.
+    adapterRequired: process.env.SOCKET_ADAPTER_REQUIRED !== 'false',
+    // 8s/8s → a dead socket is detected in ≤16s (was 25s/20s = 45s). Presence is
+    // derived from a live socket, so this interval IS the presence accuracy floor.
+    pingInterval: parseInt(process.env.SOCKET_PING_INTERVAL || '8000', 10),
+    pingTimeout: parseInt(process.env.SOCKET_PING_TIMEOUT || '8000', 10),
+    // Default 1 = true single-session, which is what the eviction logic in
+    // websockets/index.js was written for. Astrologers must be single-session so
+    // presence can't be kept alive by a stale socket on an old device.
+    maxSocketsPerUser: parseInt(process.env.MAX_SOCKETS_PER_USER || '1', 10),
+    // Seekers legitimately use more than one device (phone + tablet); they have
+    // no presence semantics, so a higher cap is safe.
+    maxSocketsPerUserSeeker: parseInt(process.env.MAX_SOCKETS_PER_USER_SEEKER || '3', 10),
+    // TTL on the Redis socket lease that presence is derived from. Must exceed
+    // pingInterval+pingTimeout so a healthy socket always refreshes in time, and
+    // stay small so a hard-killed instance's leases expire quickly.
+    leaseTtlSec: parseInt(process.env.SOCKET_LEASE_TTL_SEC || '20', 10),
   },
 
   presence: {

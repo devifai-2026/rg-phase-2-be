@@ -72,6 +72,10 @@ exports.updateSettings = asyncHandler(async (req, res) => {
   const s = await AdminSettings.get();
   Object.assign(s, req.body);
   await s.save();
+  // Settings are cached (read on every bill tick / session request / OTP login),
+  // so the cached copy MUST be dropped here or readers serve a stale value for up
+  // to CACHE_CONFIG_TTL_SEC.
+  await require('../services/cacheService').invalidateConfig(req.ctx, 'AdminSettings').catch(() => {});
   res.json({ success: true, data: s });
 });
 
@@ -808,25 +812,25 @@ exports.listRechargeTemplates = asyncHandler(async (req, res) => {
 });
 // Invalidate the app-facing recharge-packs cache after any write so users see
 // admin changes immediately (cache otherwise holds for its TTL).
-const bustRechargeCache = () => require('../services/cacheService').delNamespace('recharge').catch(() => {});
+const bustRechargeCache = (ctx) => require('../services/cacheService').delNamespace(ctx, 'recharge').catch(() => {});
 
 exports.createRechargeTemplate = asyncHandler(async (req, res) => {
   const RechargeTemplate = req.model('RechargeTemplate');
   const item = await RechargeTemplate.create(req.body);
-  bustRechargeCache();
+  bustRechargeCache(req.ctx);
   res.status(201).json({ success: true, data: item });
 });
 exports.updateRechargeTemplate = asyncHandler(async (req, res) => {
   const RechargeTemplate = req.model('RechargeTemplate');
   const item = await RechargeTemplate.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!item) throw new AppError('Recharge template not found', 404);
-  bustRechargeCache();
+  bustRechargeCache(req.ctx);
   res.json({ success: true, data: item });
 });
 exports.deleteRechargeTemplate = asyncHandler(async (req, res) => {
   const RechargeTemplate = req.model('RechargeTemplate');
   await RechargeTemplate.findByIdAndDelete(req.params.id);
-  bustRechargeCache();
+  bustRechargeCache(req.ctx);
   res.json({ success: true });
 });
 

@@ -11,11 +11,26 @@ const bqService = require('./services/bqService');
 
 let server;
 
+/**
+ * Clear presence rows this instanceId owned before the current process started.
+ * Best-effort and never blocks boot: the Redis leases expire on their own within
+ * env.socket.leaseTtlSec, so this only shortens the window from ~20s to ~0.
+ */
+function resetPresenceOnBoot() {
+  const { forEachTenant } = require('./utils/forEachTenant');
+  const presenceService = require('./services/presenceService');
+  return forEachTenant((ctx) => presenceService.resetInstancePresence(ctx, env.instanceId))
+    .catch((e) => logger.warn('boot presence reset failed', e.message));
+}
+
 async function start() {
   await connectDB();
 
   server = http.createServer(app);
-  const io = initSocket(server);
+  // AWAITED: initSocket connects the Redis adapter. Listening before it resolves
+  // binds early sockets to the in-memory adapter and then swaps the adapter out
+  // from under them, silently breaking cross-instance delivery for those clients.
+  const io = await initSocket(server);
   app.set('io', io);
 
   fcmService.init();
@@ -35,7 +50,13 @@ async function start() {
     connectControlDB()
       .then(() => require('./services/control/planService').seedPlans())
       .then(() => logger.info('SaaS control-plane ready'))
+      // Boot-time presence reset needs the tenant list, so it chains AFTER the
+      // control DB is up. A crash/SIGKILL leaves astrologers marked online with
+      // dead sockets; without this the reconcile sweep wouldn't notice for 60-150s.
+      .then(() => resetPresenceOnBoot())
       .catch((e) => logger.error('SaaS control-plane boot failed', e.message));
+  } else {
+    resetPresenceOnBoot();
   }
 
   server.listen(env.port, () => {

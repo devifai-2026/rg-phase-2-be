@@ -140,7 +140,7 @@ exports.checkoutWallet = asyncHandler(async (req, res) => {
     data: { orderId: String(order._id), status: 'confirmed' },
   }).catch(() => {});
   // Live admin-console badge + bell.
-  require('../websockets/emit').adminActivity('order', { id: order._id, title: `New order ₹${order.total}` });
+  require('../websockets/emit').adminActivity(req.ctx, 'order', { id: order._id, title: `New order ₹${order.total}` });
 
   res.status(201).json({ success: true, data: { order } });
 });
@@ -379,7 +379,7 @@ exports.createSupport = asyncHandler(async (req, res) => {
   });
 
   // Surface on the live admin console (badge/bell), same as new orders.
-  require('../websockets/emit').adminActivity('order_support', {
+  require('../websockets/emit').adminActivity(req.ctx, 'order_support', {
     id: ticket._id, title: `Help needed · order #${ticket.orderNoSnapshot}`,
   });
 

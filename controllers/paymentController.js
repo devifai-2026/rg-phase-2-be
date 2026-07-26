@@ -380,7 +380,7 @@ exports.payuCallback = asyncHandler(async (req, res) => {
         data: { orderId: String(order._id) },
       });
       // Live admin-console badge + bell.
-      emit.adminActivity('order', { id: order._id, title: `New order ₹${order.total}` });
+      emit.adminActivity(req.ctx, 'order', { id: order._id, title: `New order ₹${order.total}` });
     }
     return res.redirect(resultUrl('success', req));
   }

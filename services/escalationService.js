@@ -1,6 +1,7 @@
 const { defaultContext } = require('../utils/tenantContext');
 const emit = require('../websockets/emit');
 const logger = require('../utils/logger');
+const cacheService = require('./cacheService');
 
 /**
  * Records a missed/rejected request against an astrologer and raises an
@@ -14,7 +15,7 @@ async function recordMiss(ctx, { astrologerUserId, sessionId, kind }) {
   const AdminSettings = ctx.model('AdminSettings');
   const User = ctx.model('User');
 
-  const settings = await AdminSettings.get();
+  const settings = await cacheService.config(ctx, 'AdminSettings');
   const windowMs = settings.escalationWindowMinutes * 60 * 1000;
   const now = Date.now();
   const cutoff = new Date(now - windowMs);
@@ -52,14 +53,14 @@ async function recordMiss(ctx, { astrologerUserId, sessionId, kind }) {
 
       const astro = await User.findById(astrologerUserId).select('name phone');
       logger.warn('Astrologer escalation raised', { astrologer: String(astrologerUserId), count: fresh.length });
-      emit.toAdmins('escalation-raised', {
+      emit.toAdmins(ctx, 'escalation-raised', {
         id: String(esc._id),
         astrologer: { id: String(astrologerUserId), name: astro && astro.name, phone: astro && astro.phone },
         missCount: fresh.length,
         reason: esc.reason,
       });
       // Live admin-console badge + bell.
-      emit.adminActivity('escalation', { id: esc._id, title: `Escalation: ${astro && astro.name ? astro.name : 'astrologer'}` });
+      emit.adminActivity(ctx, 'escalation', { id: esc._id, title: `Escalation: ${astro && astro.name ? astro.name : 'astrologer'}` });
     }
     // Reset the window counter so we don't re-fire on every subsequent miss.
     await AstrologerProfile.updateOne({ _id: profile._id }, { $set: { recentMisses: [] } });

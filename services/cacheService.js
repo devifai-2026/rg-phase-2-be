@@ -61,16 +61,41 @@ async function getClient() {
   return connecting;
 }
 
-function key(namespace, id) {
-  return `${env.cache.keyPrefix}:${namespace}:${id}`;
+/**
+ * Resolve a tenant slug from a ctx / tenant doc / raw slug. Every cache key MUST
+ * carry one: keys were previously `rg:<ns>:<id>` with no tenant segment, so two
+ * tenants asking for the same namespace+id would collide. Today the only callers
+ * are delNamespace() invalidations (harmless over-invalidation), but the first
+ * get/set added would have served tenant A's data to tenant B.
+ */
+function slugOf(tenantOrCtx) {
+  if (!tenantOrCtx) return null;
+  if (typeof tenantOrCtx === 'string') return tenantOrCtx;
+  if (tenantOrCtx.tenant && tenantOrCtx.tenant.slug) return tenantOrCtx.tenant.slug;
+  if (tenantOrCtx.slug) return tenantOrCtx.slug;
+  return null;
+}
+
+function tenantSeg(tenantOrCtx) {
+  const slug = slugOf(tenantOrCtx);
+  if (slug) return slug;
+  // Single-tenant mode has no ctx.tenant — 'default' matches the synthetic tenant
+  // in middlewares/tenantResolver.js, so keys stay stable there.
+  if (!env.saas.enabled) return 'default';
+  logger.warn('cacheService called without a tenant in multi-tenant mode — using "unscoped"');
+  return 'unscoped';
+}
+
+function key(tenantOrCtx, namespace, id) {
+  return `${env.cache.keyPrefix}:${tenantSeg(tenantOrCtx)}:${namespace}:${id}`;
 }
 
 /** Get a parsed value, or null if missing / cache unavailable. */
-async function get(namespace, id) {
+async function get(tenantOrCtx, namespace, id) {
   const c = await getClient();
   if (!c || !healthy) return null;
   try {
-    const raw = await c.get(key(namespace, id));
+    const raw = await c.get(key(tenantOrCtx, namespace, id));
     return raw == null ? null : JSON.parse(raw);
   } catch (e) {
     logger.debug('cache.get failed', e.message);
@@ -79,35 +104,37 @@ async function get(namespace, id) {
 }
 
 /** Set a value with TTL (seconds). No-op if cache unavailable. */
-async function set(namespace, id, value, ttlSec = env.cache.defaultTtlSec) {
+async function set(tenantOrCtx, namespace, id, value, ttlSec = env.cache.defaultTtlSec) {
   const c = await getClient();
   if (!c || !healthy) return;
   try {
-    await c.set(key(namespace, id), JSON.stringify(value), { EX: ttlSec });
+    await c.set(key(tenantOrCtx, namespace, id), JSON.stringify(value), { EX: ttlSec });
   } catch (e) {
     logger.debug('cache.set failed', e.message);
   }
 }
 
 /** Delete one key. No-op if cache unavailable. */
-async function del(namespace, id) {
+async function del(tenantOrCtx, namespace, id) {
   const c = await getClient();
   if (!c || !healthy) return;
   try {
-    await c.del(key(namespace, id));
+    await c.del(key(tenantOrCtx, namespace, id));
   } catch (e) {
     logger.debug('cache.del failed', e.message);
   }
 }
 
 /**
- * Invalidate every key in a namespace (e.g. del all cached astrologer-list
- * variants). Uses SCAN (non-blocking) — safe on a live instance.
+ * Invalidate every key in ONE TENANT's namespace (e.g. del all cached
+ * astrologer-list variants for that tenant). Uses SCAN (non-blocking) — safe on
+ * a live instance. Scoped by tenant so invalidating tenant A no longer wipes
+ * every other tenant's cache too.
  */
-async function delNamespace(namespace) {
+async function delNamespace(tenantOrCtx, namespace) {
   const c = await getClient();
   if (!c || !healthy) return;
-  const match = `${env.cache.keyPrefix}:${namespace}:*`;
+  const match = `${env.cache.keyPrefix}:${tenantSeg(tenantOrCtx)}:${namespace}:*`;
   try {
     for await (const k of c.scanIterator({ MATCH: match, COUNT: 200 })) {
       await c.del(k);
@@ -121,16 +148,55 @@ async function delNamespace(namespace) {
  * Cache-aside helper: return the cached value, or run `loader()`, cache it, and
  * return it. If the cache is unavailable, just runs the loader (no caching).
  *
- *   const list = await cacheService.withCache('astro', 'list:online', 30,
+ * The first argument is the tenant (a ctx, tenant doc, or slug) — REQUIRED so
+ * two tenants can never share a cache entry for the same namespace+id.
+ *
+ *   const list = await cacheService.withCache(ctx, 'astro', 'list:online', 30,
  *     () => AstrologerProfile.find({ isOnline: true }).lean());
  */
-async function withCache(namespace, id, ttlSec, loader) {
-  const cached = await get(namespace, id);
+async function withCache(tenantOrCtx, namespace, id, ttlSec, loader) {
+  const cached = await get(tenantOrCtx, namespace, id);
   if (cached !== null) return cached;
   const fresh = await loader();
   // Only cache non-empty results to avoid caching transient failures as [].
-  if (fresh !== undefined && fresh !== null) await set(namespace, id, fresh, ttlSec);
+  if (fresh !== undefined && fresh !== null) await set(tenantOrCtx, namespace, id, fresh, ttlSec);
   return fresh;
+}
+
+// ── Config singletons ───────────────────────────────────────────────────────
+// One document per tenant (AdminSettings, AppConfig, AgoraConfig, …) read on the
+// hottest paths and written only when an admin edits them. AdminSettings.get()
+// alone runs inside processBillTick — a findOne per minute PER ACTIVE SESSION —
+// plus session request, OTP login, payouts and escalations.
+//
+// Cached as PLAIN OBJECTS (lean shape). Callers that only read fields get a
+// Redis hit instead of a Mongo round-trip; anything needing a real Mongoose
+// document (to mutate + save) must keep using Model.get() directly.
+const CONFIG_NS = 'cfg';
+const CONFIG_TTL = parseInt(process.env.CACHE_CONFIG_TTL_SEC || '300', 10);
+
+/**
+ * Read a tenant's config singleton through the cache.
+ *   const s = await cacheService.config(ctx, 'AdminSettings');
+ * Falls straight through to Mongo when the cache is off or unavailable, so this
+ * is always safe to call.
+ */
+async function config(ctx, modelName, ttlSec = CONFIG_TTL) {
+  return withCache(ctx, CONFIG_NS, modelName, ttlSec, async () => {
+    const doc = await ctx.model(modelName).get();
+    // toObject() so the cached JSON round-trips predictably (no Mongoose internals).
+    return doc && typeof doc.toObject === 'function' ? doc.toObject() : doc;
+  });
+}
+
+/**
+ * Invalidate one (or every) cached config singleton for a tenant. MUST be called
+ * by any write path that mutates a config doc, else readers serve a stale value
+ * for up to CONFIG_TTL.
+ */
+async function invalidateConfig(ctx, modelName) {
+  if (modelName) return del(ctx, CONFIG_NS, modelName);
+  return delNamespace(ctx, CONFIG_NS);
 }
 
 /** Raw client access for the online-set (SADD/SREM/SMEMBERS). Null if down. */
@@ -146,4 +212,7 @@ async function close() {
   }
 }
 
-module.exports = { enabled, get, set, del, delNamespace, withCache, raw, key, close };
+module.exports = {
+  enabled, get, set, del, delNamespace, withCache, raw, key, close,
+  config, invalidateConfig, CONFIG_NS,
+};

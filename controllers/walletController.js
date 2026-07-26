@@ -15,7 +15,7 @@ exports.getBalance = asyncHandler(async (req, res) => {
  * through to a direct Mongo read when the cache is off/unavailable.
  */
 exports.listRechargeTemplates = asyncHandler(async (req, res) => {
-  const items = await cacheService.withCache('recharge', 'active', 3600, async () => {
+  const items = await cacheService.withCache(req.ctx, 'recharge', 'active', 3600, async () => {
     const RechargeTemplate = req.model('RechargeTemplate');
     return RechargeTemplate.find({ isActive: true }).sort({ sortOrder: 1, amount: 1 }).lean();
   });

@@ -6,6 +6,7 @@ const { normalizePhone } = require('../utils/phone');
 const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const { defaultContext } = require('../utils/tenantContext');
+const cacheService = require('./cacheService');
 
 async function issueRefresh(ctx, user, meta = {}) {
   ctx = ctx || defaultContext();
@@ -51,7 +52,7 @@ async function verifyOtp(ctx, phone, code, meta = {}) {
     // Auto-create the user's astro-themed referral code on signup.
     await require('./referralService').ensureCode(ctx, user).catch(() => {});
     // New-user perks — admin can enable either, both, or neither.
-    const settings = await AdminSettings.get();
+    const settings = await cacheService.config(ctx, 'AdminSettings');
     if (settings.signupBonusEnabled && settings.signupBonus > 0) {
       await walletService.credit(ctx, {
         userId: user._id,
@@ -118,7 +119,7 @@ async function adminCreateUser(ctx, { phone, code, name, email }) {
   });
 
   // Same new-user perks as the public flow (admin chose to apply them).
-  const settings = await AdminSettings.get();
+  const settings = await cacheService.config(ctx, 'AdminSettings');
   if (settings.signupBonusEnabled && settings.signupBonus > 0) {
     await walletService.credit(ctx, {
       userId: user._id,

@@ -17,7 +17,7 @@ async function create(ctx, { name, email, phone, subject, message, anonId, sourc
     userAgent: userAgent || '',
   });
   // Live admin-console badge + bell.
-  require('../websockets/emit').adminActivity('enquiry', { id: doc._id, title: `Enquiry: ${subject || name || 'New enquiry'}` });
+  require('../websockets/emit').adminActivity(ctx, 'enquiry', { id: doc._id, title: `Enquiry: ${subject || name || 'New enquiry'}` });
   return { id: doc._id };
 }
 

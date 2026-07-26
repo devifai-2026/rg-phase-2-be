@@ -5,9 +5,15 @@ const env = require('../config/env');
 const logger = require('../utils/logger');
 const emit = require('./emit');
 const presenceService = require('../services/presenceService');
+const presenceRegistry = require('../services/presenceRegistry');
 const chatService = require('../services/chatService');
 const sessionService = require('../services/sessionService');
 const fcmService = require('../services/fcmService');
+
+// Throttle for liveService.touchHeartbeat from the app-level heartbeat. Must stay
+// comfortably under liveService's LIVE_STALE_MS (45s) so a healthy broadcast is
+// never swept, while capping the write rate regardless of client beat cadence.
+const LIVE_TOUCH_MS = parseInt(process.env.LIVE_TOUCH_MS || '15000', 10);
 
 /** Per-process socket map: userId -> Set<socketId> (fast local cleanup). */
 const local = new Map();
@@ -51,11 +57,28 @@ async function applyAdapter(io) {
       logger.info('Socket.io using in-memory adapter (single instance)');
     }
   } catch (e) {
+    // FAIL FAST when a cross-instance adapter was explicitly requested. Silently
+    // degrading to the in-memory adapter on a multi-instance deployment produces
+    // a split brain that LOOKS healthy: every instance serves traffic, but
+    // `io.to('user:<id>')` only reaches sockets on the same process, so incoming
+    // consultation requests, chat messages and presence events vanish for anyone
+    // connected elsewhere. A crashed instance is safe (the LB drops it); a
+    // silently-partitioned one is not. Set SOCKET_ADAPTER_REQUIRED=false to opt
+    // back into the old degrade-to-memory behaviour (single-instance dev only).
+    if (env.socket.adapterRequired) {
+      logger.error(`Socket adapter '${mode}' is REQUIRED but failed to initialize`, e.message);
+      throw e;
+    }
     logger.warn(`Socket adapter '${mode}' failed; falling back to memory`, e.message);
   }
 }
 
-function initSocket(httpServer) {
+// ASYNC: callers MUST await this before server.listen(). applyAdapter() connects
+// to Redis, and previously this returned before that resolved — so sockets that
+// connected in the gap were bound to the default in-memory adapter and then had
+// the real adapter swapped underneath them, permanently losing cross-instance
+// routing for those connections.
+async function initSocket(httpServer) {
   const io = new Server(httpServer, {
     cors: { origin: true, credentials: true },
     pingInterval: env.socket.pingInterval,
@@ -63,7 +86,7 @@ function initSocket(httpServer) {
     connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000 },
   });
 
-  applyAdapter(io);
+  await applyAdapter(io);
   emit.setIo(io);
 
   // JWT handshake auth. The token carries tenantSlug (multi-tenant); we resolve
@@ -96,22 +119,62 @@ function initSocket(httpServer) {
     // presence and the client's connected-state. Evict the user's prior sockets
     // now so exactly one (this newest) survives. Bounded by maxSocketsPerUser as
     // a safety cap in case a user legitimately uses multiple devices.
-    const cap = Math.max(1, env.socket.maxSocketsPerUser || 1);
-    const prior = Array.from(local.get(userId) || []);
+    // Astrologers are single-session (their presence must not be kept alive by a
+    // stale socket on an old device); seekers legitimately use several devices.
+    const cap = socket.role === 'astrologer'
+      ? Math.max(1, env.socket.maxSocketsPerUser || 1)
+      : Math.max(1, env.socket.maxSocketsPerUserSeeker || env.socket.maxSocketsPerUser || 1);
+
+    // ADAPTER-AWARE: fetchSockets() asks the adapter, so it sees this user's
+    // sockets on EVERY instance. The previous version read the process-local
+    // `local` Map + io.sockets.sockets, so a user reconnecting onto a different
+    // instance left a live socket behind on the old one — two sockets survived and
+    // their heartbeats fought over the same presence row.
+    let prior = [];
+    try {
+      const remote = await io.in(`user:${userId}`).fetchSockets();
+      prior = remote.filter((s) => s.id !== socket.id);
+    } catch (e) {
+      // Adapter unavailable → fall back to the local view (exact on one instance).
+      logger.debug('fetchSockets failed; falling back to local socket map', e.message);
+      prior = Array.from(local.get(userId) || [])
+        .filter((sid) => sid !== socket.id)
+        .map((sid) => io.sockets.sockets.get(sid))
+        .filter(Boolean);
+    }
     // Keep the (cap-1) most recent priors; disconnect the rest + always make room
     // for this new one. With cap=1 this disconnects ALL priors (true single-session).
     const toEvict = cap <= 1 ? prior : prior.slice(0, Math.max(0, prior.length - (cap - 1)));
-    for (const oldSid of toEvict) {
-      const old = io.sockets.sockets.get(oldSid);
-      if (old && old.id !== socket.id) {
-        try { old.disconnect(true); } catch (_) {}
-      }
-      removeLocal(userId, oldSid);
+    for (const old of toEvict) {
+      try { old.disconnect(true); } catch (_) {}
+      removeLocal(userId, old.id);
+      // Drop the evicted socket's lease immediately — its own disconnect handler
+      // runs on the instance that owns it, which may not be this one.
+      presenceRegistry.unregister(socket.ctx, userId, old.id).catch(() => {});
     }
 
     socket.join(`user:${userId}`);
-    if (socket.role === 'admin' || socket.role === 'super_admin') socket.join('admin-room');
+    // Tenant fan-out room. Every socket joins so emit.toTenant() can reach one
+    // tenant's users without the old bare io.emit(), which announced a tenant's
+    // astrologer-status changes to every connected user of EVERY tenant.
+    const tSlug = socket.tenantSlug || 'default';
+    socket.join(`tenant:${tSlug}`);
+    // Admin room is per-tenant: 'admin-room' was global, so every tenant's
+    // admins received every other tenant's activity badges.
+    if (socket.role === 'admin' || socket.role === 'super_admin') socket.join(`admin-room:${tSlug}`);
     addLocal(userId, socket.id);
+    // Redis socket lease — the AUTHORITY for "has a live socket". Presence is
+    // derived from this, so it must exist before the recompute below.
+    await presenceRegistry.register(socket.ctx, userId, socket.id, env.instanceId);
+    // Refresh the lease on every engine.io pong. This is free: the pong already
+    // fires every pingInterval, so presence stays fresh with ONE Redis EXPIRE per
+    // interval and zero Mongo writes — replacing the old 3s app-level heartbeat
+    // that cost ~6 Mongo round-trips × 20/min per online astrologer.
+    socket.conn.on('packet', (p) => {
+      if (p && p.type === 'pong') {
+        presenceRegistry.touch(socket.ctx, userId).catch(() => {});
+      }
+    });
     await presenceService.userConnected(socket.ctx, userId, socket.role);
 
     // Connecting does NOT force an astrologer online — it RESTORES their saved
@@ -328,24 +391,29 @@ function initSocket(httpServer) {
       if (to) emit.toUser(to, 'messages-read', { sessionId, by: String(userId) });
     });
 
-    // Heartbeat (ping) carries activity (pageViews, searches, lastPage,
+    // Heartbeat carries activity counters (pageViews, searches, lastPage,
     // lastSearch) accumulated by the client since the last beat. Ack = pong.
-    // For an ASTROLOGER, a live heartbeat is proof of a live socket, so we keep
-    // their presence row online (refreshes lastSeen + online flag). This makes
-    // a frequent client heartbeat the keep-alive that prevents the "socket died
-    // silently → astrologer shows offline to users" drift.
+    //
+    // DELIBERATELY CHEAP. Socket liveness is proven by the engine.io pong (which
+    // refreshes the Redis lease above), NOT by this app-level beat — so this
+    // handler must not recompute presence. It used to call
+    // recomputeAstrologerPresence + liveService.touchHeartbeat on EVERY beat,
+    // which at the client's old 3s cadence meant ~6 Mongo round-trips × 20/min
+    // per online astrologer, all on the same event loop as the REST API.
+    //
+    // Presence now recomputes only on real transitions: connect, disconnect,
+    // toggle, session start/end, break.
     socket.on('heartbeat', async (activity, cb) => {
       await presenceService.heartbeat(socket.ctx, userId, activity || {}).catch(() => {});
-      // For astrologers, reconcile the DERIVED status off this proven-live socket
-      // so profile.isOnline can't stay stale-false while they're actively beating.
-      // recomputeAstrologerPresence only broadcasts when the value actually
-      // changes is not guaranteed — but it's cheap and self-corrects drift.
+      // Live-broadcast proof-of-life still needs a periodic touch, but it is
+      // throttled to at most once per LIVE_TOUCH_MS so an old client beating at
+      // 3s can't reintroduce the write storm.
       if (socket.role === 'astrologer') {
-        presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: true }).catch(() => {});
-        // Proof-of-life for any active broadcast: keeps a healthy live out of the
-        // server stale-sweep even if the in-memory disconnect grace timer was
-        // lost (process restart/crash). No-op when they aren't live.
-        require('../services/liveService').touchHeartbeat(socket.ctx, userId).catch(() => {});
+        const now = Date.now();
+        if (!socket._lastLiveTouch || now - socket._lastLiveTouch > LIVE_TOUCH_MS) {
+          socket._lastLiveTouch = now;
+          require('../services/liveService').touchHeartbeat(socket.ctx, userId).catch(() => {});
+        }
       }
       if (typeof cb === 'function') cb({ ok: true, t: Date.now() }); // pong
     });
@@ -397,8 +465,14 @@ function initSocket(httpServer) {
         socket._liveRooms.clear();
       }
       const remaining = removeLocal(userId, socket.id);
+      // Drop the Redis lease FIRST so the recompute below sees the correct
+      // connectivity. Returns the CROSS-INSTANCE remaining count (null if Redis
+      // is unavailable); `remaining` above is only this process's view, which
+      // would wrongly report 0 for a user whose other device is on another node.
+      const leasesLeft = await presenceRegistry.unregister(socket.ctx, userId, socket.id);
+      const noSocketsAnywhere = leasesLeft === null ? remaining === 0 : leasesLeft === 0;
       const fullyOffline = await presenceService.userDisconnected(socket.ctx, userId);
-      if (fullyOffline && remaining === 0 && socket.role === 'astrologer') {
+      if (fullyOffline && noSocketsAnywhere && socket.role === 'astrologer') {
         await presenceService.recomputeAstrologerPresence(socket.ctx, userId, { connected: false });
         // Internet dropped / app killed → auto-end any active broadcast after a
         // short grace window (cancelled if they reconnect in time).

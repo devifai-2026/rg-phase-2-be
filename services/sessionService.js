@@ -14,6 +14,7 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 const { defaultContext } = require('../utils/tenantContext');
+const cacheService = require('./cacheService');
 
 /**
  * Unified engine for CALL, CHAT and VIDEO sessions. All three are per-minute
@@ -73,7 +74,7 @@ async function requestSession(ctx, { userId, astrologerUserId, type }) {
   const { available } = await walletService.getBalance(ctx, userId);
   if (available < ratePerMin) throw new AppError('Insufficient balance for even 1 minute', 402);
 
-  const settings = await AdminSettings.get();
+  const settings = await cacheService.config(ctx, 'AdminSettings');
   const maxByBalance = Math.floor(available / ratePerMin);
   const minutesToReserve = Math.min(maxByBalance, settings.callMaxMinutes || env.call.maxMinutes);
   const lockedAmount = ratePerMin * minutesToReserve;
@@ -301,7 +302,7 @@ async function cancelSession(ctx, { sessionId, userId }) {
   // Tell the astrologer's ring screen to dismiss, and log the event for admins.
   emit.toUser(session.astrologer, 'request-cancelled', { sessionId });
   pushCallCancel(ctx, session.astrologer, sessionId); // dismiss CallKit on a closed app
-  emit.adminActivity('session_cancelled', { id: session._id, title: `Request cancelled (${session.type})` });
+  emit.adminActivity(ctx, 'session_cancelled', { id: session._id, title: `Request cancelled (${session.type})` });
   return session;
 }
 
@@ -497,7 +498,7 @@ async function processBillTick(ctx, sessionId, minute) {
   }
 
   // Cap on max minutes.
-  const settings = await AdminSettings.get();
+  const settings = await cacheService.config(ctx, 'AdminSettings');
   if (minute >= (settings.callMaxMinutes || env.call.maxMinutes)) {
     await endSession(ctx, { sessionId, endReason: 'timeout' });
     return;
@@ -524,7 +525,7 @@ async function topUpSessionLock(ctx, { sessionId }) {
   const session = await Session.findOne({ sessionId });
   if (!session || session.status !== 'ongoing') return null;
 
-  const settings = await AdminSettings.get();
+  const settings = await cacheService.config(ctx, 'AdminSettings');
   const maxMinutes = settings.callMaxMinutes || env.call.maxMinutes;
 
   // Minutes already reserved (locked) for this session, and the ceiling.
@@ -632,7 +633,7 @@ async function endSession(ctx, { sessionId, endReason = 'hangup', byUserId } = {
     if (recomputed) {
       const prof = await AstrologerProfile.findOne({ user: finalSession.astrologer }).select('_id').lean();
       if (prof) {
-        emit.broadcast('astrologer-status', {
+        emit.toTenant(ctx, 'astrologer-status', {
           profileId: String(prof._id),
           isOnline: recomputed.isOnline,
           currentCallStatus: recomputed.currentCallStatus,

@@ -192,7 +192,7 @@ exports.markOrderSentToAdmin = asyncHandler(async (req, res) => {
   if (!order) throw new AppError('Order not found', 404);
   await Order.updateOne({ _id: order._id }, { $addToSet: { sentToAdminBy: req.user._id } });
   // Let the admin console know the seller dispatched their item.
-  try { require('../websockets/emit').adminActivity('order', { id: order._id, title: `Astrologer sent items for order ${String(order._id).slice(-6)}` }); } catch (_) {}
+  try { require('../websockets/emit').adminActivity(req.ctx, 'order', { id: order._id, title: `Astrologer sent items for order ${String(order._id).slice(-6)}` }); } catch (_) {}
   res.json({ success: true, data: { sentToAdmin: true } });
 });
 

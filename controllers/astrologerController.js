@@ -299,7 +299,7 @@ exports.savePayoutDetails = asyncHandler(async (req, res) => {
   const masked = payoutDetails.accountNumber
     ? `••••${payoutDetails.accountNumber.slice(-4)}`
     : payoutDetails.upi;
-  require('../websockets/emit').adminActivity('bank_account', {
+  require('../websockets/emit').adminActivity(req.ctx, 'bank_account', {
     id: profile._id,
     title: `${profile.displayName || 'An astrologer'} updated payout details (${masked})`,
   });

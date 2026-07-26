@@ -2,6 +2,7 @@ const { defaultContext } = require('../utils/tenantContext');
 const walletService = require('./walletService');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
+const cacheService = require('./cacheService');
 
 // Astro-themed code prefixes → e.g. STAR7K2, COSMIC9X, RAASHI4F.
 const ASTRO_WORDS = ['STAR', 'COSMIC', 'RAASHI', 'KUNDLI', 'NAKSHA', 'GRAHA', 'SHANI', 'SURYA', 'CHANDRA', 'RAHU', 'GURU', 'MANGAL'];
@@ -41,7 +42,7 @@ async function ensureCode(ctx, user) {
 async function rewardAmount(ctx) {
   ctx = ctx || defaultContext();
   try {
-    const s = await ctx.model('AdminSettings').get();
+    const s = await cacheService.config(ctx, 'AdminSettings');
     return s.referralReward != null ? Number(s.referralReward) : 50;
   } catch (_) {
     return 50;

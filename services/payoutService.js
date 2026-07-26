@@ -7,6 +7,7 @@ const AppError = require('../utils/AppError');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 const { defaultContext } = require('../utils/tenantContext');
+const cacheService = require('./cacheService');
 
 function isConfigured() {
   return !!(env.payu.payout.clientId && env.payu.payout.clientSecret);
@@ -19,7 +20,7 @@ async function requestWithdrawal(ctx, { astrologerUserId, amount, bankAccountDet
   ctx = ctx || defaultContext();
   const WithdrawalRequest = ctx.model('WithdrawalRequest');
   const AdminSettings = ctx.model('AdminSettings');
-  const settings = await AdminSettings.get();
+  const settings = await cacheService.config(ctx, 'AdminSettings');
   if (amount < settings.withdrawalThreshold) {
     throw new AppError(`Minimum withdrawal is ₹${settings.withdrawalThreshold}`, 400);
   }
@@ -55,7 +56,7 @@ async function requestWithdrawal(ctx, { astrologerUserId, amount, bankAccountDet
     data: { withdrawalId: String(wr._id) },
   });
   // Live admin-console badge + bell.
-  require('../websockets/emit').adminActivity('withdrawal', { id: wr._id, title: `Withdrawal ₹${amount} pending` });
+  require('../websockets/emit').adminActivity(ctx, 'withdrawal', { id: wr._id, title: `Withdrawal ₹${amount} pending` });
   return wr;
 }
 

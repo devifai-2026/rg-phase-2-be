@@ -16,9 +16,9 @@ async function createTicket(ctx, { userId, role, category, subject, description,
     attachments: attachments || [],
     messages: [{ sender: userId, fromRole: role, message: description }],
   });
-  emit.toAdmins('support-ticket-created', { id: String(ticket._id), subject, category, role });
+  emit.toAdmins(ctx, 'support-ticket-created', { id: String(ticket._id), subject, category, role });
   // Live admin-console badge + bell.
-  emit.adminActivity('support', { id: ticket._id, title: `Support: ${subject || category || 'New ticket'}` });
+  emit.adminActivity(ctx, 'support', { id: ticket._id, title: `Support: ${subject || category || 'New ticket'}` });
   return ticket;
 }
 
@@ -62,7 +62,7 @@ async function reply(ctx, { ticketId, senderId, fromRole, message, isAdmin = fal
       data: { ticketId: String(t._id) },
     });
   } else {
-    emit.toAdmins('support-ticket-reply', { id: String(t._id), subject: t.subject });
+    emit.toAdmins(ctx, 'support-ticket-reply', { id: String(t._id), subject: t.subject });
   }
   return t;
 }

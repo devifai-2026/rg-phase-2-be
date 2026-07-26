@@ -130,7 +130,7 @@ async function endLive(ctx, { liveSessionId, astrologerUserId, reason = 'manual'
     const recomputed = await require('./presenceService').recomputeAstrologerPresence(ctx, astrologerUserId, {});
     const prof = await AstrologerProfile.findOne({ user: astrologerUserId }).select('_id').lean();
     if (recomputed && prof) {
-      emit.broadcast('astrologer-status', {
+      emit.toTenant(ctx, 'astrologer-status', {
         profileId: String(prof._id),
         isOnline: recomputed.isOnline,
         currentCallStatus: recomputed.currentCallStatus,

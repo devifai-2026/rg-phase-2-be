@@ -1,4 +1,5 @@
 const cacheService = require('./cacheService');
+const presenceRegistry = require('./presenceRegistry');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 const { defaultContext } = require('../utils/tenantContext');
@@ -212,15 +213,23 @@ async function recomputeAstrologerPresence(ctx, userId, { preference, connected 
     profile.availabilityPreference = !!profile.isOnline;
   }
 
-  // 2) Resolve the live-connection signal. A live socket (or an FCM ping ACK)
-  //    proves the device is reachable RIGHT NOW → refresh lastReachableAt so the
-  //    reachability window below stays fresh. `connected:true` is passed by the
-  //    socket heartbeat and the ping-ack path; `connected:false` by disconnect /
-  //    reconcile. When omitted, derive from the presence store.
+  // 2) Resolve the live-connection signal.
+  //    Authority order: explicit `connected` flag from the caller (socket connect
+  //    / disconnect) → the Redis socket lease → the Mongo presence store.
+  //    The Redis lease is the real authority: it is written on connect, refreshed
+  //    by the engine.io pong, and expires on its own (env.socket.leaseTtlSec) even
+  //    if the process is SIGKILLed.
   let live = connected;
   if (typeof live !== 'boolean') {
-    const doc = await Presence.findOne({ user: userId }).select('online socketCount').lean();
-    live = !!(doc && doc.online && doc.socketCount > 0);
+    // `null` means Redis could not answer — fall back to Mongo rather than
+    // treating unknown as offline (that would mass-offline everyone on a blip).
+    const leased = await presenceRegistry.isConnected(ctx, userId);
+    if (typeof leased === 'boolean') {
+      live = leased;
+    } else {
+      const doc = await Presence.findOne({ user: userId }).select('online socketCount').lean();
+      live = !!(doc && doc.online && doc.socketCount > 0);
+    }
   }
   if (live) profile.lastReachableAt = new Date();
 
@@ -237,9 +246,29 @@ async function recomputeAstrologerPresence(ctx, userId, { preference, connected 
   //    currentCallStatus==='busy' check would re-derive busy on reconnect even
   //    though the session already ended → users saw "busy" for a few seconds).
   //    So we only keep busy when an ongoing session exists for this astrologer.
+  //
+  //    CHANGED: a LIVE SOCKET is now required, not merely "reachable within
+  //    reachableTtlMs". The old rule let the FCM reachability probe keep a
+  //    force-killed astrologer `isOnline: true` for up to 5 minutes — a seeker saw
+  //    a green dot, requested a consultation, had their wallet locked, and the
+  //    incoming-request emit went to an empty room until the ring timed out. An
+  //    app-killed astrologer genuinely cannot answer; the FCM ping's job is now to
+  //    WAKE THE APP so it re-establishes a socket, not to stand in for one.
+  //
+  //    `reachable` is still computed and persisted because the reconcile sweep and
+  //    the FCM probe target selection both use lastReachableAt.
   const reachable = !!(profile.lastReachableAt &&
     (Date.now() - profile.lastReachableAt.getTime()) < env.presence.reachableTtlMs);
-  const wantOnline = !!profile.availabilityPreference && reachable;
+  const wantOnline = !!profile.availabilityPreference && !!live;
+  // Divergence signal: the device answers FCM pings but has no socket. Under the
+  // OLD rule this astrologer would have been shown ONLINE and un-callable — the
+  // exact bug this change fixes. Logged (not acted on) so the frequency is
+  // observable, and so a regression is visible in the logs rather than silent.
+  if (reachable && !live && profile.availabilityPreference) {
+    logger.debug('presence: reachable but no live socket → offline', {
+      astrologer: String(userId), tenant: (ctx.tenant && ctx.tenant.slug) || 'default',
+    });
+  }
   // An astrologer is busy while EITHER in a 1-on-1 consultation (accepted/ongoing
   // Session) OR broadcasting a LIVE session. Both must be checked, else a periodic
   // presence recompute would drop the busy flag a live broadcaster sets in
@@ -281,7 +310,7 @@ async function recomputeAstrologerPresence(ctx, userId, { preference, connected 
   await markAstrologerOnline(ctx, userId, profile.isOnline); // tenant-scoped Redis online-set
   if (changed) {
     try {
-      await cacheService.delNamespace('astro');
+      await cacheService.delNamespace(ctx, 'astro');
     } catch (_) {/* cache best-effort */}
   }
 
@@ -301,7 +330,7 @@ async function recomputeAstrologerPresence(ctx, userId, { preference, connected 
           if (ls) liveExtra = { live: true, liveSessionId: String(ls._id) };
         } catch (_) { /* best-effort */ }
       }
-      emit.broadcast('astrologer-status', {
+      emit.toTenant(ctx, 'astrologer-status', {
         profileId: String(profile._id),
         isOnline: profile.isOnline,
         currentCallStatus: profile.currentCallStatus,
@@ -504,6 +533,47 @@ async function nudgeAstrologerWaiting(ctx, astrologerUserId) {
   }
 }
 
+/**
+ * Boot-time reset: clear presence this instance owned in a PREVIOUS life.
+ *
+ * A crash / SIGKILL / hard `systemctl restart` kills every socket without running
+ * the disconnect handlers, so `Presence.online` and `AstrologerProfile.isOnline`
+ * survive as `true` with no socket behind them. The reconcile sweep only catches
+ * that at +60s (and its cutoff is another 90s), so there was a 60–150s window
+ * where seekers could request a consultation from an unreachable astrologer.
+ *
+ * Redis leases already expire on their own within leaseTtlSec, so this is belt
+ * and braces — but it makes a restart honest immediately instead of ~20s later,
+ * and it also covers the Redis-disabled case.
+ */
+async function resetInstancePresence(ctx, instanceId) {
+  ctx = ctx || defaultContext();
+  const Presence = ctx.model('Presence');
+  try {
+    // Drop any Redis leases still attributed to this instanceId.
+    await presenceRegistry.clearInstance(ctx, instanceId).catch(() => {});
+
+    const owned = await Presence.find({ online: true, instanceId }).select('user').lean();
+    if (!owned.length) return 0;
+    await Presence.updateMany(
+      { online: true, instanceId },
+      { $set: { online: false, socketCount: 0 } },
+    );
+    // Recompute through the single writer so the apps get a proper broadcast.
+    for (const p of owned) {
+      await recomputeAstrologerPresence(ctx, p.user, { connected: false }).catch(() => {});
+    }
+    logger.warn('presence reset on boot', {
+      instance: instanceId, cleared: owned.length,
+      tenant: (ctx.tenant && ctx.tenant.slug) || 'default',
+    });
+    return owned.length;
+  } catch (e) {
+    logger.warn('resetInstancePresence failed', e.message);
+    return 0;
+  }
+}
+
 /** Reconcile ghost-online entries (instance crashed without disconnect). */
 async function reconcile(ctx) {
   ctx = ctx || defaultContext();
@@ -546,6 +616,7 @@ module.exports = {
   markReachable,
   probeReachability,
   reconcile,
+  resetInstancePresence,
   markAstrologerOnline,
   getOnlineAstrologerIds,
   recomputeAstrologerPresence,
