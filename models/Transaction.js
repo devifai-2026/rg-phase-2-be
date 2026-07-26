@@ -11,7 +11,10 @@ const transactionSchema = new mongoose.Schema(
     type: { type: String, enum: ['credit', 'debit'], required: true },
     source: {
       type: String,
-      enum: ['recharge', 'call', 'chat', 'video', 'gift', 'product', 'pooja', 'withdrawal', 'refund', 'bonus', 'earning', 'adjustment', 'admin_manual'],
+      // 'ai_chat' is DISTINCT from 'chat' on purpose: every existing revenue
+      // report filters on source, and folding AI minutes into 'chat' would
+      // silently inflate human-consultation earnings.
+      enum: ['recharge', 'call', 'chat', 'video', 'ai_chat', 'gift', 'product', 'pooja', 'withdrawal', 'refund', 'bonus', 'earning', 'adjustment', 'admin_manual'],
       required: true,
     },
     amount: { type: Number, required: true, min: 1, set: (v) => Math.round(Number(v) || 0) }, // whole rupees
