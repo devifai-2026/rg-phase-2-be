@@ -315,6 +315,68 @@ async function deleteTenant(slug, ownerId) {
 }
 
 /**
+ * PURGE a tenant — irreversible hard delete. Unlike deleteTenant() (which only
+ * flips status to 'deleted' and retains everything), this removes every trace so
+ * the slug becomes REUSABLE:
+ *
+ *   1) DROP the tenant's Mongo database (users, sessions, wallets, ledgers…)
+ *   2) delete TenantSecret / Subscription / BuildJob / CronRun rows
+ *   3) delete the control-plane Tenant row — frees the unique slug index
+ *
+ * Order matters. The database is dropped FIRST because its connection URI lives
+ * in TenantSecret: deleting the secret first would orphan the database with no
+ * way left to reach it. A failed drop THROWS and aborts before anything else is
+ * removed — leaving the Tenant row intact is recoverable, whereas deleting it
+ * after a failed drop would strand the database permanently.
+ *
+ * The Tenant row is deleted LAST for the same reason: while it exists the tenant
+ * is still discoverable and re-purgeable.
+ *
+ * HealthSample is deliberately untouched — it is platform-wide (no tenant field).
+ *
+ * `dropDatabase: false` skips step 1: frees the slug but keeps the data as an
+ * orphaned database that must be dropped manually.
+ */
+async function purgeTenant(slug, { dropDatabase = true } = {}) {
+  const tenant = await Tenant.findOne({ slug });
+  if (!tenant) return null;
+
+  const summary = { slug, dbName: tenant.dbName, databaseDropped: false, removed: {} };
+
+  if (dropDatabase && tenant.dbName) {
+    let dbUri;
+    if (!tenant.dbOnDefaultCluster) {
+      const secret = await TenantSecret.findOne({ tenant: tenant._id });
+      dbUri = secret ? secret.decrypted().dbUri : undefined;
+    }
+    const conn = getTenantDb(tenant, dbUri);
+    await conn.dropDatabase(); // throws → abort, nothing else removed yet
+    summary.databaseDropped = true;
+    logger.warn('tenant database DROPPED', { slug, dbName: tenant.dbName });
+  }
+
+  // Control-plane rows. Best-effort per collection: a single failure here must
+  // not prevent the Tenant row deletion below, since that row is what actually
+  // blocks slug reuse.
+  const { Subscription, BuildJob, CronRun } = require('../../models/control');
+  const remove = async (label, fn) => {
+    try { const r = await fn(); summary.removed[label] = (r && r.deletedCount) || 0; }
+    catch (e) { summary.removed[label] = `failed: ${e.message}`; }
+  };
+  await remove('secrets', () => TenantSecret.deleteMany({ tenant: tenant._id }));
+  await remove('subscriptions', () => Subscription.deleteMany({ tenant: tenant._id }));
+  await remove('builds', () => BuildJob.deleteMany({ tenant: tenant._id }));
+  await remove('cronRuns', () => CronRun.deleteMany({ tenantSlug: slug }));
+
+  await Tenant.deleteOne({ _id: tenant._id });
+  summary.removed.tenant = 1;
+
+  require('../../middlewares/tenantResolver').invalidateTenant(slug);
+  logger.warn('tenant PURGED — slug is now reusable', summary);
+  return summary;
+}
+
+/**
  * Ensure the given Android applicationId(s) are not already used by any tenant
  * (in either the user or astrologer slot), and don't collide with each other.
  * `excludeTenantId` skips a tenant's own record (for updates). Throws 409 on clash.
@@ -345,4 +407,4 @@ async function assertAppIdsAvailable(userAppId, astroAppId, excludeTenantId) {
   }
 }
 
-module.exports = { createTenant, seedTenantDb, archiveTenant, reactivateTenant, deleteTenant, assertAppIdsAvailable, ensureTenantAdmin, setTenantAdminPhone };
+module.exports = { createTenant, seedTenantDb, archiveTenant, reactivateTenant, deleteTenant, purgeTenant, assertAppIdsAvailable, ensureTenantAdmin, setTenantAdminPhone };

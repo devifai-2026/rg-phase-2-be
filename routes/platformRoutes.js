@@ -65,7 +65,12 @@ router.delete('/tenants/:slug', ownerRoleOnly, ctrl.archiveTenant);
 router.post('/tenants/:slug/suspend', ownerRoleOnly, ctrl.archiveTenant);
 router.post('/tenants/:slug/reactivate', ownerRoleOnly, ctrl.reactivateTenant);
 // Permanent delete (irreversible) — requires { confirm: <slug> } in the body.
+// Soft: flips status to 'deleted'. The slug stays TAKEN (unique index), so it
+// cannot be reused — use /purge below for that.
 router.post('/tenants/:slug/delete', ownerRoleOnly, ctrl.deleteTenant);
+// HARD PURGE (irreversible): drops the tenant DATABASE and removes every
+// control-plane row, freeing the slug for reuse. Requires { confirm: <slug> }.
+router.post('/tenants/:slug/purge', ownerRoleOnly, ctrl.purgeTenant);
 
 // Plans & subscriptions & billing
 router.get('/plans', ctrl.listPlans);

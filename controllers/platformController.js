@@ -248,6 +248,22 @@ exports.deleteTenant = asyncHandler(async (req, res) => {
   res.json({ success: true, data: tenant });
 });
 
+/**
+ * HARD PURGE — irreversible. Drops the tenant database and removes every
+ * control-plane row so the slug can be reused. Requires { confirm: <slug> }.
+ * Pass dropDatabase:false to keep the data (slug still freed).
+ */
+exports.purgeTenant = asyncHandler(async (req, res) => {
+  if (req.body.confirm !== req.params.slug) {
+    throw new AppError('Type the tenant slug to confirm permanent deletion', 400);
+  }
+  const dropDatabase = req.body.dropDatabase !== false; // default: drop
+  const summary = await provisionService.purgeTenant(req.params.slug, { dropDatabase });
+  if (!summary) throw new AppError('Tenant not found', 404);
+  require('../utils/logger').warn('tenant purged by owner', { slug: req.params.slug, owner: String(req.owner._id), dropDatabase });
+  res.json({ success: true, data: summary });
+});
+
 // ── Plans & Subscriptions ───────────────────────────────────────────────────
 exports.listPlans = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await Plan.find().sort({ sortOrder: 1 }).lean() });
