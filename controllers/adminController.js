@@ -330,7 +330,9 @@ exports.listTransactions = asyncHandler(async (req, res) => {
   }
 
   const [items, total] = await Promise.all([
-    Transaction.find(match).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('user', 'name phone'),
+    // `role` drives the admin ledger's Role column — a credit to an astrologer
+    // (earning) reads very differently from one to a seeker (recharge).
+    Transaction.find(match).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('user', 'name phone role'),
     Transaction.countDocuments(match),
   ]);
   res.json({ success: true, data: { items, total, page, limit } });
