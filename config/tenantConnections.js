@@ -43,7 +43,10 @@ function withDbName(baseUri, dbName) {
  * TenantSecret.dbUri (optional).
  */
 function uriForTenant(tenant, secretDbUri) {
-  if (!tenant.dbOnDefaultCluster && secretDbUri) return secretDbUri;
+  // Always pin the database name. An owner-supplied dbUri is typically just a
+  // cluster address ("mongodb+srv://u:p@host/") — taken verbatim that connects
+  // to the driver's default db ("test"), silently stranding the tenant's data.
+  if (!tenant.dbOnDefaultCluster && secretDbUri) return withDbName(secretDbUri, tenant.dbName);
   return withDbName(env.mongoUri, tenant.dbName);
 }
 

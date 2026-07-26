@@ -61,17 +61,23 @@ async function createTenant({
     // 2) Provision the database (Atlas creates a scoped user; dev → default cluster).
     const prov = await atlasService.provisionTenantDb(slug);
     tenant.dbName = prov.dbName;
-    tenant.dbOnDefaultCluster = prov.onDefaultCluster;
+    // An owner-supplied dbUri WINS. Without this, an unconfigured Atlas returns
+    // onDefaultCluster:true and that verdict overwrote the owner's choice — the
+    // pasted URI was stored, never read, and the tenant silently landed on the
+    // shared default cluster. Only fall back to Atlas's answer when the owner
+    // gave us nothing to honour.
+    const ownDbUri = (secrets && secrets.dbUri) || null;
+    tenant.dbOnDefaultCluster = ownDbUri ? false : prov.onDefaultCluster;
     await tenant.save();
 
-    // 3) Store secrets encrypted (the setter encrypts). The provisioned dbUri
-    //    (if any) plus whatever the owner pasted at creation.
+    // 3) Store secrets encrypted (the setter encrypts). The owner's URI takes
+    //    priority; the Atlas-provisioned one is only a fallback.
     const secretDoc = { tenant: tenant._id, ...secrets };
-    if (prov.dbUri) secretDoc.dbUri = prov.dbUri;
+    if (!ownDbUri && prov.dbUri) secretDoc.dbUri = prov.dbUri;
     await TenantSecret.findOneAndUpdate({ tenant: tenant._id }, secretDoc, { upsert: true, new: true, setDefaultsOnInsert: true });
 
     // 4) Seed the tenant DB with essential config + branding.
-    const db = getTenantDb(tenant, prov.dbUri);
+    const db = getTenantDb(tenant, ownDbUri || prov.dbUri);
     const secretsFn = () => TenantSecret.findOne({ tenant: tenant._id }).then((s) => (s ? s.decrypted() : {}));
     const ctx = tenantContext({ tenant, db, secrets: secretsFn });
     await seedTenantDb(ctx, branding, config);
