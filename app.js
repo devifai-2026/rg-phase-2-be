@@ -47,7 +47,26 @@ app.use(
   })
 );
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '2mb' }));
+// An EMPTY body with `Content-Type: application/json` must not be a 400.
+//
+// This silently broke presence. The astrologer app's PresenceAck POSTs with that
+// content-type and no body, so express.json() threw before the handler ran and
+// every ACK returned 400 (525 of them in four hours, all rejected). The server
+// therefore never refreshed lastReachableAt, and the reachability sweep flipped
+// the astrologer offline after ~2h even though their phone had internet the whole
+// time. A body-less POST is a perfectly ordinary "ping" shape, so treat a
+// zero-length payload as `{}` rather than a client error.
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, _res, buf) => { req.rawBodyEmpty = buf.length === 0; },
+}));
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed' && req.rawBodyEmpty) {
+    req.body = {};
+    return next();
+  }
+  return next(err);
+});
 // PayU posts urlencoded form data to the callback.
 app.use(express.urlencoded({ extended: true }));
 if (env.isDev) app.use(morgan('dev'));

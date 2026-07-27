@@ -138,41 +138,84 @@ function buildUserMessage({ astrologerName, bio, expertise, languages, productCo
  * white text is achieved with soft mid-dark tones and gentle glow, NOT by
  * leaving a big empty dead zone. Astrology only, no text, no real people.
  */
+/**
+ * Mood words for the palette the layout step already chose, so the artwork and
+ * the UI colours actually match.
+ *
+ * Hex codes are never fed to Imagen (it renders them as literal text), and
+ * without any colour steer the model defaulted to the same purple-indigo night
+ * sky every time, even when the spec said warm sandalwood and amber. Mapping the
+ * accent hue to plain English is what ties the two together.
+ */
+function paletteMood(spec = {}) {
+  const hex = String(spec.accent || '').replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return 'deep midnight indigo and twilight violet with soft gold light';
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max - min < 30) return 'smoky charcoal and moonstone silver with pale platinum light';
+  let h = 0;
+  const d = max - min;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  if (h < 20 || h >= 340) return 'deep temple maroon and vermilion with warm copper light';
+  if (h < 45) return 'warm sandalwood, burnt amber and dark cinnamon with golden light';
+  if (h < 70) return 'rich saffron, marigold gold and dark bronze with honeyed light';
+  if (h < 160) return 'deep forest emerald and jade with soft gold light';
+  if (h < 200) return 'deep teal and peacock blue with pale gold light';
+  if (h < 260) return 'midnight sapphire and deep royal blue with silver-gold light';
+  if (h < 300) return 'deep amethyst and twilight violet with moonstone light';
+  return 'deep rose-plum and mulberry with soft rose-gold light';
+}
+
 function buildImagePrompt({ spec, expertise }) {
-  // Describe colours by mood only — never feed hex codes or label words, or
-  // Imagen renders them as literal text in the image.
   const exp = (expertise || []).join(', ') || 'spiritual guidance';
+  const mood = paletteMood(spec);
   return (
-    'An ultra-premium, top-notch mystical VEDIC ASTROLOGY wallpaper background filling an entire ' +
-    'tall mobile phone screen, 9:16 vertical portrait, full-bleed edge to edge. Think a flagship ' +
-    'meditation / astrology app splash screen or a high-end album cover: cinematic, aspirational, ' +
-    'gallery-quality, breathtaking. ' +
-    'A deep, luxurious cosmic gradient that flows smoothly from the very top to the very bottom of ' +
-    'the frame — rich jewel-toned midnight indigo, twilight violet, temple maroon and deep saffron ' +
-    'charcoal — glowing softly, with tasteful metallic gold / moonstone-silver highlights. Dreamy, ' +
-    'ethereal, iridescent, high production value. ' +
-    `Celestial detail inspired by ${exp}, spread evenly and beautifully across the WHOLE canvas ` +
-    'so every region is rich: a luminous star-filled night sky with fine twinkling sparkles and ' +
-    'stardust, delicate constellations, a soft glowing moon, planets with elegant rings, an ornate ' +
-    'faint zodiac wheel, and shimmering sacred-geometry / mandala line-work woven subtly into gentle ' +
-    'nebula clouds and soft lens-flare glow. ' +
-    'FILL THE FULL HEIGHT — the composition must be gorgeous and balanced from top, through the ' +
-    'middle, all the way to the bottom edge. The BOTTOM half must be just as considered and beautiful ' +
-    'as the top: let the nebula, stardust and gentle glow continue and settle into the lower area — ' +
-    'NEVER let it fade to a flat, empty, plain black void or a bare dark rectangle. No hard seams or ' +
-    'abrupt cut-offs; one continuous, cohesive scene. ' +
-    'READABILITY (subtle, not a dead zone): keep the overall tones soft and mid-dark with even, ' +
-    'diffuse lighting and no harsh bright hotspots in the central area, so white text and cards ' +
-    'overlaid by the app stay legible — but the background itself must still be visibly rich and ' +
-    'detailed everywhere, achieving readability through calm low-contrast beauty rather than emptiness. ' +
-    'Cohesive, premium, aesthetic, share-worthy, painterly digital illustration, smooth gradients, ' +
-    'clean and elegant, not cluttered, not garish, not neon. ' +
-    'CRITICAL NEGATIVE CONSTRAINTS — the image must contain ONLY the cosmic wallpaper artwork and ' +
-    'NOTHING else: no text, no words, no letters, no numbers, no labels, no captions, no placeholder ' +
-    'text, no logos, no watermark, no signatures; no UI mockup, no app interface, no profile photo, ' +
-    'no avatar, no name plate, no rating stars, no buttons, no cards, no boxes, no rectangular photo ' +
-    'frames or picture frames, no drawn border, no phone bezel; and absolutely no real human faces or ' +
-    'people anywhere. Just the pure, beautiful, full-bleed astrology wallpaper.'
+    // NOTE ON WORDING: this prompt must never mention a phone, a screen, an app,
+    // a splash screen or a wallpaper. It used to say "filling an entire tall
+    // mobile phone screen ... think a flagship app splash screen", and Imagen
+    // duly drew A PHONE: a metallic bezel with side buttons and the artwork
+    // inside it, which the app then rendered as a phone inside a phone. The
+    // negative constraints below already forbade a bezel and were ignored,
+    // because the positive description kept asking for one. Describe the SCENE
+    // and the canvas only.
+    'A breathtaking mystical VEDIC ASTROLOGY night-sky painting. Vertical portrait composition, '
+    + '9:16, full-bleed artwork that runs edge to edge with no border and no frame of any kind. '
+    + 'Cinematic, gallery-quality, painterly digital illustration in the spirit of a high-end '
+    + 'album cover. '
+    // The palette comes from the layout spec so the artwork and the UI agree.
+    + `COLOUR PALETTE, follow this closely: ${mood}. A deep, luxurious gradient in these tones `
+    + 'flowing smoothly from the very top of the canvas to the very bottom, glowing softly, with '
+    + 'tasteful metallic highlights. Dreamy, ethereal, high production value. '
+    + `Celestial detail inspired by ${exp}, spread evenly across the WHOLE canvas so every region `
+    + 'is rich: a luminous star-filled sky with fine twinkling sparkles and stardust, delicate '
+    + 'constellations, a soft glowing moon, planets with elegant rings, an ornate faint zodiac '
+    + 'wheel, and shimmering sacred-geometry mandala line-work woven subtly into gentle nebula '
+    + 'clouds and soft lens-flare glow. '
+    + 'FILL THE FULL HEIGHT: the composition must be balanced from the top, through the middle, all '
+    + 'the way to the bottom edge. The lower half must be as considered as the upper, with the '
+    + 'nebula, stardust and glow settling gently into it. Never let any area fade to a flat, empty, '
+    + 'plain black void. One continuous cohesive scene, no hard seams, no abrupt cut-offs. '
+    + 'READABILITY: keep the tones soft and mid-dark with even, diffuse lighting and no harsh bright '
+    + 'hotspots through the centre, so white text placed over it later stays legible. Achieve that '
+    + 'through calm low-contrast beauty, not through emptiness. '
+    + 'Elegant and uncluttered, not garish, not neon. '
+    // Negative constraints. The device-shaped ones are listed first and most
+    // emphatically, because that is the failure that actually happened.
+    + 'ABSOLUTELY FORBIDDEN, the artwork must contain NONE of these: a phone, a smartphone, a '
+    + 'mobile device, a tablet, a phone bezel, a phone case, a device outline, a rounded rectangle '
+    + 'containing the art, a screen, a monitor, a device mockup, a product render, a picture frame, '
+    + 'a photo frame, a drawn border, a vignette frame, an inner rectangle, or any image-within-an-image. '
+    + 'The artwork must fill the entire canvas directly, with nothing containing or surrounding it. '
+    + 'Also forbidden: any text, words, letters, numbers, labels, captions, logos, watermarks or '
+    + 'signatures; any UI, app interface, buttons, cards, panels or icons; any profile photo, avatar '
+    + 'or name plate; and any human being, face, figure, silhouette or deity portrait. '
+    + 'Just the pure, full-bleed celestial painting.'
   );
 }
 
