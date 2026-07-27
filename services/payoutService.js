@@ -88,6 +88,22 @@ async function approveWithdrawal(ctx, withdrawalId, adminId, note) {
   wr.processedBy = adminId;
   await wr.save();
 
+  // Tell the astrologer their request was approved. Previously ONLY the reject,
+  // paid and failed transitions notified, so an approval was silent — the
+  // astrologer saw nothing between requesting and the money landing (which can
+  // be a while, since the payout runs as a queued job that may retry). Best
+  // effort: a notification failure must never block the payout itself.
+  try {
+    await notificationService.notify(ctx, wr.astrologer, {
+      type: 'withdrawal_status',
+      title: 'Withdrawal approved',
+      body: `₹${toRupees(wr.amount)} approved. The transfer to your account is being processed.`,
+      data: { withdrawalId: String(wr._id), status: 'approved', deeplink: 'rudraganga://astro/earnings' },
+    });
+  } catch (e) {
+    logger.warn('withdrawal approved notify failed', e.message);
+  }
+
   // Pub/Sub fan-out (retries + DLQ via the subscription); falls back to the
   // Mongo queue if Pub/Sub is off. Idempotent: the handler dedupes by refId.
   await pubsubService.publish('payouts', { withdrawalId: String(wr._id) }, { dedupeKey: `payout:${wr._id}`, tenantSlug: ctx && ctx.tenant && ctx.tenant.slug });
@@ -107,12 +123,20 @@ async function rejectWithdrawal(ctx, withdrawalId, adminId, note) {
   wr.processedBy = adminId;
   wr.processedAt = new Date();
   await wr.save();
-  await notificationService.notify(ctx, wr.astrologer, {
-    type: 'withdrawal_status',
-    title: 'Withdrawal rejected',
-    body: note || 'Your withdrawal request was rejected.',
-    data: { withdrawalId: String(wr._id) },
-  });
+  // The amount is already back in their wallet at this point, so say so —
+  // "rejected" alone reads like the money is gone.
+  try {
+    await notificationService.notify(ctx, wr.astrologer, {
+      type: 'withdrawal_status',
+      title: 'Withdrawal rejected',
+      body: note
+        ? `${note} ₹${toRupees(wr.amount)} has been returned to your wallet.`
+        : `Your withdrawal request was rejected. ₹${toRupees(wr.amount)} has been returned to your wallet.`,
+      data: { withdrawalId: String(wr._id), status: 'rejected', deeplink: 'rudraganga://astro/earnings' },
+    });
+  } catch (e) {
+    logger.warn('withdrawal rejected notify failed', e.message);
+  }
   return wr;
 }
 
@@ -167,12 +191,18 @@ async function runPayout(ctx, { withdrawalId }) {
     { _id: wr._id },
     { $set: { status: 'paid', payoutRef, processedAt: new Date() } }
   );
-  await notificationService.notify(ctx, wr.astrologer, {
-    type: 'withdrawal_status',
-    title: 'Withdrawal paid',
-    body: `₹${toRupees(wr.amount)} has been transferred to your account.`,
-    data: { withdrawalId: String(wr._id), payoutRef },
-  });
+  // Best-effort: the money HAS moved and the row is already marked paid. Throwing
+  // here would fail the job and retry a completed payout.
+  try {
+    await notificationService.notify(ctx, wr.astrologer, {
+      type: 'withdrawal_status',
+      title: 'Withdrawal paid',
+      body: `₹${toRupees(wr.amount)} has been transferred to your account.`,
+      data: { withdrawalId: String(wr._id), payoutRef, status: 'paid', deeplink: 'rudraganga://astro/earnings' },
+    });
+  } catch (e) {
+    logger.warn('withdrawal paid notify failed', e.message);
+  }
   return { paid: true, payoutRef };
 }
 
@@ -184,12 +214,16 @@ async function onPayoutFailed(ctx, { withdrawalId }, errorMessage) {
   if (!wr || wr.status === 'paid') return;
   await walletService.releaseLock(ctx, { userId: wr.astrologer, amount: wr.amount });
   await WithdrawalRequest.updateOne({ _id: wr._id }, { $set: { status: 'failed', adminNote: errorMessage } });
-  await notificationService.notify(ctx, wr.astrologer, {
-    type: 'withdrawal_status',
-    title: 'Withdrawal failed',
-    body: 'We could not process your withdrawal. The amount has been returned to your wallet.',
-    data: { withdrawalId: String(wr._id) },
-  });
+  try {
+    await notificationService.notify(ctx, wr.astrologer, {
+      type: 'withdrawal_status',
+      title: 'Withdrawal failed',
+      body: `We could not process your withdrawal. ₹${toRupees(wr.amount)} has been returned to your wallet.`,
+      data: { withdrawalId: String(wr._id), status: 'failed', deeplink: 'rudraganga://astro/earnings' },
+    });
+  } catch (e) {
+    logger.warn('withdrawal failed notify failed', e.message);
+  }
 }
 
 async function listMine(ctx, astrologerUserId) {

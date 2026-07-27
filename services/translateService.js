@@ -233,6 +233,63 @@ async function runFullTranslation(ctx, { limit = 2000 } = {}) {
     }
   }
 
+  // ── 1c) AI persona copy → descriptionI18n / taglineI18n, and the NAME →
+  //        nameI18n (transliterated, like astrologer names above).
+  //
+  //        These were missing entirely: an admin could run a full pass, see
+  //        "nothing new to translate", and still get English AI-astrologer cards
+  //        in a Bengali app, because personas were never in the walk. ──
+  try {
+    const AiPersona = ctx.model('AiPersona');
+    const personas = await AiPersona.find({ isActive: true })
+      .select('name nameI18n description descriptionI18n tagline taglineI18n').limit(limit);
+    for (const doc of personas) {
+      let changed = false;
+
+      // Seeker-facing prose: genuinely translated.
+      for (const [field, mapField, label] of [
+        ['description', 'descriptionI18n', 'aiPersonaDescription'],
+        ['tagline', 'taglineI18n', 'aiPersonaTagline'],
+      ]) {
+        const src = (doc[field] || '').trim();
+        if (!src) continue;
+        const cur = doc[mapField] || new Map();
+        const get = (l) => (cur.get ? cur.get(l) : cur[l]);
+        const set = (l, v) => (cur.set ? cur.set(l, v) : (cur[l] = v));
+        for (const l of targets) {
+          totalPairs += 1;
+          const existing = get(l);
+          if (existing && existing !== src) { alreadyDone += 1; continue; }
+          const out = await translate(src, l);
+          if (out && out !== src) { set(l, out); changed = true; bump(label, src.length); }
+          else { unchanged += 1; }
+        }
+        doc[mapField] = cur;
+      }
+
+      // The name is a proper noun: transliterate into each script.
+      const nameSrc = (doc.name || '').trim();
+      if (nameSrc && transliterateService.available()) {
+        const cur = doc.nameI18n || new Map();
+        const get = (l) => (cur.get ? cur.get(l) : cur[l]);
+        const set = (l, v) => (cur.set ? cur.set(l, v) : (cur[l] = v));
+        for (const l of targets) {
+          totalPairs += 1;
+          const existing = get(l);
+          if (existing && existing !== nameSrc) { alreadyDone += 1; continue; }
+          const out = transliterateService.transliterate(nameSrc, l);
+          if (out && out !== nameSrc) { set(l, out); changed = true; bump('aiPersonaName', nameSrc.length); }
+          else { unchanged += 1; }
+        }
+        doc.nameI18n = cur;
+      }
+
+      if (changed) await doc.save();
+    }
+  } catch (e) {
+    logger.warn('translation run: AI personas skipped', { err: e.message });
+  }
+
   // ── 2) Product name + description → into the shared translate cache so reads
   //       (localizeText) are instant. (Products have no i18n field; we cache.) ──
   const Product = ctx.model('Product');

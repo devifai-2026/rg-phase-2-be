@@ -109,7 +109,7 @@ exports.listPersonas = asyncHandler(async (req, res) => {
   const AdminSettings = req.model('AdminSettings');
   const [rows, cfg] = await Promise.all([
     AiPersona.find({ isActive: true })
-      .select('name avatar description expertise languages tagline chatRatePerMin topic sortOrder')
+      .select('name nameI18n avatar description expertise languages tagline chatRatePerMin topic sortOrder')
       .sort({ sortOrder: 1, createdAt: 1 })
       .lean(),
     AdminSettings.get(),
@@ -123,15 +123,17 @@ exports.listPersonas = asyncHandler(async (req, res) => {
   // products and poojas, so this costs one Translate call per string per language
   // and is free thereafter.
   //
-  // NAMES are deliberately NOT translated: "Acharya Vikram" is a proper noun, and
-  // the platform transliterates astrologer names rather than translating them.
-  const { reqLang, localizeEach, localizeStrings } = require('../utils/i18nReq');
+  // NAMES are transliterated rather than translated — "Acharya Vikram" is a
+  // proper noun — exactly as astrologer display names are, so a seeker reading
+  // Bengali doesn't get a Latin-script name sitting in Bengali copy.
+  const { reqLang, localizeEach, localizeStrings, localizeName } = require('../utils/i18nReq');
   const lang = reqLang(req);
   if (lang && lang !== 'en') {
     await localizeEach(rows, lang, ['tagline', 'description'], req.ctx);
     await Promise.all(rows.map(async (p) => {
       p.expertise = await localizeStrings(p.expertise || [], lang, req.ctx);
     }));
+    for (const p of rows) p.name = localizeName(p.name, p.nameI18n, lang);
   }
 
   res.json({

@@ -19,12 +19,17 @@ const aiPersonaSchema = new mongoose.Schema(
      * English lives in `description` / `tagline`; these Maps hold the rest.
      *
      * Without them a seeker who picked Bengali saw English persona cards, because
-     * the translation run only ever covered astrologer bios. The NAME is
-     * deliberately not translated: it is a proper noun, and the platform
-     * transliterates astrologer names rather than translating them.
+     * the translation run only ever covered astrologer bios.
      */
     descriptionI18n: { type: Map, of: String, default: undefined },
     taglineI18n: { type: Map, of: String, default: undefined },
+    /**
+     * The name per locale. TRANSLITERATED, not translated — "Acharya Vikram" is
+     * a proper noun, so it is rendered in each script rather than turned into a
+     * different word. Same treatment as AstrologerProfile.nameI18n, and an admin
+     * edit here is preserved by the translation run.
+     */
+    nameI18n: { type: Map, of: String, default: undefined },
     /** Per-persona rate override. null/undefined = inherit
      *  AdminSettings.aiChatRatePerMin. */
     chatRatePerMin: { type: Number, default: null },

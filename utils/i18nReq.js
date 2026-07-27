@@ -44,4 +44,26 @@ async function localizeStrings(arr, lang, ctx = null) {
   return Promise.all(arr.map((s) => translateService.localizeText(ctx, s, lang)));
 }
 
-module.exports = { reqLang, localizeFields, localizeEach, localizeStrings };
+/**
+ * Localize a NAME. Proper nouns are TRANSLITERATED, not translated: Google
+ * Translate leaves "Acharya Vikram" in Latin script, so a seeker reading Bengali
+ * sees an English name among Bengali copy. Prefers a stored i18n map entry (an
+ * admin correction, or a value written by the translation run) and falls back to
+ * the rule-based engine. Returns the source unchanged on any failure.
+ *
+ * Shared by astrologer profiles and AI personas so both read the same way.
+ */
+function localizeName(src, i18nMap, lang) {
+  const text = String(src || '');
+  if (!text.trim() || !lang || lang === 'en') return text;
+  const m = i18nMap || {};
+  const stored = m.get ? m.get(lang) : m[lang];
+  if (stored && stored !== text) return stored;
+  try {
+    return require('../services/transliterateService').transliterate(text, lang);
+  } catch (_) {
+    return text;
+  }
+}
+
+module.exports = { reqLang, localizeFields, localizeEach, localizeStrings, localizeName };
