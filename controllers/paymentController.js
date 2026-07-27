@@ -6,7 +6,38 @@ const notificationService = require('../services/notificationService');
 const { toRupees } = require('../utils/money');
 const emit = require('../websockets/emit');
 const AppError = require('../utils/AppError');
+
 const logger = require('../utils/logger');
+
+/**
+ * Who a recharge invoice is billed to.
+ *
+ * The PDF's "BILL TO" block draws `billTo.name` and `billTo.phone`. Recharges
+ * previously passed no billTo at all, so the block rendered its heading with
+ * nothing under it. A seeker who never set a name still has a verified phone, so
+ * fall back to that rather than leaving the buyer unidentified. The saved address
+ * is included when present, for tenants that need a full tax invoice.
+ */
+async function buildBillTo(req, userId) {
+  try {
+    const u = await req.model('User').findById(userId).select('name phone addresses').lean();
+    if (!u) return {};
+    const addr = (u.addresses || []).find((a) => a.isDefault) || (u.addresses || [])[0] || {};
+    return {
+      // Name when we have one, else the phone: the invoice must always name a buyer.
+      name: (u.name && u.name.trim()) || u.phone || '',
+      phone: u.phone || '',
+      line1: addr.line1 || '',
+      line2: addr.line2 || '',
+      city: addr.city || '',
+      state: addr.state || '',
+      pincode: addr.pincode || '',
+    };
+  } catch (e) {
+    logger.warn('buildBillTo failed', e.message);
+    return {};
+  }
+}
 
 // Append ?tenant=<slug> to a URL so the tenant survives browser/WebView hops that
 // carry no X-Tenant header or bearer token (the PayU redirect → gateway → surl/furl
@@ -342,6 +373,11 @@ exports.payuCallback = asyncHandler(async (req, res) => {
       // cost). Recorded on the intent at checkout.
       paidRupees: (pending && pending.meta && pending.meta.paidRupees) || undefined,
       packName: (pending && pending.meta && pending.meta.packName) || undefined,
+      // WHO the invoice is billed to. Omitting this left the "BILL TO" block
+      // empty on every recharge invoice: the PDF renders billTo.name and
+      // billTo.phone, and nothing was ever written to them. A seeker who has not
+      // set a name still has a phone, which is enough to identify the buyer.
+      billTo: await buildBillTo(req, userId),
     }).catch((e) => logger.warn('recharge invoice failed', { txnid, err: e.message }));
     // Referral: reward both sides on the referee's first recharge (idempotent).
     require('../services/referralService').onFirstRecharge(req.ctx, userId).catch(() => {});

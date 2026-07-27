@@ -31,6 +31,23 @@ const invoiceSchema = new mongoose.Schema(
     subtotal: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
+    /**
+     * GST breakdown, when the tenant has it enabled. Absent means "not a taxable
+     * invoice" and the PDF prints no tax lines at all.
+     *
+     * Stored rather than recomputed at render time, because a tax invoice must
+     * keep showing the rate that applied on the day it was issued even if the
+     * admin later changes it.
+     *   { rate, taxable, cgst, sgst }  intra-state
+     *   { rate, taxable, igst }        inter-state
+     */
+    tax: {
+      rate: { type: Number },
+      taxable: { type: Number },
+      cgst: { type: Number },
+      sgst: { type: Number },
+      igst: { type: Number },
+    },
     couponCode: { type: String },
     paymentId: { type: String },
     // Generated PDF (async via the invoice_pdf job).

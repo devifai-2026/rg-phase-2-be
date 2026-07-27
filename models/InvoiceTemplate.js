@@ -24,6 +24,15 @@ const invoiceTemplateSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     email: { type: String, trim: true },
     gstin: { type: String, trim: true },
+    /** Print GST on invoices. Off by default: most tenants start unregistered. */
+    gstEnabled: { type: Boolean, default: false },
+    /** Rate applied to the taxable value, e.g. 18. */
+    gstRate: { type: Number, default: 18 },
+    /**
+     * The seller's own state. GST is CGST+SGST when the buyer is in the same
+     * state and IGST otherwise, so without this we cannot tell which applies.
+     */
+    gstState: { type: String, trim: true },
     footerNote: { type: String, trim: true, default: 'Thank you for choosing Rudraganga 🙏' },
 
     isDefault: { type: Boolean, default: false, index: true }, // exactly one should be true

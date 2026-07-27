@@ -53,6 +53,7 @@ async function createForOrder(ctx, order) {
       subtotal,
       discount,
       total: order.total,
+      tax: computeTax(order.total, tpl, order.address),
       couponCode: order.couponCode,
       paymentId: order.paymentId,
       template: tpl && tpl._id ? tpl._id : undefined,
@@ -96,6 +97,7 @@ async function createForPooja(ctx, booking) {
       subtotal: booking.price,
       discount: 0,
       total: booking.price,
+      tax: computeTax(booking.price, tpl, null),
       paymentId: booking.paymentId,
       template: tpl && tpl._id ? tpl._id : undefined,
       pdfStatus: 'pending',
@@ -151,6 +153,7 @@ async function createForRecharge(ctx, { userId, txnid, tokens, paidRupees, packN
       subtotal: charged,
       discount: 0,
       total: charged,
+      tax: computeTax(charged, tpl, billTo),
       paymentId: txnid,
       template: tpl && tpl._id ? tpl._id : undefined,
       pdfStatus: 'pending',
@@ -162,6 +165,37 @@ async function createForRecharge(ctx, { userId, txnid, tokens, paidRupees, packN
     if (e.code === 11000) return Invoice.findOne({ refType: 'recharge', paymentId: txnid });
     throw e;
   }
+}
+
+/**
+ * GST breakdown for an invoice total, or null when the tenant is not registered.
+ *
+ * The displayed total is treated as GST-INCLUSIVE, which is what a seeker
+ * actually pays: a Rs 99 pack must charge Rs 99, not Rs 99 + tax. So the taxable
+ * value is back-calculated out of the total rather than added on top.
+ *
+ * Intra-state (buyer in the seller's state, or state unknown) splits CGST+SGST;
+ * inter-state is a single IGST line. Defaulting an unknown buyer state to
+ * intra-state is the safe choice: it is the common case, and it never
+ * under-collects.
+ */
+function computeTax(total, tpl, billTo) {
+  if (!tpl || !tpl.gstEnabled) return null;
+  const rate = Number(tpl.gstRate) || 0;
+  if (rate <= 0 || !total) return null;
+
+  const taxable = Math.round((total * 100) / (100 + rate));
+  const tax = total - taxable;
+
+  const norm = (v) => String(v || '').trim().toLowerCase();
+  const sellerState = norm(tpl.gstState || tpl.state);
+  const buyerState = norm(billTo && billTo.state);
+  const interState = !!(sellerState && buyerState && sellerState !== buyerState);
+
+  if (interState) return { rate, taxable, igst: tax };
+  const half = Math.round(tax / 2);
+  // Give any rounding remainder to SGST so cgst + sgst always equals tax exactly.
+  return { rate, taxable, cgst: half, sgst: tax - half };
 }
 
 /** The active/default invoice template (or a sane built-in fallback). */

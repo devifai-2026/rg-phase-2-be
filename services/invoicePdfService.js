@@ -66,16 +66,36 @@ async function render(invoice, tpl = {}) {
   });
 }
 
+/**
+ * The BILL TO column.
+ *
+ * Previously only name and phone were drawn, so the stored address was invisible
+ * and a buyer with neither left the heading floating over nothing. Falls back to
+ * the phone as the display name, because an invoice must always identify a buyer.
+ */
+function buyerLines(b = {}) {
+  const name = (b.name && String(b.name).trim()) || b.phone || null;
+  const city = [b.city, b.state, b.pincode].filter(Boolean).join(', ');
+  const lines = [name, b.phone && b.phone !== name ? b.phone : null, b.line1, b.line2, city || null]
+    .filter(Boolean);
+  return lines.length ? lines : ['-'];
+}
+
 function sellerLines(tpl) {
   // One field per line — combining phone+email overflowed the 175px column and
   // collided with the GSTIN line below.
-  return [
+  const lines = [
     tpl.addressLine1, tpl.addressLine2,
     [tpl.city, tpl.state, tpl.pincode].filter(Boolean).join(', '),
     tpl.phone ? `Ph ${tpl.phone}` : null,
     tpl.email || null,
     tpl.gstin ? `GSTIN ${tpl.gstin}` : null,
   ].filter(Boolean);
+  // A template with no address at all (the built-in fallback, or one an admin has
+  // not filled in) used to render the FROM heading with nothing beneath it. Show
+  // the business name so the block is never bare, and so it is obvious in the
+  // admin what still needs filling in.
+  return lines.length ? lines : [tpl.businessName || '-'];
 }
 
 // Always renders a logo mark: the uploaded image if present, else a branded
@@ -137,7 +157,24 @@ function totals(doc, invoice, x, w, y, accent) {
     ty += big ? 0 : 15;
     return ty;
   };
-  if (invoice.discount > 0) { row('Subtotal', money(invoice.subtotal)); row('Discount', '- ' + money(invoice.discount)); }
+  const tax = invoice.tax || null;
+  // With GST on, the breakdown must be shown even without a discount: a tax
+  // invoice has to state the taxable value and each tax component separately.
+  if (invoice.discount > 0 || tax) {
+    row('Subtotal', money(invoice.subtotal));
+    if (invoice.discount > 0) row('Discount', '- ' + money(invoice.discount));
+  }
+  if (tax) {
+    // Intra-state splits into CGST + SGST at half the rate each; inter-state is a
+    // single IGST line. Which one applies is decided upstream, in invoiceService.
+    if (tax.igst) {
+      row(`IGST ${tax.rate}%`, money(tax.igst));
+    } else {
+      const half = (tax.rate / 2).toFixed(tax.rate % 2 === 0 ? 0 : 1);
+      row(`CGST ${half}%`, money(tax.cgst || 0));
+      row(`SGST ${half}%`, money(tax.sgst || 0));
+    }
+  }
   // Highlighted total band.
   doc.roundedRect(lblX - 6, ty - 3, w - (lblX - x) + 6, 24, 4).fill(accent === GOLD ? '#FBF3DF' : '#FBEAE7');
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(11).text('TOTAL', lblX, ty + 4, { width: 100, align: 'right' });
@@ -160,14 +197,14 @@ function drawClassic(doc, invoice, tpl, logoBuf, W, H) {
   doc.rect(0, 76, W, 3).fill(GOLD);
   const hasLogo = drawLogo(doc, logoBuf, M, 18, 40, { onDark: true, initial: (tpl.businessName || 'R')[0] });
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(17).text(tpl.businessName || 'Rudraganga', hasLogo ? M + 50 : M, 22);
-  doc.font('Helvetica').fontSize(7.5).fillColor('#F6D8D2').text('TAX INVOICE', hasLogo ? M + 50 : M, 44, { characterSpacing: 1 });
+  doc.font('Helvetica').fontSize(7.5).fillColor('#F6D8D2').text(invoice.tax ? 'TAX INVOICE' : 'INVOICE', hasLogo ? M + 50 : M, 44, { characterSpacing: 1 });
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#fff').text(invoice.invoiceNo || '', W - M - 150, 26, { width: 150, align: 'right' });
   doc.font('Helvetica').fontSize(8).fillColor('#F6D8D2').text(fmtDate(invoice.issuedAt), W - M - 150, 44, { width: 150, align: 'right' });
 
   let y = 98;
   const b = invoice.billTo || {};
   partyBlock(doc, M, y, 'FROM', sellerLines(tpl), RED);
-  partyBlock(doc, W / 2 + 6, y, 'BILL TO', [b.name, b.phone], RED);
+  partyBlock(doc, W / 2 + 6, y, 'BILL TO', buyerLines(b), RED);
 
   y += 104;
   const after = itemsTable(doc, invoice, M, y, W - M * 2, { head: RED, headText: '#fff', stripe: STRIPE });
@@ -189,7 +226,7 @@ function drawModern(doc, invoice, tpl, logoBuf, W, H) {
 
   let y = 96;
   const b = invoice.billTo || {};
-  partyBlock(doc, M, y, 'BILLED TO', [b.name, b.phone], GOLD);
+  partyBlock(doc, M, y, 'BILLED TO', buyerLines(b), GOLD);
   partyBlock(doc, W / 2 + 6, y, 'FROM', sellerLines(tpl), GOLD);
 
   y += 100;
@@ -213,12 +250,12 @@ function drawDevotional(doc, invoice, tpl, logoBuf, W, H) {
   doc.fillColor(GOLD).font('Helvetica-Bold').fontSize(20).text('ॐ', 0, 32, { width: W, align: 'center' });
   const hasLogo = drawLogo(doc, logoBuf, W / 2 - 19, 28, 38, { initial: (tpl.businessName || 'R')[0] });
   doc.fillColor(RED).font('Times-Bold').fontSize(19).text(tpl.businessName || 'Rudraganga', 0, hasLogo ? 70 : 58, { width: W, align: 'center' });
-  doc.fillColor(MUTED).font('Times-Roman').fontSize(8.5).text('TAX INVOICE  ·  ' + (invoice.invoiceNo || '') + '  ·  ' + fmtDate(invoice.issuedAt), 0, hasLogo ? 94 : 82, { width: W, align: 'center', characterSpacing: 0.5 });
+  doc.fillColor(MUTED).font('Times-Roman').fontSize(8.5).text((invoice.tax ? 'TAX INVOICE' : 'INVOICE') + '  ·  ' + (invoice.invoiceNo || '') + '  ·  ' + fmtDate(invoice.issuedAt), 0, hasLogo ? 94 : 82, { width: W, align: 'center', characterSpacing: 0.5 });
   doc.moveTo(M + 20, hasLogo ? 114 : 102).lineTo(W - M - 20, hasLogo ? 114 : 102).lineWidth(0.8).strokeColor(GOLD).stroke();
 
   let y = hasLogo ? 128 : 116;
   const b = invoice.billTo || {};
-  partyBlock(doc, M, y, 'BILL TO', [b.name, b.phone], RED);
+  partyBlock(doc, M, y, 'BILL TO', buyerLines(b), RED);
   partyBlock(doc, W / 2 + 6, y, 'FROM', sellerLines(tpl), RED);
 
   y += 98;
