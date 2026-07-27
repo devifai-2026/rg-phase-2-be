@@ -78,6 +78,21 @@ exports.optimizerUsage = asyncHandler(async (req, res) => {
   res.json({ success: true, data: usage });
 });
 
+const { birthParams } = require('../utils/birthParams');
+
+/**
+ * `dob` arrives from the app as DD/MM/YYYY, which `new Date()` cannot parse: it
+ * returns Invalid Date, and storing that made every reading fail with "invalid
+ * dob" until a retry fell back to the cached chart. birthParams normalises both
+ * formats, so go through it.
+ */
+function parseDob(dob) {
+  const iso = birthParams({ dob }).dob;   // YYYY-MM-DD, or null
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // ── AI astrologer: personas, billed chat, topic readings ────────────────────
 
 const aiChatService = require('../services/aiChatService');
@@ -259,7 +274,7 @@ exports.brihatKundli = asyncHandler(async (req, res) => {
   if (dob) {
     await User.updateOne({ _id: req.user._id }, {
       $set: {
-        'birthDetails.dob': new Date(dob),
+        'birthDetails.dob': parseDob(dob),
         'birthDetails.time': tob,
         'birthDetails.timeKnown': true,
         ...(lat != null ? { 'birthDetails.lat': Number(lat) } : {}),
@@ -321,7 +336,7 @@ exports.topicReading = asyncHandler(async (req, res) => {
 
   // Persist supplied birth details so the seeker is asked once, not every time.
   if (dob) {
-    const patch = { 'birthDetails.dob': new Date(dob) };
+    const patch = { 'birthDetails.dob': parseDob(dob) };
     if (tob) patch['birthDetails.time'] = tob;
     if (timeKnown !== undefined) patch['birthDetails.timeKnown'] = timeKnown !== false;
     if (lat != null) patch['birthDetails.lat'] = Number(lat);
