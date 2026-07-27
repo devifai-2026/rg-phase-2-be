@@ -1,5 +1,15 @@
 /* eslint-disable no-console */
 require('dotenv').config();
+// On the VM the app's env lives in /etc/rg-backend.env (systemd EnvironmentFile),
+// not in a local .env — without this the script falls back to localhost:27017 and
+// dies with ECONNREFUSED. Harmless locally, where the file does not exist.
+try {
+  const fs = require('fs');
+  for (const line of fs.readFileSync('/etc/rg-backend.env', 'utf8').split('\n')) {
+    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+} catch (_) { /* not on the VM */ }
 /**
  * Seed the tenant's selectable AI astrologers.
  *
