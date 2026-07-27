@@ -43,7 +43,10 @@ async function settings(ctx) {
   const cfg = await cacheService.config(ctx, 'AdminSettings');
   return {
     enabled: cfg.aiChatEnabled !== false,
-    rate: cfg.aiChatRatePerMin != null ? cfg.aiChatRatePerMin : 15,
+    // No hardcoded fallback. The rate is whatever the admin set; 0 means the
+    // tenant has not priced AI chat yet, and an unpriced consultation must be
+    // free rather than silently billed at a number nobody chose.
+    rate: Number(cfg.aiChatRatePerMin) || 0,
     idleSec: cfg.aiChatIdleTimeoutSec != null ? cfg.aiChatIdleTimeoutSec : 45,
     maxMinutes: cfg.aiChatMaxMinutes != null ? cfg.aiChatMaxMinutes : 30,
   };

@@ -16,6 +16,9 @@ router.get('/personas', protect, ctrl.listPersonas);
 router.post('/chat/sessions', protect, ctrl.startChat);
 router.post('/chat/sessions/:id/messages', protect, aiLimiter, ctrl.sendChatMessage);
 router.post('/chat/sessions/:id/end', protect, ctrl.endChat);
+// Resume: the in-progress consultation, so backgrounding the app never strands
+// a session the seeker is still paying for. Must precede /chat/sessions/:id.
+router.get('/chat/sessions/me/active', protect, ctrl.activeChatSession);
 router.get('/chat/sessions', protect, ctrl.listChatSessions);
 router.get('/chat/sessions/:id', protect, ctrl.getChatSession);
 // One-shot life-area reading behind the home icons (Career, Marriage, ...).

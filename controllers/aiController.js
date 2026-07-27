@@ -99,7 +99,8 @@ exports.listPersonas = asyncHandler(async (req, res) => {
       .lean(),
     AdminSettings.get(),
   ]);
-  const fallbackRate = cfg.aiChatRatePerMin != null ? cfg.aiChatRatePerMin : 15;
+  // Admin-configured only; unset means free, never an invented default.
+  const fallbackRate = Number(cfg.aiChatRatePerMin) || 0;
   res.json({
     success: true,
     data: {
@@ -163,6 +164,46 @@ exports.listChatSessions = asyncHandler(async (req, res) => {
     .limit(50)
     .lean();
   res.json({ success: true, data: { items } });
+});
+
+/**
+ * GET /ai/chat/sessions/me/active — my in-progress AI consultation, if any.
+ *
+ * Mirrors /sessions/me/active for human chats. Without it, backgrounding the app
+ * mid-consultation stranded a billed session the seeker could not get back to:
+ * the meter was still theirs, but the UI had no way to reopen it.
+ */
+exports.activeChatSession = asyncHandler(async (req, res) => {
+  const AiChatSession = req.model('AiChatSession');
+  const s = await AiChatSession.findOne({ user: req.user._id, status: 'ongoing' })
+    .populate('persona', 'name avatar')
+    .sort({ startedAt: -1 })
+    .lean();
+  if (!s) return res.json({ success: true, data: null });
+
+  let messages = [];
+  if (s.conversation) {
+    messages = await req.model('AiMessage')
+      .find({ conversation: s.conversation, role: { $ne: 'system' } })
+      .select('role content createdAt').sort({ createdAt: 1 }).lean();
+  }
+  const spent = s.totalAmount || 0;
+  res.json({
+    success: true,
+    data: {
+      aiSessionId: s.aiSessionId,
+      topic: s.topic || '',
+      lang: s.lang || 'en',
+      ratePerMin: s.ratePerMin,
+      billedMinutes: s.billedMinutes || 0,
+      // startedAt lets the app resume the clock at the right second instead of
+      // restarting it from zero.
+      startedAt: s.startedAt,
+      minutesLeft: s.ratePerMin > 0 ? Math.max(0, Math.floor((s.lockedAmount - spent) / s.ratePerMin)) : 0,
+      persona: s.persona ? { id: String(s.persona._id), name: s.persona.name, avatar: s.persona.avatar } : null,
+      messages,
+    },
+  });
 });
 
 /** GET /ai/chat/sessions/:id — transcript of one of my AI consultations. */

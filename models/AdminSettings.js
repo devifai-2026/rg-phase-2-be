@@ -24,7 +24,10 @@ const adminSettingsSchema = new mongoose.Schema(
     // ── AI astrologer chat ──────────────────────────────────────────────
     // Chat-only, billed per minute from the seeker's wallet with no payout leg.
     aiChatEnabled: { type: Boolean, default: true },
-    aiChatRatePerMin: { type: Number, default: 15 }, // tenant default; AiPersona may override
+    // 0 = not priced yet, so AI chat is FREE until an admin sets a rate. A
+    // non-zero code default would silently bill every tenant at a number nobody
+    // chose. AiPersona.chatRatePerMin may override this per astrologer.
+    aiChatRatePerMin: { type: Number, default: 0 },
     // How long a seeker may go silent before the session auto-ends. Kept BELOW
     // 60s so an abandoned chat can never be charged a second minute: the tick
     // fires on absolute minute boundaries, so a shorter idle window than the

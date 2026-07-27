@@ -109,7 +109,11 @@ function extractSlug(req) {
   // 2) subdomain of the SaaS root domain.
   const fromHost = slugFromHost(req.headers.host);
   if (fromHost) return fromHost;
-  // 3) tenant slug baked into the auth token at login.
+  // 3) tenant slug baked into the auth token at login (and preserved across
+  //    refresh). This is the ONLY signal a headless background isolate has: the
+  //    astrologer app's PresenceAck builds its own HTTP client outside ApiClient
+  //    and sends no X-Tenant header, so when this claim went missing the ACK
+  //    400'd and the astrologer was swept offline while genuinely reachable.
   const fromToken = slugFromToken(req);
   if (fromToken) return fromToken;
   // 4) ?tenant= query param — for browser/WebView navigations that carry no

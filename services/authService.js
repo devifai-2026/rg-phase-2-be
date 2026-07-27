@@ -163,7 +163,13 @@ async function refresh(ctx, rawToken, meta = {}) {
   await RefreshToken.create({ user: user._id, tokenHash: newHash, expiresAt, userAgent: meta.userAgent, ip: meta.ip });
   await RefreshToken.updateOne({ _id: record._id }, { $set: { revokedAt: new Date(), replacedBy: newHash } });
 
-  return { accessToken: signAccess(user), refreshToken: newRaw };
+  // Carry the tenant slug into the NEW access token. Dropping it here meant that
+  // after the first refresh, any request without an X-Tenant header had nothing
+  // left to resolve from and 400'd with "Tenant could not be determined". That is
+  // what silently killed the astrologer presence ACK: the headless FCM isolate
+  // sends no header, so the token claim was the only signal, and it vanished a
+  // few hours into every session.
+  return { accessToken: signAccess(user, meta && meta.tenantSlug), refreshToken: newRaw };
 }
 
 async function logout(ctx, rawToken) {
