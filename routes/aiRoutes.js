@@ -24,6 +24,9 @@ router.get('/chat/sessions/:id', protect, ctrl.getChatSession);
 // One-shot life-area reading behind the home icons (Career, Marriage, ...).
 // Not billed: a single generation, not a metered conversation.
 router.post('/reading', protect, aiLimiter, ctrl.topicReading);
+// The full birth-chart reading (home "Brihat Kundli" tile). Requires an exact
+// birth time, so it is a separate endpoint from the life-area readings.
+router.post('/kundli-reading', protect, aiLimiter, ctrl.brihatKundli);
 
 // Legacy single-shot AI chat (kept for the older app build; unbilled).
 router.post('/chat', protect, validate(v.aiChat), ctrl.chat);

@@ -239,6 +239,72 @@ exports.getChatSession = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /ai/kundli-reading — the full Brihat Kundli.
+ *
+ * Distinct from /ai/reading: it is not scoped to one life area, it REQUIRES an
+ * exact birth time (the ascendant and every house cusp depend on it), and it
+ * returns four fixed sections plus the chart image, so the app renders cards
+ * rather than parsing prose.
+ *
+ * Unbilled, like the topic readings: one generation, not a metered conversation.
+ */
+exports.brihatKundli = asyncHandler(async (req, res) => {
+  const { dob, tob, lat, lng, place, lang, question } = req.body || {};
+  if (!tob) {
+    // Refusing here rather than assuming noon: a whole-chart reading built on a
+    // guessed ascendant would be confidently wrong about every house.
+    throw new AppError('An exact time of birth is required for a Brihat Kundli reading', 400);
+  }
+  const User = req.model('User');
+  if (dob) {
+    await User.updateOne({ _id: req.user._id }, {
+      $set: {
+        'birthDetails.dob': new Date(dob),
+        'birthDetails.time': tob,
+        'birthDetails.timeKnown': true,
+        ...(lat != null ? { 'birthDetails.lat': Number(lat) } : {}),
+        ...(lng != null ? { 'birthDetails.lng': Number(lng) } : {}),
+        ...(place ? { 'birthDetails.place': place } : {}),
+      },
+    });
+  }
+
+  const chart = await userChartService.getOrBuild(req.ctx, req.user._id,
+    dob ? { dob, tob, timeKnown: true, lat, lng } : undefined);
+  if (chart.missing) {
+    return res.json({ success: true, data: { needsBirthDetails: true } });
+  }
+  if (!chart.timeKnown) {
+    throw new AppError('An exact time of birth is required for a Brihat Kundli reading', 400);
+  }
+
+  const user = await User.findById(req.user._id).select('name').lean();
+  const [catalogue, prior] = await Promise.all([
+    aiChatService.catalogueFor(req.ctx),
+    aiChatService.priorSummaries(req.ctx, req.user._id),
+  ]);
+
+  const out = await aiAstrologerService.generateKundli(req.ctx, {
+    userId: req.user._id,
+    question: question || '',
+    lang: lang || 'en',
+    catalogue,
+    priorSummaries: prior,
+    seekerName: user && user.name,
+    chart,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      needsBirthDetails: false,
+      svg: chart.svg || null,
+      ...out,
+    },
+  });
+});
+
+/**
  * POST /ai/reading — a one-shot topic reading for a life area.
  *
  * This is what the home icons (Career, Marriage, …) open. NOT billed: it is a

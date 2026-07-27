@@ -278,4 +278,81 @@ async function generate(ctx, {
   }
 }
 
-module.exports = { generate, buildSystem, detectCrisis, crisisReply, topicKey, langLabelFor, TOPICS, REPLY_SCHEMA };
+/**
+ * The full Brihat Kundli: one generation returning four fixed sections.
+ *
+ * Separate from generate() because the shape differs: no topic scoping, a
+ * different schema (life/career/health/fears rather than a single reply), and an
+ * exact birth time is assumed, so the reading can speak to house cusps directly.
+ * Composition is otherwise identical, so a change to the voice or the safety
+ * rules reaches this too.
+ */
+async function generateKundli(ctx, {
+  userId, question, lang, langLabel, catalogue = [], priorSummaries = [],
+  seekerName, chart, maxTokens = 1600,
+}) {
+  ctx = ctx || defaultContext();
+  const kundliPrompt = require('./prompts/aiBrihatKundli');
+
+  if (question && detectCrisis(question)) {
+    return { crisis: true, degraded: false, headline: '', life: crisisReply(), career: '', health: '', fears: '', remedies: [], products: [] };
+  }
+
+  const c = chart || await userChartService.getOrBuild(ctx, userId);
+  const chartBlock = userChartService.factsToPromptBlock(c.facts, { timeKnown: c.timeKnown });
+
+  // Base voice + safety, then the kundli-specific instructions, all PO-editable.
+  const layers = [
+    await promptService.getSystem(ctx, 'aiAstrologerBase'),
+    await promptService.getSystem(ctx, 'aiAstrologerSafety'),
+    await promptService.getSystem(ctx, 'aiBrihatKundli'),
+  ];
+  const system = layers.filter(Boolean).join('\n\n').split('{personaName}').join('your astrologer');
+
+  const context = basePrompt.buildContextBlock({
+    chartBlock,
+    seekerName,
+    seekerLang: lang,
+    langLabel: langLabel || langLabelFor(lang),
+    todayISO: new Date().toISOString().slice(0, 10),
+    priorSummaries,
+    catalogue,
+    isFirstMessage: true,
+  });
+
+  if (!llmService.available()) {
+    return { degraded: true, headline: '', life: '', career: '', health: '', fears: '', remedies: [], products: [] };
+  }
+
+  try {
+    const out = await llmService.completeJSON(ctx, {
+      system,
+      messages: [{ role: 'user', content: `${context}\n\n=== GIVE THE FULL BRIHAT KUNDLI READING ===\n${question || 'Read my whole chart.'}` }],
+      schema: kundliPrompt.KUNDLI_SCHEMA,
+      maxTokens,
+      temperature: 0.7,
+      logMeta: { feature: 'ai_brihat_kundli', user: userId },
+    });
+
+    const allowed = new Set(catalogue.map((p) => String(p.productId)));
+    return {
+      headline: String(out.headline || '').trim(),
+      life: String(out.life || '').trim(),
+      career: String(out.career || '').trim(),
+      health: String(out.health || '').trim(),
+      fears: String(out.fears || '').trim(),
+      remedies: (out.remedies || []).slice(0, 2),
+      keyTopics: (out.keyTopics || []).slice(0, 5),
+      products: (out.productIds || []).map(String).filter((id) => allowed.has(id)).slice(0, 2)
+        .map((id) => catalogue.find((p) => String(p.productId) === id)),
+      language: out.language || lang || 'en',
+      crisis: false,
+      degraded: false,
+    };
+  } catch (e) {
+    logger.warn('brihat kundli generation failed', e.message);
+    return { degraded: true, headline: '', life: '', career: '', health: '', fears: '', remedies: [], products: [] };
+  }
+}
+
+module.exports = { generate, generateKundli, buildSystem, detectCrisis, crisisReply, topicKey, langLabelFor, TOPICS, REPLY_SCHEMA };

@@ -218,12 +218,16 @@ module.exports = {
   // ── Withdrawals ──
   withdrawal: Joi.object({
     amountRupees: Joi.number().integer().min(1).required(),
+    // OPTIONAL. The app sends only the amount, because payout details are saved
+    // on the profile and payoutService falls back to them (and errors clearly if
+    // none exist). Requiring it here rejected every real request with a 422
+    // before the service ever ran, so no withdrawal ever reached the admin.
     bankAccountDetails: Joi.object({
-      accountNumber: Joi.string(),
-      ifsc: Joi.string(),
-      name: Joi.string(),
-      upi: Joi.string(),
-    }).required(),
+      accountNumber: Joi.string().allow(''),
+      ifsc: Joi.string().allow(''),
+      name: Joi.string().allow(''),
+      upi: Joi.string().allow(''),
+    }).optional(),
   }),
 
   // ── Commerce ──
