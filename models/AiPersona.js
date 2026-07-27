@@ -14,6 +14,17 @@ const aiPersonaSchema = new mongoose.Schema(
     languages: [{ type: String }],
     systemPrompt: { type: String, maxlength: 4000 }, // hidden persona instructions
     tagline: { type: String },
+    /**
+     * Translations of the seeker-facing copy, mirroring AstrologerProfile.bioI18n.
+     * English lives in `description` / `tagline`; these Maps hold the rest.
+     *
+     * Without them a seeker who picked Bengali saw English persona cards, because
+     * the translation run only ever covered astrologer bios. The NAME is
+     * deliberately not translated: it is a proper noun, and the platform
+     * transliterates astrologer names rather than translating them.
+     */
+    descriptionI18n: { type: Map, of: String, default: undefined },
+    taglineI18n: { type: Map, of: String, default: undefined },
     /** Per-persona rate override. null/undefined = inherit
      *  AdminSettings.aiChatRatePerMin. */
     chatRatePerMin: { type: Number, default: null },

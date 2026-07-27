@@ -101,6 +101,24 @@ exports.listPersonas = asyncHandler(async (req, res) => {
   ]);
   // Admin-configured only; unset means free, never an invented default.
   const fallbackRate = Number(cfg.aiChatRatePerMin) || 0;
+
+  // Translate the seeker-facing copy. A seeker who picked Bengali was still shown
+  // English persona cards, because the translation run only ever covered
+  // astrologer bios. Uses the same cache-backed translate-on-read path as
+  // products and poojas, so this costs one Translate call per string per language
+  // and is free thereafter.
+  //
+  // NAMES are deliberately NOT translated: "Acharya Vikram" is a proper noun, and
+  // the platform transliterates astrologer names rather than translating them.
+  const { reqLang, localizeEach, localizeStrings } = require('../utils/i18nReq');
+  const lang = reqLang(req);
+  if (lang && lang !== 'en') {
+    await localizeEach(rows, lang, ['tagline', 'description'], req.ctx);
+    await Promise.all(rows.map(async (p) => {
+      p.expertise = await localizeStrings(p.expertise || [], lang, req.ctx);
+    }));
+  }
+
   res.json({
     success: true,
     data: {
