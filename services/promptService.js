@@ -285,6 +285,13 @@ async function listForAdmin(ctx) {
       defaultSystem: def,
       system: current,
       isOverridden: current !== def,
+      // Hand-edited rows are never overwritten by a deploy (see seedPrompts), which
+      // protects your edits but also means a code-side improvement silently never
+      // reaches this tenant. Surface that so the console can offer a reset instead
+      // of the drift being invisible: `stale` is an edited row whose shipped
+      // default has since moved on.
+      isEdited: !!(o && o.updatedBy),
+      stale: !!(o && o.updatedBy && o.system !== def),
       updatedAt: o ? o.updatedAt : null,
     };
   });
