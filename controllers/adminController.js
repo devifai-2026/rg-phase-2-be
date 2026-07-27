@@ -708,7 +708,20 @@ exports.callLogs = asyncHandler(async (req, res) => {
 
 exports.sessionMessages = asyncHandler(async (req, res) => {
   const ChatMessage = req.model('ChatMessage');
-  const items = await ChatMessage.find({ sessionId: req.params.sessionId }).sort({ timestamp: 1 }).populate('sender', 'name');
+  const raw = String(req.params.sessionId || '');
+
+  // Accept EITHER identifier. ChatMessage.sessionId holds the session's UUID
+  // string (e723c588-...), but callers legitimately hold the Mongo ObjectId
+  // instead: a ReengagementCue stores sourceSession as an ObjectId ref, so the
+  // AI Notifications chat preview passed that and silently matched nothing,
+  // reporting "history may have expired" for a chat from the day before.
+  let sessionId = raw;
+  if (/^[a-f0-9]{24}$/i.test(raw)) {
+    const sess = await req.model('Session').findById(raw).select('sessionId').lean();
+    if (sess && sess.sessionId) sessionId = sess.sessionId;
+  }
+
+  const items = await ChatMessage.find({ sessionId }).sort({ timestamp: 1 }).populate('sender', 'name');
   res.json({ success: true, data: items });
 });
 
