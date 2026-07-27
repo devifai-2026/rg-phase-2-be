@@ -64,12 +64,18 @@ async function requestWithdrawal(ctx, { astrologerUserId, amount, bankAccountDet
     bankAccountDetails: bank,
     status: 'pending',
   });
-  await notificationService.notify(ctx, astrologerUserId, {
-    type: 'withdrawal_status',
-    title: 'Withdrawal requested',
-    body: `Your withdrawal of ₹${amount} is pending approval.`,
-    data: { withdrawalId: String(wr._id) },
-  });
+  // Their own action, so no OS notification needed — the in-app record + socket
+  // event is enough to give the Notifications screen a full audit trail.
+  try {
+    await notificationService.notify(ctx, astrologerUserId, {
+      type: 'withdrawal_status',
+      title: 'Withdrawal requested',
+      body: `Your withdrawal of ₹${amount} is pending approval.`,
+      data: { withdrawalId: String(wr._id), status: 'pending', deeplink: 'rudraganga://astro/earnings' },
+    });
+  } catch (e) {
+    logger.warn('withdrawal requested notify failed', e.message);
+  }
   // Live admin-console badge + bell.
   require('../websockets/emit').adminActivity(ctx, 'withdrawal', { id: wr._id, title: `Withdrawal ₹${amount} pending` });
   return wr;
@@ -99,6 +105,11 @@ async function approveWithdrawal(ctx, withdrawalId, adminId, note) {
       title: 'Withdrawal approved',
       body: `₹${toRupees(wr.amount)} approved. The transfer to your account is being processed.`,
       data: { withdrawalId: String(wr._id), status: 'approved', deeplink: 'rudraganga://astro/earnings' },
+      // OS-drawn notification, not data-only: a data-only push is NOT rendered
+      // once the app is force-stopped or swiped out of RAM (see the comment in
+      // notificationService.notify). A withdrawal outcome is a money event the
+      // astrologer must not miss, so it has to survive that state.
+      withNotification: true,
     });
   } catch (e) {
     logger.warn('withdrawal approved notify failed', e.message);
@@ -133,6 +144,11 @@ async function rejectWithdrawal(ctx, withdrawalId, adminId, note) {
         ? `${note} ₹${toRupees(wr.amount)} has been returned to your wallet.`
         : `Your withdrawal request was rejected. ₹${toRupees(wr.amount)} has been returned to your wallet.`,
       data: { withdrawalId: String(wr._id), status: 'rejected', deeplink: 'rudraganga://astro/earnings' },
+      // OS-drawn notification, not data-only: a data-only push is NOT rendered
+      // once the app is force-stopped or swiped out of RAM (see the comment in
+      // notificationService.notify). A withdrawal outcome is a money event the
+      // astrologer must not miss, so it has to survive that state.
+      withNotification: true,
     });
   } catch (e) {
     logger.warn('withdrawal rejected notify failed', e.message);
@@ -199,6 +215,11 @@ async function runPayout(ctx, { withdrawalId }) {
       title: 'Withdrawal paid',
       body: `₹${toRupees(wr.amount)} has been transferred to your account.`,
       data: { withdrawalId: String(wr._id), payoutRef, status: 'paid', deeplink: 'rudraganga://astro/earnings' },
+      // OS-drawn notification, not data-only: a data-only push is NOT rendered
+      // once the app is force-stopped or swiped out of RAM (see the comment in
+      // notificationService.notify). A withdrawal outcome is a money event the
+      // astrologer must not miss, so it has to survive that state.
+      withNotification: true,
     });
   } catch (e) {
     logger.warn('withdrawal paid notify failed', e.message);
@@ -220,6 +241,11 @@ async function onPayoutFailed(ctx, { withdrawalId }, errorMessage) {
       title: 'Withdrawal failed',
       body: `We could not process your withdrawal. ₹${toRupees(wr.amount)} has been returned to your wallet.`,
       data: { withdrawalId: String(wr._id), status: 'failed', deeplink: 'rudraganga://astro/earnings' },
+      // OS-drawn notification, not data-only: a data-only push is NOT rendered
+      // once the app is force-stopped or swiped out of RAM (see the comment in
+      // notificationService.notify). A withdrawal outcome is a money event the
+      // astrologer must not miss, so it has to survive that state.
+      withNotification: true,
     });
   } catch (e) {
     logger.warn('withdrawal failed notify failed', e.message);
