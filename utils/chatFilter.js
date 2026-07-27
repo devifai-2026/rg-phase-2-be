@@ -203,6 +203,28 @@ const ABUSE_WORDS = [
   'lund', 'lawda', 'lauda', 'randi', 'raand', 'harami', 'haramzada', 'kutta',
   'kutti', 'kamina', 'kamine', 'chod', 'chodu', 'chinal', 'tatti', 'jhaant',
   'mc', 'bc', 'bsdk', 'mkc',
+  // Romanised Bengali abuse. Distinct from the Hindi set above: the vowels and
+  // endings differ enough ("magi", "khanki", "boka choda") that the Hindi words
+  // do not cover them.
+  'magi', 'maggi', 'khanki', 'khanky', 'khankir', 'bokachoda', 'bokachuda',
+  'chuda', 'chudi', 'chudir', 'chudirbhai', 'chodna', 'baal', 'balchal',
+  'shuorer', 'shuor', 'shorer', 'kuttar', 'haramjada', 'haramjadi',
+  'nunu', 'dhon', 'gud', 'guder', 'baincho', 'bainchod', 'banchod',
+];
+
+/**
+ * Abuse written in native script. The normalizer above strips everything outside
+ * [a-z], so Bengali/Devanagari text reached the matcher as an empty string and
+ * nothing in ABUSE_WORDS could ever fire on it. These are matched directly
+ * against the raw text instead.
+ */
+const ABUSE_NATIVE = [
+  // Bengali
+  'খানকি', 'মাগি', 'চুদ', 'চোদা', 'চুদির', 'বোকাচোদা', 'শুয়োর', 'হারামজাদা',
+  'বাল', 'গুদ', 'ধোন', 'বেশ্যা', 'কুত্তা',
+  // Devanagari (Hindi)
+  'मादरचोद', 'बहनचोद', 'भोसड़ी', 'भोसडी', 'चूतिया', 'चुतिया', 'गांडू', 'गाँडू',
+  'रंडी', 'हरामी', 'कुत्ता', 'लंड', 'चोद',
 ];
 
 // Normalize common leetspeak / spacing tricks so "f.u.c.k", "fuuck", "f u c k"
@@ -220,6 +242,14 @@ function normalizeForAbuse(text) {
  *  on the normalized text (plus a no-space pass to catch "f u c k"). */
 function containsAbuse(text) {
   if (!text || typeof text !== 'string') return false;
+
+  // Native script first: normalizeForAbuse strips non-[a-z], so Bengali and
+  // Devanagari would otherwise arrive as an empty string and never match.
+  const raw = String(text).toLowerCase();
+  for (const w of ABUSE_NATIVE) {
+    if (raw.includes(w)) return true;
+  }
+
   const norm = normalizeForAbuse(text);
   const collapsed = norm.replace(/\s+/g, ''); // "m a d a r c h o d" → "madarchod"
   for (const w of ABUSE_WORDS) {

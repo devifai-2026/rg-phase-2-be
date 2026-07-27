@@ -1,5 +1,5 @@
 const AppError = require('../utils/AppError');
-const { filterMessage } = require('../utils/chatFilter');
+const { filterMessage, containsAbuse } = require('../utils/chatFilter');
 const { defaultContext } = require('../utils/tenantContext');
 
 /**
@@ -49,6 +49,16 @@ async function persist(ctx, { sessionId, senderId, message, mediaUrl, mediaType,
   if (!message && !mediaUrl && !productId) throw new AppError('Message, image or product required', 400);
 
   const receiverId = String(session.user) === String(senderId) ? session.astrologer : session.user;
+
+  // Abuse is REJECTED, not masked. Masking a slur still delivers the intent and
+  // leaves it in the transcript; a consultation between a seeker and an
+  // astrologer should simply not carry it. Covers English, romanised Hindi and
+  // romanised/native Bengali. Contact info stays masked below — that is an
+  // off-platform-business rule, not an abuse one, and partially useful messages
+  // are still worth delivering.
+  if (message && containsAbuse(message)) {
+    throw new AppError('This message contains language that is not allowed', 422);
+  }
 
   // Moderate text content (mask phones/links). Images + product cards pass through.
   let { clean, masked, reasons } = filterMessage(message);
