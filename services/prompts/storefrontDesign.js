@@ -172,8 +172,38 @@ function paletteMood(spec = {}) {
   return 'deep rose-plum and mulberry with soft rose-gold light';
 }
 
+/**
+ * Expertise -> visual motifs, never the words themselves.
+ *
+ * The prompt used to interpolate the raw expertise list ("Vedic, Career"), and
+ * Imagen dutifully painted it into the artwork as a headline: "VEDIC ASTROLOGY",
+ * and once as the garbled "MERDIC E ASTROLOGY". The negative constraints already
+ * banned text and were ignored, because a positive mention of a word is a much
+ * stronger signal than a later prohibition. So no expertise word ever reaches the
+ * prompt now; only the imagery it implies.
+ */
+function motifsFor(expertise = []) {
+  const set = new Set((expertise || []).map((e) => String(e).toLowerCase()));
+  const has = (...keys) => keys.some((k) => [...set].some((e) => e.includes(k)));
+  const motifs = [];
+  if (has('numerolog')) motifs.push('faint geometric lattice-work');
+  if (has('tarot')) motifs.push('subtle arcane symbolism woven into the clouds');
+  if (has('vastu')) motifs.push('delicate architectural mandala geometry');
+  if (has('palm')) motifs.push('fine flowing line-work like etched paths');
+  if (has('marriage', 'love', 'relation')) motifs.push('two bright paired stars glowing close together');
+  if (has('career', 'business', 'job')) motifs.push('a strong rising constellation climbing the frame');
+  if (has('health', 'wellbeing')) motifs.push('a soft healing aura of light through the nebula');
+  if (has('finance', 'wealth')) motifs.push('a scattering of golden points like distant riches');
+  if (has('education', 'study')) motifs.push('an open pattern of stars suggesting a page of knowledge');
+  if (has('travel')) motifs.push('a long comet trail arcing across the sky');
+  // Always-present base imagery, so a persona with no expertise still gets a
+  // rich scene rather than an empty gradient.
+  motifs.push('an ornate faint zodiac wheel', 'delicate constellations', 'a soft glowing moon');
+  return motifs.slice(0, 5).join(', ');
+}
+
 function buildImagePrompt({ spec, expertise }) {
-  const exp = (expertise || []).join(', ') || 'spiritual guidance';
+  const motifs = motifsFor(expertise);
   const mood = paletteMood(spec);
   return (
     // NOTE ON WORDING: this prompt must never mention a phone, a screen, an app,
@@ -184,7 +214,10 @@ function buildImagePrompt({ spec, expertise }) {
     // negative constraints below already forbade a bezel and were ignored,
     // because the positive description kept asking for one. Describe the SCENE
     // and the canvas only.
-    'A breathtaking mystical VEDIC ASTROLOGY night-sky painting. Vertical portrait composition, '
+    // No capitalised subject phrase here. The opening used to read "A breathtaking
+    // mystical VEDIC ASTROLOGY night-sky painting", and Imagen painted those two
+    // words into the frame as a title. Describe the scene, never name it.
+    'A breathtaking mystical night sky, painted. Vertical portrait composition, '
     + '9:16, full-bleed artwork that runs edge to edge with no border and no frame of any kind. '
     + 'Cinematic, gallery-quality, painterly digital illustration in the spirit of a high-end '
     + 'album cover. '
@@ -192,11 +225,10 @@ function buildImagePrompt({ spec, expertise }) {
     + `COLOUR PALETTE, follow this closely: ${mood}. A deep, luxurious gradient in these tones `
     + 'flowing smoothly from the very top of the canvas to the very bottom, glowing softly, with '
     + 'tasteful metallic highlights. Dreamy, ethereal, high production value. '
-    + `Celestial detail inspired by ${exp}, spread evenly across the WHOLE canvas so every region `
-    + 'is rich: a luminous star-filled sky with fine twinkling sparkles and stardust, delicate '
-    + 'constellations, a soft glowing moon, planets with elegant rings, an ornate faint zodiac '
-    + 'wheel, and shimmering sacred-geometry mandala line-work woven subtly into gentle nebula '
-    + 'clouds and soft lens-flare glow. '
+    + 'Celestial detail spread evenly across the WHOLE canvas so every region is rich: a '
+    + 'luminous star-filled sky with fine twinkling sparkles and stardust, planets with elegant '
+    + 'rings, and shimmering sacred-geometry line-work woven subtly into gentle nebula clouds '
+    + `and soft lens-flare glow. Include ${motifs}. `
     + 'FILL THE FULL HEIGHT: the composition must be balanced from the top, through the middle, all '
     + 'the way to the bottom edge. The lower half must be as considered as the upper, with the '
     + 'nebula, stardust and glow settling gently into it. Never let any area fade to a flat, empty, '
@@ -207,6 +239,7 @@ function buildImagePrompt({ spec, expertise }) {
     + 'Elegant and uncluttered, not garish, not neon. '
     // Negative constraints. The device-shaped ones are listed first and most
     // emphatically, because that is the failure that actually happened.
+    + 'THE IMAGE MUST CONTAIN NO WRITING WHATSOEVER. Not a single letter, word, number, title, caption, label, logo or signature anywhere in the frame, in any language or script. This is a wordless painting. '
     + 'ABSOLUTELY FORBIDDEN, the artwork must contain NONE of these: a phone, a smartphone, a '
     + 'mobile device, a tablet, a phone bezel, a phone case, a device outline, a rounded rectangle '
     + 'containing the art, a screen, a monitor, a device mockup, a product render, a picture frame, '
