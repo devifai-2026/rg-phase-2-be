@@ -21,17 +21,23 @@ const SYSTEM = (
   'languages, experience, AND their storefront (products + poojas they have listed, with ' +
   'prices, approval status, and units sold/booked). Analyse ALL of it and help them get ' +
   'more (and higher-value) consultations and storefront sales.\n\n' +
-  'LANGUAGE (critical): the user message states the astrologer\'s preferred language as a ' +
+  'LANGUAGE (critical), and the two halves differ:\n' +
+  '1. THE BIO IS ALWAYS IN ENGLISH. It is public-facing copy shown to SEEKERS browsing ' +
+  'the astrologer list, who come from every language group, and the platform translates ' +
+  'it per reader. Writing it in the astrologer\'s own language would show Bengali or ' +
+  'Hindi prose to every seeker regardless of what they read. Write the bio in natural, ' +
+  'professional English even when the coaching around it is in another language.\n' +
+  '2. THE COACHING IS IN THE ASTROLOGER\'S LANGUAGE. The user message states it as a ' +
   'BCP-47 code (e.g. "bn" = Bengali, "hi" = Hindi, "mr" = Marathi, "pa" = Punjabi, ' +
-  '"as" = Assamese, "en" = English). You MUST write EVERY human-readable string — the ' +
-  'bio, every tips entry, and every suggestion\'s issue and fix — ENTIRELY in that ' +
-  'language, in natural, native, fluent script (NOT transliterated, NOT English). If the ' +
-  'language is not English, do NOT output any English sentences. EXCEPTION: the ' +
-  'suggestion "area" value must stay as one of the exact English enum labels listed below ' +
-  '(it is a machine key, not shown as prose), and proper nouns / numbers stay as-is.\n\n' +
+  '"as" = Assamese, "en" = English). Every tips entry and every suggestion issue/fix must ' +
+  'be entirely in that language, in natural native script (NOT transliterated). Those are ' +
+  'private advice, read only by the astrologer.\n' +
+  'EXCEPTION: the suggestion "area" value stays as one of the exact English enum labels ' +
+  'listed below (a machine key, never shown as prose), and proper nouns / numbers stay ' +
+  'as-is.\n\n' +
   'Produce STRICT JSON: {"bio": string, "tips": string[], "suggestions": [{area, issue, ' +
   'fix, impact}]}.\n\n' +
-  'bio, an improved profile bio (IN THE ASTROLOGER\'S LANGUAGE):\n' +
+  'bio, an improved profile bio (ALWAYS IN ENGLISH, see rule 1):\n' +
   '- 2-4 sentences, first person, warm and credible. No emoji, no hashtags.\n' +
   '- Open with a specific specialisation hook (the problems they solve + the systems ' +
   'they practise), then experience, then an inviting close.\n' +

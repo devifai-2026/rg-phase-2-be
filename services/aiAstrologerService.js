@@ -27,6 +27,29 @@ const logger = require('../utils/logger');
 
 const TOPICS = ['career', 'marriage', 'finance', 'health', 'education', 'travel'];
 
+/**
+ * BCP-47 -> the language's own name.
+ *
+ * The prompt used to receive the bare code ("bn"), and the model treated it as
+ * metadata rather than an instruction, replying in English to a seeker who had
+ * explicitly picked Bengali. Naming the language in its own script is what makes
+ * it stick.
+ */
+const LANG_LABEL = {
+  en: 'English',
+  hi: 'Hindi (हिन्दी, Devanagari script)',
+  bn: 'Bengali (বাংলা, Bengali script)',
+  mr: 'Marathi (मराठी, Devanagari script)',
+  pa: 'Punjabi (ਪੰਜਾਬੀ, Gurmukhi script)',
+  as: 'Assamese (অসমীয়া, Assamese script)',
+  kn: 'Kannada (ಕನ್ನಡ, Kannada script)',
+  te: 'Telugu (తెలుగు, Telugu script)',
+  ta: 'Tamil (தமிழ், Tamil script)',
+};
+function langLabelFor(code) {
+  return LANG_LABEL[String(code || '').toLowerCase()] || null;
+}
+
 /** topic -> PO console prompt key. */
 function topicKey(topic) {
   const t = String(topic || '').toLowerCase();
@@ -102,10 +125,13 @@ function crisisReply() {
  * Compose the layered system prompt. Every layer is resolved through
  * promptService so a PO edit takes effect within its 30s cache window.
  */
-async function buildSystem(ctx, { topic, personaPrompt } = {}) {
+async function buildSystem(ctx, { topic, personaPrompt, personaName } = {}) {
   ctx = ctx || defaultContext();
   const layers = [];
-  layers.push(await promptService.getSystem(ctx, 'aiAstrologerBase'));
+  // {personaName} is substituted here, alongside promptService's {appName}, so the
+  // astrologer can answer "what is your name?" instead of dodging it.
+  const base = await promptService.getSystem(ctx, 'aiAstrologerBase');
+  layers.push(String(base).split('{personaName}').join(personaName || 'an astrologer'));
   layers.push(await promptService.getSystem(ctx, 'aiAstrologerSafety'));
 
   const key = topicKey(topic);
@@ -163,8 +189,10 @@ async function generate(ctx, {
   question,
   topic,
   personaPrompt,
+  personaName,
   lang,
   langLabel,
+  isFirstMessage = false,
   history = [],
   catalogue = [],
   priorSummaries = [],
@@ -185,15 +213,17 @@ async function generate(ctx, {
   const chartBlock = userChartService.factsToPromptBlock(c.facts, { timeKnown: c.timeKnown });
 
   // 3) Compose.
-  const system = await buildSystem(ctx, { topic, personaPrompt });
+  const system = await buildSystem(ctx, { topic, personaPrompt, personaName });
   const context = basePrompt.buildContextBlock({
     chartBlock,
     seekerName,
     seekerLang: lang,
-    langLabel,
+    langLabel: langLabel || langLabelFor(lang),
     todayISO: new Date().toISOString().slice(0, 10),
     priorSummaries,
     catalogue,
+    personaName,
+    isFirstMessage,
   });
 
   // Prior turns give continuity; the context block is attached to the CURRENT
@@ -248,4 +278,4 @@ async function generate(ctx, {
   }
 }
 
-module.exports = { generate, buildSystem, detectCrisis, crisisReply, topicKey, TOPICS, REPLY_SCHEMA };
+module.exports = { generate, buildSystem, detectCrisis, crisisReply, topicKey, langLabelFor, TOPICS, REPLY_SCHEMA };

@@ -107,6 +107,11 @@ const REGISTRY = {
     description: 'Study reading (home "Education" icon): 4th/5th/9th house, Mercury, Jupiter, exam timing.',
     module: require('./prompts/aiTopicEducation'),
   },
+  aiBrihatKundli: {
+    label: 'AI Reading: Brihat Kundli',
+    description: 'The full birth-chart reading behind the home "Brihat Kundli" tile: Life, Career, Health and Fears as four sections, plus remedies. Requires an exact birth time, so it reads the ascendant and house cusps directly.',
+    module: require('./prompts/aiBrihatKundli'),
+  },
   aiTopicTravel: {
     label: 'AI Reading: Travel',
     description: 'Travel and relocation reading (home "Travel" icon): 3rd/9th/12th house, Rahu, foreign settlement.',

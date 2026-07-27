@@ -24,10 +24,11 @@ const emit = require('../websockets/emit');
  *      charged for is still owed to the seeker, so the session ends on the
  *      boundary rather than instantly.
  *
- * And one rule this engine adds, which the human one does not need: the seeker
- * must be PRESENT to be billed. A human astrologer's time is occupied whether or
- * not the seeker types; an AI's is not. So the idle check runs FIRST, before any
- * charge.
+ * A consultation ends on exactly two events: the seeker taps End, or the wallet
+ * cannot fund the next minute. There is deliberately NO idle timeout. Reading a
+ * long reply or thinking about the next question is still being in the
+ * consultation, and having it vanish mid-thought is worse than the few rupees an
+ * idle cut-off would save. maxMinutes is the only backstop.
  */
 
 const MAX_CATALOGUE = 25;
@@ -251,7 +252,12 @@ async function sendMessage(ctx, { userId, aiSessionId, message }) {
     question: message,
     topic: s.topic,
     personaPrompt: persona && persona.systemPrompt,
+    // The astrologer's own name, so "what is your name?" gets an answer.
+    personaName: persona && persona.name,
     lang: s.lang,
+    // Only greet and introduce on the very first turn; after that it is one
+    // continuous conversation, not a series of fresh consultations.
+    isFirstMessage: history.length <= 1,
     history: history.slice(0, -1), // exclude the message we just stored
     catalogue,
     priorSummaries: prior,
@@ -293,13 +299,12 @@ async function processBillTick(ctx, aiSessionId, minute) {
   if (!s || s.status !== 'ongoing') return; // ended already
   if (!s.ratePerMin) return;                // free session, nothing to bill
 
-  // 1) PRESENCE FIRST. Never charge a minute the seeker was not there for. This
-  //    is what stops an abandoned chat from draining the whole lock.
-  if (s.idleDeadlineAt && s.idleDeadlineAt.getTime() <= Date.now()) {
-    logger.info('ai_bill_tick: seeker idle, ending', { aiSessionId, minute });
-    await endSession(ctx, { aiSessionId, endReason: 'idle' });
-    return;
-  }
+  // NO IDLE AUTO-END. A consultation ends when the seeker taps End or when the
+  // wallet cannot cover the next minute, and nothing else. Ending on silence was
+  // wrong: reading a long reply, thinking, or typing slowly is still being IN the
+  // consultation, and the session vanishing mid-thought is worse than the few
+  // rupees it saves. The max-minutes cap below is the backstop against a session
+  // running forever.
 
   // 2) Funds. The minute currently running is ALREADY PAID, so let it finish.
   const remaining = s.lockedAmount - s.totalAmount;
@@ -367,25 +372,41 @@ async function endSession(ctx, { aiSessionId, endReason = 'user_ended' }) {
 }
 
 /**
- * Backstop sweep: close ongoing sessions whose idle deadline has passed.
+ * Backstop sweep: close sessions that have outrun their reservation.
  *
- * The tick normally catches this, but a lost job (queue drain, restart mid-flight)
- * would otherwise leave a session ongoing with funds locked forever.
+ * Not an idle timeout (see the header): this only ends a session whose locked
+ * funds are exhausted or which has passed the max-minutes cap, in case a billing
+ * tick was lost to a queue drain or a restart. Without it those sessions would
+ * stay 'ongoing' with the seeker's funds locked forever.
  */
-async function sweepIdleSessions(ctx) {
+async function sweepStuckSessions(ctx) {
   ctx = ctx || defaultContext();
   const AiChatSession = ctx.model('AiChatSession');
-  const stale = await AiChatSession.find({
-    status: 'ongoing',
-    idleDeadlineAt: { $lt: new Date(Date.now() - 60 * 1000) }, // a minute past due
-  }).select('aiSessionId').limit(100).lean();
-  for (const s of stale) {
-    await endSession(ctx, { aiSessionId: s.aiSessionId, endReason: 'idle' }).catch(() => {});
+  const { maxMinutes } = await settings(ctx);
+  const stuck = await AiChatSession.find({ status: 'ongoing' })
+    .select('aiSessionId startedAt ratePerMin lockedAmount totalAmount')
+    .limit(200)
+    .lean();
+  let ended = 0;
+  for (const s of stuck) {
+    const elapsedMin = s.startedAt
+      ? Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 60000) + 1
+      : 0;
+    const fundsGone = s.ratePerMin > 0 && (s.lockedAmount - s.totalAmount) < s.ratePerMin;
+    // Only act once the paid time is genuinely used up, so a live session mid
+    // paid-minute is never cut short.
+    const outOfTime = elapsedMin > maxMinutes + 1;
+    if (!fundsGone && !outOfTime) continue;
+    await endSession(ctx, {
+      aiSessionId: s.aiSessionId,
+      endReason: outOfTime ? 'max_minutes' : 'low_balance',
+    }).catch(() => {});
+    ended += 1;
   }
-  return stale.length;
+  return ended;
 }
 
 module.exports = {
-  startSession, sendMessage, processBillTick, endSession, sweepIdleSessions,
+  startSession, sendMessage, processBillTick, endSession, sweepStuckSessions,
   minuteDueAt, catalogueFor, priorSummaries,
 };

@@ -216,12 +216,17 @@ describe('processBillTick check order', () => {
   const src = fs.readFileSync(path.join(__dirname, 'aiChatService.js'), 'utf8');
   const body = src.slice(src.indexOf('async function processBillTick'));
 
-  it('checks presence BEFORE billing, so an absent seeker is never charged', () => {
-    const idleAt = body.indexOf('idleDeadlineAt');
-    const fundsAt = body.indexOf('remaining');
-    expect(idleAt).toBeGreaterThan(-1);
-    expect(fundsAt).toBeGreaterThan(-1);
-    expect(idleAt).toBeLessThan(fundsAt);
+  // A consultation ends on an explicit End or on insufficient funds, and nothing
+  // else. An idle cut-off used to end sessions while the seeker was reading a long
+  // reply or thinking, which is worse than the few rupees it saved.
+  it('never ends a session merely because the seeker went quiet', () => {
+    expect(/idleDeadlineAt[\s\S]{0,200}endSession/.test(body)).toBe(false);
+    expect(body).not.toContain("endReason: 'idle'");
+  });
+
+  it('still ends when the funds run out', () => {
+    expect(body).toContain('remaining');
+    expect(body).toContain("endReason: 'low_balance'");
   });
 
   it('re-enqueues at the paid boundary instead of ending mid-paid-minute', () => {

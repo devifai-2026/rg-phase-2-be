@@ -150,7 +150,7 @@ function start() {
     // Backstop for AI chats: the billing tick normally ends an idle session, but
     // a lost job (queue drain, restart mid-flight) would otherwise leave it
     // ongoing with the seeker's funds locked indefinitely.
-    forEachTenant((ctx) => recordCronRun('ai_idle_sweep', ctx, workerId, () => aiChatService.sweepIdleSessions(ctx))).catch((e) => logger.warn('ai idle sweep failed', e.message));
+    forEachTenant((ctx) => recordCronRun('ai_stuck_sweep', ctx, workerId, () => aiChatService.sweepStuckSessions(ctx))).catch((e) => logger.warn('ai idle sweep failed', e.message));
   }, 60 * 1000);
   // Run one sweep shortly after boot so a process restart promptly cleans up any
   // broadcast left 'live' by the previous (crashed/killed) process.
