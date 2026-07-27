@@ -121,7 +121,15 @@ async function tenantConfigSummary(tenant) {
         webhookUrl: `${env.publicBaseUrl}/api/payments/t/${tenant.slug}/callback`,
       },
       vedicAstro: set(va.apiKey ? decrypt(va.apiKey) : ''),
-      agora: { appId: ag.appId || '', appCertificate: set(ag.appCertificate ? decrypt(ag.appCertificate) : '') },
+      agora: {
+        appId: ag.appId || '',
+        appCertificate: set(ag.appCertificate ? decrypt(ag.appCertificate) : ''),
+        // The RESTful API pair, which cloud recording authenticates with. Shown
+        // so the console can tell "recording is configured" from "it isn't" —
+        // previously neither was returned, so the field always looked empty.
+        restKey: ag.restKey || '',
+        restSecret: set(ag.restSecret ? decrypt(ag.restSecret) : ''),
+      },
     };
   } catch (e) {
     require('../utils/logger').warn('tenantConfigSummary failed', e.message);
@@ -206,6 +214,31 @@ exports.updateSecrets = asyncHandler(async (req, res) => {
       await cfg.save();
     } catch (e) {
       require('../utils/logger').warn('mirror vedicAstroApiKey to tenant DB failed', { slug: tenant.slug, error: e.message });
+    }
+  }
+
+  // Same for Agora. The RUNTIME source of truth is the tenant DB's AgoraConfig:
+  // tokenService reads appId/appCertificate from it, and recordingService reads
+  // restKey/restSecret. Without this mirror the console accepted these four
+  // fields into TenantSecret and nothing ever used them — cloud recording stayed
+  // unconfigured, so every call was stamped "mock" and showed as "Not recorded".
+  const agoraKeys = ['agoraAppId', 'agoraAppCertificate', 'agoraCustomerId', 'agoraCustomerSecret'];
+  if (agoraKeys.some((k) => req.body[k])) {
+    try {
+      const { contextForSlug } = require('../utils/tenantContext');
+      const ctx = await contextForSlug(tenant.slug);
+      const cfg = await ctx.model('AgoraConfig').get();
+      if (req.body.agoraAppId) cfg.appId = req.body.agoraAppId;
+      // The two secrets are stored as AES-GCM ciphertext, like every other
+      // secret in this model.
+      if (req.body.agoraAppCertificate) cfg.appCertificate = encrypt(req.body.agoraAppCertificate);
+      // Agora calls these the RESTful API "Key" and "Secret"; the recording
+      // service knows them as customerId/customerSecret.
+      if (req.body.agoraCustomerId) cfg.restKey = req.body.agoraCustomerId;
+      if (req.body.agoraCustomerSecret) cfg.restSecret = encrypt(req.body.agoraCustomerSecret);
+      await cfg.save();
+    } catch (e) {
+      require('../utils/logger').warn('mirror Agora config to tenant DB failed', { slug: tenant.slug, error: e.message });
     }
   }
 
